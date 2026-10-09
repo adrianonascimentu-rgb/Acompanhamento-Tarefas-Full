@@ -194,37 +194,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
     }
   };
 
-  const handleDemoLogin = (roleType: 'admin' | 'vendedor') => {
-    if (roleType === 'admin') {
-      const adminUser = {
-        id: '77777777-7777-7777-7777-777777777777',
-        name: 'Adriano Nascimento',
-        username: 'nascimento',
-        email: 'adrianonascimentu@gmail.com',
-        type: 'admin',
-        role: 'Administrador Geral',
-        status: 'Ativo'
-      };
-      // Tentar autenticar em background se possível
-      supabase.auth.signInWithPassword({
-        email: 'adrianonascimentu@gmail.com',
-        password: 'adminpassword123'
-      }).catch(() => {});
-      onLogin('admin', adminUser);
-    } else {
-      const sellerUser = {
-        id: '703bb6e2-c491-4af5-85c8-fd7db96a06af',
-        name: 'Joabson Lima',
-        username: 'joabson',
-        email: 'vendaspb3@camposequipamentos.com.br',
-        type: 'vendedor',
-        role: 'Vendedor',
-        status: 'Ativo'
-      };
-      onLogin('vendedor', sellerUser);
-    }
-  };
-
   if (showRecovery) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
@@ -388,23 +357,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                 </>
               )}
             </button>
-
-            <div className="pt-2 border-t border-slate-100 flex gap-2">
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('admin')}
-                className="flex-1 py-2.5 px-3 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl text-xs font-bold text-blue-700 dark:text-blue-300 transition-colors border border-blue-200/50 dark:border-blue-800/40"
-              >
-                ⚡ Entrar como Adriano (Admin)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoLogin('vendedor')}
-                className="flex-1 py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                ⚡ Entrar como Joabson (Vendedor)
-              </button>
-            </div>
           </form>
         </div>
         
