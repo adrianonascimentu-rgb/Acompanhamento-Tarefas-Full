@@ -34,10 +34,13 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
+import { supabase } from '@/lib/supabase';
 import PdfUploadModal from '@/components/catalog/PdfUploadModal';
 import { 
   CatalogProduct, 
   INITIAL_CATALOG_PRODUCTS, 
+  getAllCatalogProducts,
+  setCatalogProductsInMemory,
   formatCurrency, 
   formatStock,
   inferCategory 
@@ -45,10 +48,11 @@ import {
 
 export default function ProductsCatalogPage() {
   const { isDarkMode } = useTheme();
-  const { user, isAdmin } = useRole();
+  const { user, isAdmin, isGerente, isSupervisor, canUploadCatalog: roleCanUpload } = useRole();
 
-  // Products state (loads from localStorage or initial dataset)
-  const [products, setProducts] = useState<CatalogProduct[]>(INITIAL_CATALOG_PRODUCTS);
+  // Products state (loads from memory/localStorage, synced with Supabase for all collaborators)
+  const [products, setProducts] = useState<CatalogProduct[]>(() => getAllCatalogProducts());
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedManufacturer, setSelectedManufacturer] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -79,53 +83,168 @@ export default function ProductsCatalogPage() {
   } | null>(null);
 
   const currentUserRole = (user?.role || user?.type || '').toLowerCase();
-  const isManagerOrAdmin = 
+  // Regra de Negócio: Somente Administrador, Gerente e Supervisor podem enviar o arquivo para atualização dos produtos
+  const canUploadCatalog = 
+    Boolean(roleCanUpload) ||
     isAdmin || 
-    currentUserRole === 'admin' || 
-    currentUserRole === 'administrador' || 
-    currentUserRole === 'gerente' || 
-    currentUserRole === 'supervisor' || 
-    currentUserRole === 'estoque' ||
-    currentUserRole === 'diretoria' ||
-    currentUserRole === 'gestor';
+    isGerente || 
+    isSupervisor ||
+    currentUserRole.includes('admin') || 
+    currentUserRole.includes('administrador') || 
+    currentUserRole.includes('gerente') || 
+    currentUserRole.includes('supervisor');
 
-  // Load persisted products and sync info from localStorage if any
+  // Carrega produtos: localStorage para render instantâneo + Supabase system_settings para sincronização entre todos os colaboradores
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('app_custom_catalog_products');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setProducts(parsed);
-        }
-      }
+    let isMounted = true;
 
-      const savedSync = localStorage.getItem('app_catalog_last_pdf_import');
-      if (savedSync) {
-        const parsedSync = JSON.parse(savedSync);
-        if (parsedSync?.message) {
-          setLastSyncBanner(parsedSync);
+    async function loadCatalog() {
+      // 1. Cache local instantâneo
+      try {
+        const saved = localStorage.getItem('app_custom_catalog_products');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            if (isMounted) {
+              setProducts(parsed);
+              setCatalogProductsInMemory(parsed);
+            }
+          }
         }
+
+        const savedSync = localStorage.getItem('app_catalog_last_pdf_import');
+        if (savedSync) {
+          const parsedSync = JSON.parse(savedSync);
+          if (parsedSync?.message && isMounted) {
+            setLastSyncBanner(parsedSync);
+          }
+        }
+      } catch (e) {}
+
+      // 2. Busca catálogo compartilhado no Supabase para que todos os colaboradores vejam os mesmos produtos atualizados
+      try {
+        const { data, error } = await supabase
+          .from('system_settings')
+          .select('key, value')
+          .in('key', ['catalog_products', 'catalog_last_sync']);
+
+        if (!error && data) {
+          const productsItem = data.find(d => d.key === 'catalog_products');
+          if (productsItem?.value && Array.isArray(productsItem.value) && productsItem.value.length > 0) {
+            if (isMounted) {
+              setProducts(productsItem.value);
+              setCatalogProductsInMemory(productsItem.value);
+              try {
+                localStorage.setItem('app_custom_catalog_products', JSON.stringify(productsItem.value));
+              } catch {}
+            }
+          }
+
+          const syncItem = data.find(d => d.key === 'catalog_last_sync');
+          if (syncItem?.value && isMounted) {
+            setLastSyncBanner(syncItem.value);
+            try {
+              localStorage.setItem('app_catalog_last_pdf_import', JSON.stringify(syncItem.value));
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn('Aviso ao carregar catálogo compartilhado:', err);
       }
-    } catch (e) {
-      console.warn('Erro ao carregar catálogo salvo:', e);
     }
+
+    loadCatalog();
+
+    // 3. Inscrição em tempo real para sincronização instantânea na tela de todos os colaboradores
+    const channel = supabase
+      .channel('public:system_settings-catalog-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'system_settings' },
+        (payload) => {
+          const newRow = payload.new as any;
+          if (newRow?.key === 'catalog_products' && Array.isArray(newRow?.value)) {
+            if (isMounted) {
+              setProducts(newRow.value);
+              setCatalogProductsInMemory(newRow.value);
+              try {
+                localStorage.setItem('app_custom_catalog_products', JSON.stringify(newRow.value));
+              } catch {}
+            }
+          }
+          if (newRow?.key === 'catalog_last_sync' && newRow?.value) {
+            if (isMounted) {
+              setLastSyncBanner(newRow.value);
+              try {
+                localStorage.setItem('app_catalog_last_pdf_import', JSON.stringify(newRow.value));
+              } catch {}
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const saveProducts = (updated: CatalogProduct[]) => {
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('key, value')
+        .in('key', ['catalog_products', 'catalog_last_sync']);
+
+      if (!error && data) {
+        const productsItem = data.find(d => d.key === 'catalog_products');
+        if (productsItem?.value && Array.isArray(productsItem.value) && productsItem.value.length > 0) {
+          setProducts(productsItem.value);
+          setCatalogProductsInMemory(productsItem.value);
+        }
+
+        const syncItem = data.find(d => d.key === 'catalog_last_sync');
+        if (syncItem?.value) {
+          setLastSyncBanner(syncItem.value);
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao atualizar catálogo manualmente:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const saveProducts = async (updated: CatalogProduct[]) => {
     setProducts(updated);
+    setCatalogProductsInMemory(updated);
     try {
       localStorage.setItem('app_custom_catalog_products', JSON.stringify(updated));
     } catch (e) {
       console.warn('Erro ao salvar catálogo no localStorage:', e);
     }
+
+    // Persistir no Supabase para que todos os colaboradores vejam a atualização
+    try {
+      await supabase
+        .from('system_settings')
+        .upsert({ 
+          key: 'catalog_products', 
+          value: updated,
+          updated_at: new Date().toISOString()
+        });
+    } catch (e) {
+      console.warn('Aviso ao persistir catálogo compartilhado:', e);
+    }
   };
 
-  const handlePdfUpdateSuccess = (
+  const handlePdfUpdateSuccess = async (
     updatedCatalog: CatalogProduct[],
     summary: { newCount: number; updatedCount: number; totalCount: number }
   ) => {
-    saveProducts(updatedCatalog);
+    await saveProducts(updatedCatalog);
     const syncInfo = {
       message: `Catálogo atualizado com sucesso via PDF: ${summary.newCount} novos itens cadastrados e ${summary.updatedCount} produtos atualizados de um total de ${summary.totalCount} itens.`,
       timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -133,6 +252,13 @@ export default function ProductsCatalogPage() {
     setLastSyncBanner(syncInfo);
     try {
       localStorage.setItem('app_catalog_last_pdf_import', JSON.stringify(syncInfo));
+      await supabase
+        .from('system_settings')
+        .upsert({ 
+          key: 'catalog_last_sync', 
+          value: syncInfo,
+          updated_at: new Date().toISOString()
+        });
     } catch {}
   };
 
@@ -294,36 +420,64 @@ export default function ProductsCatalogPage() {
             <div>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight">Catálogo de Peças & Produtos</h1>
+                {canUploadCatalog ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                    <ShieldCheck size={12} />
+                    Gestão (Admin / Gerente / Supervisor)
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1">
+                    <CheckCircle2 size={12} />
+                    Consulta Liberada (Toda a Equipe)
+                  </span>
+                )}
               </div>
               <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'} mt-0.5`}>
-                Consulta rápida de nome do produto, preço, referência, fabricante e estoque em tempo real.
+                Consulta rápida de nome do produto, preço, referência, fabricante e estoque em tempo real para todos os colaboradores.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Import / Update via PDF Button */}
+            {/* Sincronização manual com banco Supabase */}
             <button
-              onClick={() => setIsPdfModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
-              title="Atualizar produtos e cadastrar novos itens via arquivo PDF (Admin, Gerente ou Supervisor)"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                isDarkMode 
+                  ? 'bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-200' 
+                  : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-xs'
+              }`}
+              title="Sincronizar produtos do catálogo com o banco de dados compartilhado"
             >
-              <FileUp size={16} />
-              <span>Atualizar via PDF</span>
-              {isManagerOrAdmin && (
+              <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-blue-500' : ''} />
+              <span className="hidden sm:inline">Sincronizar</span>
+            </button>
+
+            {/* Import / Update via PDF Button - Somente Administrador, Gerente e Supervisor */}
+            {canUploadCatalog && (
+              <button
+                onClick={() => setIsPdfModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all active:scale-95 cursor-pointer"
+                title="Atualizar produtos e cadastrar novos itens via arquivo PDF (Acesso exclusivo: Administrador, Gerente e Supervisor)"
+              >
+                <FileUp size={16} />
+                <span>Atualizar via PDF</span>
                 <span className="px-1.5 py-0.5 rounded-md bg-white/20 text-[9px] font-black uppercase tracking-wider">
                   Gestão
                 </span>
-              )}
-            </button>
+              </button>
+            )}
 
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
-            >
-              <Plus size={16} />
-              <span>Novo Produto</span>
-            </button>
+            {canUploadCatalog && (
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus size={16} />
+                <span>Novo Produto</span>
+              </button>
+            )}
 
             <button
               onClick={handleExportCSV}
@@ -1146,16 +1300,18 @@ export default function ProductsCatalogPage() {
           )}
         </AnimatePresence>
 
-        {/* PDF Import & Batch Update Modal */}
-        <PdfUploadModal
-          isOpen={isPdfModalOpen}
-          onClose={() => setIsPdfModalOpen(false)}
-          currentProducts={products}
-          onApplyUpdate={handlePdfUpdateSuccess}
-          userRole={user?.role || user?.type || ''}
-          userName={user?.name || user?.username || 'Usuário'}
-          isAdmin={isAdmin}
-        />
+        {/* PDF Import & Batch Update Modal - Apenas montado/aberto se autorizado */}
+        {canUploadCatalog && (
+          <PdfUploadModal
+            isOpen={isPdfModalOpen}
+            onClose={() => setIsPdfModalOpen(false)}
+            currentProducts={products}
+            onApplyUpdate={handlePdfUpdateSuccess}
+            userRole={user?.role || user?.type || ''}
+            userName={user?.name || user?.username || 'Usuário'}
+            isAdmin={isAdmin}
+          />
+        )}
 
       </div>
     </div>

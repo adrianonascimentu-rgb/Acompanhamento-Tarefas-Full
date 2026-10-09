@@ -53,7 +53,20 @@ export default function DeliveriesPage() {
 }
 
 function DeliveriesContent() {
-  const { role, user, isAdmin, canAccessDeliveries, isAuthenticated, isLoading: roleLoading, login } = useRole();
+  const { 
+    role, 
+    user, 
+    isAdmin, 
+    isCaixa: hookIsCaixa, 
+    isEntregador: hookIsEntregador, 
+    isEstoque: hookIsEstoque, 
+    isVendedor: hookIsVendedor, 
+    isGerente: hookIsGerente, 
+    canAccessDeliveries, 
+    isAuthenticated, 
+    isLoading: roleLoading, 
+    login 
+  } = useRole();
   const { isDarkMode } = useTheme();
   const { showToast, showConfirm } = useUI();
   const searchParams = useSearchParams();
@@ -68,12 +81,13 @@ function DeliveriesContent() {
   const [driverFilter, setDriverFilter] = useState('all');
   const [onlyMyDeliveries, setOnlyMyDeliveries] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [periodFilter, setPeriodFilter] = useState('day'); // day, week, month, all
+  const [periodFilter, setPeriodFilter] = useState('all'); // all, day, tomorrow, week, month
 
   useEffect(() => {
     const status = searchParams?.get('status');
     if (status) {
       setStatusFilter(status);
+      setPeriodFilter('all');
     }
   }, [searchParams]);
   const [sellers, setSellers] = useState<any[]>([]);
@@ -203,11 +217,11 @@ function DeliveriesContent() {
   };
 
   const userRoleStr = (user?.role || user?.type || role || '').toLowerCase();
-  const isCaixa = userRoleStr.includes('caixa') || userRoleStr.includes('financeiro');
-  const isEntregas = userRoleStr.includes('entrega') || userRoleStr.includes('motorista') || userRoleStr.includes('frete') || userRoleStr.includes('courier');
-  const isEstoque = userRoleStr.includes('estoque') || userRoleStr.includes('almoxarife') || userRoleStr.includes('separador') || userRoleStr.includes('expedi') || userRoleStr.includes('logistica');
-  const isVendedor = role === 'vendedor' || userRoleStr.includes('vendedor') || userRoleStr.includes('venda') || userRoleStr.includes('comercial');
-  const isGerente = role === 'gerente' || role === 'supervisor' || userRoleStr.includes('gerente') || userRoleStr.includes('supervisor') || userRoleStr.includes('gestor');
+  const isCaixa = hookIsCaixa || userRoleStr.includes('caixa') || userRoleStr.includes('financeiro');
+  const isEntregas = hookIsEntregador || userRoleStr.includes('entrega') || userRoleStr.includes('motorista') || userRoleStr.includes('frete') || userRoleStr.includes('courier');
+  const isEstoque = hookIsEstoque || userRoleStr.includes('estoque') || userRoleStr.includes('almoxarife') || userRoleStr.includes('separador') || userRoleStr.includes('expedi') || userRoleStr.includes('logistica');
+  const isVendedor = hookIsVendedor || role === 'vendedor' || userRoleStr.includes('vendedor') || userRoleStr.includes('venda') || userRoleStr.includes('comercial');
+  const isGerente = hookIsGerente || role === 'gerente' || role === 'supervisor' || userRoleStr.includes('gerente') || userRoleStr.includes('supervisor') || userRoleStr.includes('gestor');
   const isEntregador = role === 'entregador' || isEntregas;
   
   // Todos os usuários com permissão explícita, entregadores, vendedores, estoque, caixas e administradores têm acesso
@@ -1153,7 +1167,7 @@ function DeliveriesContent() {
     );
   }
 
-  if (!deliveriesEnabled && !isAdmin && !isEntregador && !isEstoque) {
+  if (!deliveriesEnabled && !isAdmin && !isEntregador && !isEstoque && !isCaixa && !isGerente && !isVendedor) {
     return (
       <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center ${isDarkMode ? 'bg-slate-950' : 'bg-white'}`}>
         <div className="p-4 bg-amber-50 rounded-full text-amber-600 mb-4">

@@ -65,7 +65,14 @@ export default function RoutesPage() {
       let matchedDeliveries: any[] = [];
       const cleanName = userName.trim().toLowerCase();
       const firstName = cleanName.split(' ')[0];
-      const isAdminOrManager = userRole.includes('admin') || userRole.includes('gerente') || userRole.includes('supervisor') || userRole.includes('estoque');
+      const isAdminOrManagerOrCaixa = 
+        userRole.includes('admin') || 
+        userRole.includes('gerente') || 
+        userRole.includes('supervisor') || 
+        userRole.includes('estoque') ||
+        userRole.includes('caixa') ||
+        userRole.includes('financeiro') ||
+        userRole.includes('secretaria');
 
       const { data: allUnfinished, error: fetchError } = await supabase
         .from('deliveries')
@@ -75,7 +82,7 @@ export default function RoutesPage() {
 
       if (!fetchError && allUnfinished && allUnfinished.length > 0) {
         matchedDeliveries = allUnfinished.filter(d => {
-          if (isAdminOrManager) return true; // Administradores e gerentes visualizam todas as rotas operacionais
+          if (isAdminOrManagerOrCaixa) return true; // Administradores, gerentes e caixa visualizam todas as rotas operacionais
 
           const dDriver = (d.driver || '').trim().toLowerCase();
           const matchesId = (userId && (d.driver_id === userId || d.courier_id === userId || d.collaborator_id === userId));

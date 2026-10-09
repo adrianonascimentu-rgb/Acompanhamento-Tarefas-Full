@@ -244,10 +244,27 @@ export function formatStock(stock: number): string {
   return stock.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 });
 }
 
+let inMemoryCatalog: CatalogProduct[] | null = null;
+
+export function setCatalogProductsInMemory(products: CatalogProduct[]) {
+  if (Array.isArray(products) && products.length > 0) {
+    inMemoryCatalog = products;
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('app_custom_catalog_products', JSON.stringify(products));
+      } catch {}
+    }
+  }
+}
+
 /**
- * Retorna todos os produtos do catálogo (localStorage customizado ou inicial)
+ * Retorna todos os produtos do catálogo (em memória, localStorage customizado ou inicial)
  */
 export function getAllCatalogProducts(): CatalogProduct[] {
+  if (inMemoryCatalog && inMemoryCatalog.length > 0) {
+    return inMemoryCatalog;
+  }
+
   if (typeof window === 'undefined') {
     return INITIAL_CATALOG_PRODUCTS;
   }
@@ -256,6 +273,7 @@ export function getAllCatalogProducts(): CatalogProduct[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryCatalog = parsed;
         return parsed;
       }
     }
@@ -297,3 +315,4 @@ export function searchCatalogProducts(query: string, limit: number = 8): Catalog
     )
     .slice(0, limit);
 }
+

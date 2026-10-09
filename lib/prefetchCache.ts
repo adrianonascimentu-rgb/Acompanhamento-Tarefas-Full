@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { applyStatusToProfiles } from '@/lib/collaboratorStatus';
+import { setCatalogProductsInMemory } from '@/lib/catalogProducts';
 
 interface CacheEntry<T> {
   data: T;
@@ -214,12 +215,58 @@ class DataPrefetchCache {
   }
 
   /**
-   * Prefetch simultâneo de dados chave das páginas de gestão
+   * Executa o Prefetch do Catálogo de Peças e Produtos para que todos os colaboradores vejam instantaneamente
+   */
+  async prefetchCatalog(force = false): Promise<any[]> {
+    const cacheKey = 'catalog_products';
+    if (!force) {
+      const cached = this.getCached<any[]>(cacheKey);
+      if (cached) {
+        setCatalogProductsInMemory(cached);
+        return cached;
+      }
+    }
+
+    if (this.inFlightRequests.has(cacheKey)) {
+      return this.inFlightRequests.get(cacheKey)!;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('system_settings')
+          .select('key, value')
+          .in('key', ['catalog_products', 'catalog_last_sync']);
+
+        if (!error && data) {
+          const item = data.find(d => d.key === 'catalog_products');
+          if (item?.value && Array.isArray(item.value) && item.value.length > 0) {
+            this.setCache(cacheKey, item.value);
+            setCatalogProductsInMemory(item.value);
+            return item.value;
+          }
+        }
+        return [];
+      } catch (err) {
+        console.warn('Erro durante prefetch de catálogo:', err);
+        return [];
+      } finally {
+        this.inFlightRequests.delete(cacheKey);
+      }
+    })();
+
+    this.inFlightRequests.set(cacheKey, fetchPromise);
+    return fetchPromise;
+  }
+
+  /**
+   * Prefetch simultâneo de dados chave das páginas de gestão e catálogo compartilhado
    */
   async prefetchAll(): Promise<void> {
     await Promise.allSettled([
       this.prefetchCollaborators(),
-      this.prefetchTasks()
+      this.prefetchTasks(),
+      this.prefetchCatalog()
     ]);
   }
 }

@@ -68,7 +68,7 @@ export default function AdminSettingsPage() {
     leads: ['admin'],
     social_media: ['admin'],
     whatsapp: ['admin'],
-    deliveries: ['admin', 'entregador', 'vendedor', 'estoque', 'gerente'],
+    deliveries: ['admin', 'entregador', 'vendedor', 'estoque', 'gerente', 'caixa'],
     transfers: ['admin', 'estoque'],
     warranties: ['admin', 'vendedor'],
     sales: ['admin', 'vendedor'],
@@ -999,7 +999,7 @@ END $$;`;
               <thead>
                 <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
                   <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">Módulo</th>
-                  {['Admin', 'Gerente', 'Vendedor', 'Estoque', 'Entregador', 'Colaborador'].map(role => (
+                  {['Admin', 'Gerente', 'Caixa', 'Vendedor', 'Estoque', 'Entregador', 'Colaborador'].map(role => (
                     <th key={role} className="p-6 text-center text-xs font-black text-slate-400 uppercase tracking-widest">{role}</th>
                   ))}
                 </tr>
@@ -1027,7 +1027,7 @@ END $$;`;
                         </div>
                       </div>
                     </td>
-                    {['admin', 'gerente', 'vendedor', 'estoque', 'entregador', 'user'].map(role => (
+                    {['admin', 'gerente', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'].map(role => (
                       <td key={role} className="p-6 text-center">
                         <button
                           onClick={() => handleTogglePermission(mod.id, role)}

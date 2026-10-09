@@ -17,6 +17,8 @@ interface DeliveryItem {
   shift?: string;
   vehicle?: string;
   driver?: string;
+  driver_id?: string;
+  courier_id?: string;
   value?: number;
   neighborhood?: string;
   city?: string;

@@ -82,17 +82,14 @@ export default function PdfUploadModal({
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 50;
 
-  // Check role authorization
+  // Check role authorization: somente administrador, gerente e supervisor podem enviar o arquivo
   const normalizedRole = (userRole || '').toLowerCase();
   const isAuthorized = 
     isAdmin || 
-    normalizedRole === 'admin' || 
-    normalizedRole === 'administrador' || 
-    normalizedRole === 'gerente' || 
-    normalizedRole === 'supervisor' ||
-    normalizedRole === 'estoque' ||
-    normalizedRole === 'diretoria' ||
-    normalizedRole === 'gestor';
+    normalizedRole.includes('admin') || 
+    normalizedRole.includes('administrador') || 
+    normalizedRole.includes('gerente') || 
+    normalizedRole.includes('supervisor');
 
   // Compute diffs between extracted products and current catalog
   const diffs: ProductDiff[] = useMemo(() => {
@@ -204,6 +201,10 @@ export default function PdfUploadModal({
 
   const handleProcessPdf = async () => {
     if (!file) return;
+    if (!isAuthorized) {
+      setErrorMessage('Apenas Administrador, Gerente e Supervisor possuem autorização para enviar arquivos de atualização.');
+      return;
+    }
 
     setIsLoading(true);
     setErrorMessage(null);

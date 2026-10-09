@@ -3,11 +3,14 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// Normalizador de papéis/cargos para compatibilidade com títulos descritivos do banco
-export function normalizeRole(r: string | null | undefined): string {
+export type Role = 'admin' | 'vendedor' | 'user' | 'gerente' | 'estoque' | 'entregador' | 'supervisor' | 'caixa';
+
+// Normalizador inteligente de papéis/cargos para compatibilidade com títulos descritivos do banco de dados
+export function normalizeRole(r: string | null | undefined): Role {
   if (!r) return 'user';
   const lower = r.toLowerCase().trim();
-  if (lower.includes('admin') || lower.includes('administrador')) return 'admin';
+  if (lower.includes('caixa') || lower.includes('financeiro') || lower.includes('secretaria')) return 'caixa';
+  if (lower.includes('administrador') || lower === 'admin' || lower.startsWith('admin ') || (lower.includes('admin') && !lower.includes('auxiliar'))) return 'admin';
   if (
     lower.includes('entrega') || 
     lower.includes('entregador') || 
@@ -26,8 +29,7 @@ export function normalizeRole(r: string | null | undefined): string {
   ) return 'estoque';
   if (lower.includes('gerente') || lower.includes('gerencia') || lower.includes('gestor')) return 'gerente';
   if (lower.includes('supervisor') || lower.includes('coordenador')) return 'supervisor';
-  if (lower.includes('caixa') || lower.includes('financeiro')) return 'caixa';
-  return lower;
+  return 'user';
 }
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
@@ -35,11 +37,11 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   social_media: ['admin', 'gerente'],
   whatsapp: ['admin', 'vendedor', 'gerente'],
   deliveries: ['admin', 'entregador', 'motorista', 'vendedor', 'estoque', 'gerente', 'supervisor', 'caixa'],
-  transfers: ['admin', 'estoque', 'gerente'],
-  warranties: ['admin', 'vendedor', 'estoque', 'gerente'],
-  sales: ['admin', 'vendedor', 'gerente'],
-  reports: ['admin', 'gerente', 'supervisor'],
-  demands: ['admin', 'vendedor', 'gerente', 'estoque']
+  transfers: ['admin', 'estoque', 'gerente', 'caixa'],
+  warranties: ['admin', 'vendedor', 'estoque', 'gerente', 'caixa'],
+  sales: ['admin', 'vendedor', 'gerente', 'caixa'],
+  reports: ['admin', 'gerente', 'supervisor', 'caixa'],
+  demands: ['admin', 'vendedor', 'gerente', 'estoque', 'caixa']
 };
 
 export const DEFAULT_ADMIN_USER = {
@@ -51,9 +53,16 @@ export const DEFAULT_ADMIN_USER = {
 };
 
 interface RoleContextType {
-  role: any;
+  role: Role;
   user: any | null;
   isAdmin: boolean;
+  isCaixa: boolean;
+  isEntregador: boolean;
+  isEstoque: boolean;
+  isVendedor: boolean;
+  isGerente: boolean;
+  isSupervisor: boolean;
+  canUploadCatalog: boolean;
   canAccessLeads: boolean;
   canAccessSocialMedia: boolean;
   canAccessWhatsapp: boolean;
@@ -286,6 +295,58 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     rawRole.includes('administrador') ||
     user?.type?.toLowerCase() === 'admin' ||
     (!!ownerEmail && userEmail === ownerEmail);
+
+  const isCaixa = 
+    normalizedRole === 'caixa' || 
+    rawRole.includes('caixa') || 
+    rawRole.includes('financeiro') || 
+    rawRole.includes('secretaria');
+
+  const isEntregador = 
+    normalizedRole === 'entregador' ||
+    rawRole.includes('entrega') ||
+    rawRole.includes('motorista') ||
+    rawRole.includes('frete') ||
+    rawRole.includes('courier');
+
+  const isEstoque = 
+    normalizedRole === 'estoque' ||
+    rawRole.includes('estoque') ||
+    rawRole.includes('almoxarife') ||
+    rawRole.includes('separador') ||
+    rawRole.includes('expedi') ||
+    rawRole.includes('logistica');
+
+  const isVendedor = 
+    normalizedRole === 'vendedor' ||
+    rawRole.includes('vendedor') ||
+    rawRole.includes('venda') ||
+    rawRole.includes('comercial');
+
+  const isGerente = 
+    normalizedRole === 'gerente' ||
+    normalizedRole === 'supervisor' ||
+    rawRole.includes('gerente') ||
+    rawRole.includes('supervisor') ||
+    rawRole.includes('gestor');
+
+  const isSupervisor = 
+    normalizedRole === 'supervisor' ||
+    rawRole.includes('supervisor') ||
+    rawRole.includes('coordenador');
+
+  // Regra de Negócio: Somente Administrador, Gerente e Supervisor podem enviar o arquivo para atualização dos produtos
+  const canUploadCatalog = 
+    isAdmin || 
+    isGerente || 
+    isSupervisor || 
+    normalizedRole === 'admin' || 
+    normalizedRole === 'gerente' || 
+    normalizedRole === 'supervisor' ||
+    rawRole.includes('admin') || 
+    rawRole.includes('administrador') || 
+    rawRole.includes('gerente') || 
+    rawRole.includes('supervisor');
   
   const hasPermission = (module: string) => {
     if (isAdmin) return true;
@@ -295,16 +356,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     const userAccessKey = `can_access_${module}`;
     if (user[userAccessKey] === true) return true;
     
-    // 2. Para entregas: entregadores, motoristas, vendedores, estoque e gerência têm acesso nativo
+    // 2. Para entregas: Caixa, Administradores, Entregadores, Vendedores, Estoque e Gerência têm acesso nativo total
     if (module === 'deliveries') {
-      if (
-        normalizedRole === 'entregador' ||
-        normalizedRole === 'vendedor' ||
-        normalizedRole === 'estoque' ||
-        normalizedRole === 'gerente' ||
-        normalizedRole === 'supervisor' ||
-        normalizedRole === 'caixa'
-      ) {
+      if (isCaixa || isEntregador || isVendedor || isEstoque || isGerente) {
         return true;
       }
     }
@@ -328,16 +382,28 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  // O Caixa também pode ver todas as entregas e operar o módulo de entregas
   const canAccessDeliveries = 
     isAdmin || 
+    isCaixa ||
+    isEntregador ||
+    isVendedor ||
+    isEstoque ||
+    isGerente ||
     user?.can_access_deliveries === true ||
-    normalizedRole === 'entregador' ||
     hasPermission('deliveries');
 
   const value = {
     role: normalizedRole,
     user,
     isAdmin,
+    isCaixa,
+    isEntregador,
+    isEstoque,
+    isVendedor,
+    isGerente,
+    isSupervisor,
+    canUploadCatalog,
     canAccessLeads: hasPermission('leads'),
     canAccessSocialMedia: hasPermission('social_media'),
     canAccessWhatsapp: hasPermission('whatsapp'),

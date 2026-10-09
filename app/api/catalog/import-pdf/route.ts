@@ -24,6 +24,21 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth(req);
     if (!auth.authorized) return auth.response;
 
+    const userRole = (auth.user?.role || auth.user?.type || '').toLowerCase();
+    const isAllowed = 
+      auth.user?.isAdmin || 
+      userRole.includes('admin') || 
+      userRole.includes('administrador') || 
+      userRole.includes('gerente') || 
+      userRole.includes('supervisor');
+
+    if (!isAllowed) {
+      return NextResponse.json(
+        { error: 'Apenas administrador, gerente e supervisor podem enviar o arquivo para atualização dos produtos.' },
+        { status: 403, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     let pdfBuffer: Buffer | null = null;
     let pdfBase64 = '';
     let mimeType = 'application/pdf';

@@ -19,6 +19,7 @@ import {
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { formatLocalDate, getTodayLocalDateString } from '@/lib/utils';
+import { useRole } from '@/hooks/useRole';
 
 interface SpecialDelivery {
   id: string | number;
@@ -41,6 +42,7 @@ interface SpecialDeliveryAlertBalloonProps {
 }
 
 export function SpecialDeliveryAlertBalloon({ isDarkMode }: SpecialDeliveryAlertBalloonProps) {
+  const { canAccessDeliveries } = useRole();
   const [specialDeliveries, setSpecialDeliveries] = useState<SpecialDelivery[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isDismissed, setIsDismissed] = useState(false);
@@ -150,7 +152,7 @@ export function SpecialDeliveryAlertBalloon({ isDarkMode }: SpecialDeliveryAlert
     setIsMinimized(false);
   };
 
-  if (loading || specialDeliveries.length === 0) {
+  if (!canAccessDeliveries || loading || specialDeliveries.length === 0) {
     return null;
   }
 
