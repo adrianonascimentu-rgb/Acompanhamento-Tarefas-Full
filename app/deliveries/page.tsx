@@ -65,8 +65,10 @@ function DeliveriesContent() {
   const [loading, setLoading] = useState(true);
   const [deliveriesEnabled, setDeliveriesEnabled] = useState(true);
   const [sellerFilter, setSellerFilter] = useState('all');
+  const [driverFilter, setDriverFilter] = useState('all');
+  const [onlyMyDeliveries, setOnlyMyDeliveries] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [periodFilter, setPeriodFilter] = useState('day'); // day, week, month
+  const [periodFilter, setPeriodFilter] = useState('day'); // day, week, month, all
 
   useEffect(() => {
     const status = searchParams?.get('status');
@@ -200,14 +202,27 @@ function DeliveriesContent() {
     }
   };
 
-  const isCaixa = user?.role && user.role.toLowerCase().includes('caixa');
-  const isEntregas = user?.role && (user.role.toLowerCase().includes('entrega') || user.role.toLowerCase().includes('entregas'));
-  const isEstoque = user?.role && user.role.toLowerCase().includes('estoque');
+  const userRoleStr = (user?.role || user?.type || role || '').toLowerCase();
+  const isCaixa = userRoleStr.includes('caixa') || userRoleStr.includes('financeiro');
+  const isEntregas = userRoleStr.includes('entrega') || userRoleStr.includes('motorista') || userRoleStr.includes('frete') || userRoleStr.includes('courier');
+  const isEstoque = userRoleStr.includes('estoque') || userRoleStr.includes('almoxarife') || userRoleStr.includes('separador') || userRoleStr.includes('expedi') || userRoleStr.includes('logistica');
+  const isVendedor = role === 'vendedor' || userRoleStr.includes('vendedor') || userRoleStr.includes('venda') || userRoleStr.includes('comercial');
+  const isGerente = role === 'gerente' || role === 'supervisor' || userRoleStr.includes('gerente') || userRoleStr.includes('supervisor') || userRoleStr.includes('gestor');
   const isEntregador = role === 'entregador' || isEntregas;
   
-  const hasAccess = isAuthenticated && canAccessDeliveries;
-  const canCreate = canAccessDeliveries;
-  const canUpdateStatus = isAdmin || isEntregador || isCaixa;
+  // Todos os usuários com permissão explícita, entregadores, vendedores, estoque, caixas e administradores têm acesso
+  const hasAccess = isAuthenticated && (
+    canAccessDeliveries || 
+    isAdmin || 
+    isEntregador || 
+    isVendedor || 
+    isEstoque || 
+    isGerente || 
+    isCaixa || 
+    user?.can_access_deliveries === true
+  );
+  const canCreate = hasAccess;
+  const canUpdateStatus = isAdmin || isEntregador || isCaixa || isGerente;
 
   useEffect(() => {
     async function fetchSettings() {
@@ -1156,6 +1171,22 @@ function DeliveriesContent() {
   const filteredDeliveries = deliveries.filter(d => {
     if (!d || !d.date) return false;
     const matchesSeller = sellerFilter === 'all' || d.seller === sellerFilter;
+    const matchesDriver = driverFilter === 'all' || 
+      d.driver?.toLowerCase().trim() === driverFilter.toLowerCase().trim() ||
+      (d.driver_id && drivers.find(dr => dr.id === d.driver_id)?.name === driverFilter);
+
+    // Filtro "Atribuídas a Mim" (para o motorista ou vendedor logado ver rapidamente suas entregas)
+    let matchesMine = true;
+    if (onlyMyDeliveries && user) {
+      const myName = (user.name || user.full_name || '').toLowerCase().trim();
+      const myFirstName = myName.split(' ')[0];
+      const dDriver = (d.driver || '').toLowerCase().trim();
+      const dSeller = (d.seller || '').toLowerCase().trim();
+      const isMyDriver = dDriver.includes(myName) || (myFirstName.length >= 3 && dDriver.includes(myFirstName)) || d.driver_id === user.id || d.courier_id === user.id;
+      const isMySeller = dSeller.includes(myName) || (myFirstName.length >= 3 && dSeller.includes(myFirstName)) || d.created_by === user.id;
+      matchesMine = isMyDriver || isMySeller;
+    }
+
     const isSpecial = isSpecialDelivery(d);
     const matchesStatus = statusFilter === 'all' 
       ? true 
@@ -1172,7 +1203,9 @@ function DeliveriesContent() {
     today.setHours(0, 0, 0, 0);
     
     let matchesPeriod = true;
-    if (periodFilter === 'day') {
+    if (periodFilter === 'all') {
+      matchesPeriod = true;
+    } else if (periodFilter === 'day') {
       matchesPeriod = deliveryDate.toDateString() === today.toDateString();
     } else if (periodFilter === 'tomorrow') {
       const tomorrow = new Date(today);
@@ -1198,7 +1231,7 @@ function DeliveriesContent() {
       matchesPeriod = deliveryDate.getMonth() === lastMonth.getMonth() && deliveryDate.getFullYear() === lastMonth.getFullYear();
     }
 
-    return matchesSeller && matchesStatus && matchesPeriod;
+    return matchesSeller && matchesDriver && matchesMine && matchesStatus && matchesPeriod;
   });
 
   // Calculate statistics
@@ -1230,12 +1263,26 @@ function DeliveriesContent() {
               <span className="text-[8px] font-bold text-rose-500 uppercase tracking-widest">Desativado para usuários</span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {/* Driver Dropdown */}
+            <select
+              value={driverFilter}
+              onChange={(e) => setDriverFilter(e.target.value)}
+              className={`p-2 rounded-full text-xs font-bold border max-w-[130px] sm:max-w-none ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}
+              title="Filtrar por Motorista/Entregador"
+            >
+              <option value="all">Todos Motoristas</option>
+              {drivers.map(d => (
+                <option key={d.id} value={d.name}>{d.name}</option>
+              ))}
+            </select>
+
             {/* Seller Dropdown */}
             <select
               value={sellerFilter}
               onChange={(e) => setSellerFilter(e.target.value)}
-              className={`p-2 rounded-full text-xs font-bold border ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}
+              className={`p-2 rounded-full text-xs font-bold border max-w-[130px] sm:max-w-none ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`}
+              title="Filtrar por Vendedor"
             >
               <option value="all">Todos Vendedores</option>
               {sellers.map(s => (
@@ -1246,12 +1293,10 @@ function DeliveriesContent() {
             <button
               onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
               className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
+              title={viewMode === 'list' ? 'Ver no Mapa' : 'Ver em Lista'}
             >
               {viewMode === 'list' ? <MapIcon size={20} /> : <List size={20} />}
             </button>
-            <div className={`flex size-10 items-center justify-center rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
-              <Search size={20} />
-            </div>
           </div>
         </div>
       </header>
@@ -1414,6 +1459,23 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
 
               {/* Status / Category Filter Pills */}
               <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1">
+                {/* Botão de alternância rápida "Minhas Entregas" */}
+                {user && (
+                  <button
+                    onClick={() => setOnlyMyDeliveries(!onlyMyDeliveries)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border whitespace-nowrap flex items-center gap-1.5 ${
+                      onlyMyDeliveries
+                        ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                        : isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
+                    title="Exibir apenas entregas em que você é o motorista ou vendedor"
+                  >
+                    <User size={13} />
+                    <span>Minhas Entregas</span>
+                    {onlyMyDeliveries && <Check size={12} />}
+                  </button>
+                )}
+
                 {[
                   { id: 'all', label: 'Todos os Status' },
                   { id: 'especial', label: '⭐ Especiais', count: stats.especial, isSpecial: true },
@@ -1695,9 +1757,47 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                 );
               })
             ) : (
-              <div className="py-12 text-center text-slate-500">
-                <Truck size={48} className="mx-auto mb-4 opacity-20" />
-                <p>Nenhuma entrega encontrada.</p>
+              <div className="py-12 text-center text-slate-500 space-y-3">
+                <Truck size={48} className="mx-auto mb-2 opacity-20" />
+                <p className="font-semibold text-sm text-slate-700 dark:text-slate-300">
+                  Nenhuma entrega encontrada para os filtros selecionados.
+                </p>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  {deliveries.length > 0 
+                    ? `Existem ${deliveries.length} entregas cadastradas no total. Alterne o período ou remova os filtros de motorista/vendedor para visualizá-las.`
+                    : 'Ainda não há registros de entregas cadastrados no sistema.'}
+                </p>
+                {deliveries.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <button
+                      onClick={() => {
+                        setPeriodFilter('all');
+                        setSellerFilter('all');
+                        setDriverFilter('all');
+                        setStatusFilter('all');
+                        setOnlyMyDeliveries(false);
+                      }}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                    >
+                      Ver todas as entregas ({deliveries.length})
+                    </button>
+                    {(periodFilter !== 'all' || sellerFilter !== 'all' || driverFilter !== 'all' || statusFilter !== 'all' || onlyMyDeliveries) && (
+                      <button
+                        onClick={() => {
+                          setSellerFilter('all');
+                          setDriverFilter('all');
+                          setStatusFilter('all');
+                          setOnlyMyDeliveries(false);
+                        }}
+                        className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                          isDarkMode ? 'border-slate-800 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        Limpar Filtros
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             </div>

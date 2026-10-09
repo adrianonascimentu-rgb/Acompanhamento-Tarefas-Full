@@ -29,7 +29,7 @@ interface DeliveryItem {
 }
 
 export function UrgentDeliveryAlertCard({ isDarkMode }: UrgentDeliveryAlertCardProps) {
-  const { canAccessDeliveries } = useRole();
+  const { canAccessDeliveries, user, isAdmin } = useRole();
   const [deliveries, setDeliveries] = useState<DeliveryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -52,8 +52,10 @@ export function UrgentDeliveryAlertCard({ isDarkMode }: UrgentDeliveryAlertCardP
         .neq('status', 'Finalizada')
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
-        setDeliveries(data);
+      let targetDeliveries: DeliveryItem[] = [];
+
+      if (!error && data && data.length > 0) {
+        targetDeliveries = data;
       } else {
         // Fallback: check if there are any overdue unfinished deliveries (e.g. pending from previous days or today)
         const { data: fallbackData } = await supabase
@@ -61,16 +63,42 @@ export function UrgentDeliveryAlertCard({ isDarkMode }: UrgentDeliveryAlertCardP
           .select('*')
           .neq('status', 'Finalizada')
           .order('date', { ascending: false })
-          .limit(5);
+          .limit(8);
 
-        setDeliveries(fallbackData || []);
+        targetDeliveries = fallbackData || [];
       }
+
+      // Se o usuário for motorista ou vendedor, priorizar entregas vinculadas a ele no início da lista
+      if (user && targetDeliveries.length > 0 && !isAdmin) {
+        const myName = (user.name || user.full_name || '').toLowerCase().trim();
+        const myFirstName = myName.split(' ')[0];
+        
+        targetDeliveries.sort((a, b) => {
+          const aDriver = (a.driver || '').toLowerCase();
+          const aSeller = (a.seller || '').toLowerCase();
+          const bDriver = (b.driver || '').toLowerCase();
+          const bSeller = (b.seller || '').toLowerCase();
+
+          const aIsMine = (myName && (aDriver.includes(myName) || aSeller.includes(myName))) ||
+                          (myFirstName.length >= 3 && (aDriver.includes(myFirstName) || aSeller.includes(myFirstName))) ||
+                          a.driver_id === user.id;
+          const bIsMine = (myName && (bDriver.includes(myName) || bSeller.includes(myName))) ||
+                          (myFirstName.length >= 3 && (bDriver.includes(myFirstName) || bSeller.includes(myFirstName))) ||
+                          b.driver_id === user.id;
+
+          if (aIsMine && !bIsMine) return -1;
+          if (!aIsMine && bIsMine) return 1;
+          return 0;
+        });
+      }
+
+      setDeliveries(targetDeliveries);
     } catch (err) {
       console.error('Error fetching critical deliveries:', err);
     } finally {
       setLoading(false);
     }
-  }, [canAccessDeliveries, todayStr]);
+  }, [canAccessDeliveries, todayStr, user, isAdmin]);
 
   useEffect(() => {
     if (!canAccessDeliveries) {

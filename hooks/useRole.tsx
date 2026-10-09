@@ -3,13 +3,50 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 
-export type Role = 'admin' | 'vendedor' | 'user' | 'gerente' | 'estoque' | 'entregador' | 'supervisor';
+// Normalizador de papéis/cargos para compatibilidade com títulos descritivos do banco
+export function normalizeRole(r: string | null | undefined): string {
+  if (!r) return 'user';
+  const lower = r.toLowerCase().trim();
+  if (lower.includes('admin') || lower.includes('administrador')) return 'admin';
+  if (
+    lower.includes('entrega') || 
+    lower.includes('entregador') || 
+    lower.includes('motorista') || 
+    lower.includes('frete') || 
+    lower.includes('courier')
+  ) return 'entregador';
+  if (lower.includes('vendedor') || lower.includes('venda') || lower.includes('comercial')) return 'vendedor';
+  if (
+    lower.includes('estoque') || 
+    lower.includes('almoxarife') || 
+    lower.includes('separador') || 
+    lower.includes('conferente') || 
+    lower.includes('expedi') || 
+    lower.includes('logistica')
+  ) return 'estoque';
+  if (lower.includes('gerente') || lower.includes('gerencia') || lower.includes('gestor')) return 'gerente';
+  if (lower.includes('supervisor') || lower.includes('coordenador')) return 'supervisor';
+  if (lower.includes('caixa') || lower.includes('financeiro')) return 'caixa';
+  return lower;
+}
+
+export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
+  leads: ['admin', 'vendedor', 'gerente', 'supervisor'],
+  social_media: ['admin', 'gerente'],
+  whatsapp: ['admin', 'vendedor', 'gerente'],
+  deliveries: ['admin', 'entregador', 'motorista', 'vendedor', 'estoque', 'gerente', 'supervisor', 'caixa'],
+  transfers: ['admin', 'estoque', 'gerente'],
+  warranties: ['admin', 'vendedor', 'estoque', 'gerente'],
+  sales: ['admin', 'vendedor', 'gerente'],
+  reports: ['admin', 'gerente', 'supervisor'],
+  demands: ['admin', 'vendedor', 'gerente', 'estoque']
+};
 
 export const DEFAULT_ADMIN_USER = {
   id: '00000000-0000-0000-0000-000000000000',
   name: 'Administrador',
   type: 'admin',
-  role: 'admin',
+  role: 'Administrador Geral',
   status: 'Ativo'
 };
 
@@ -46,7 +83,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     return null;
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [permissions, setPermissions] = useState<Record<string, string[]>>({});
+  const [permissions, setPermissions] = useState<Record<string, string[]>>(DEFAULT_PERMISSIONS);
 
   const fetchPermissions = async () => {
     try {
@@ -63,7 +100,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       }
 
       if (data?.value) {
-        setPermissions(data.value);
+        setPermissions(prev => ({
+          ...prev,
+          ...data.value
+        }));
       }
     } catch (err: any) {
       console.warn('Notice fetching permissions:', err?.message || err);
@@ -98,21 +138,27 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           formattedEmailName || 
           'Usuário';
 
-        const resolvedRole = (
-          profile?.type || 
-          profile?.role || 
-          authUser.user_metadata?.role || 
-          authUser.user_metadata?.type || 
+        // Preserva o cargo real descritivo do perfil (ex: "Entregas e Estoque", "Vendedor", "Gerente")
+        const rawRoleTitle = (
+          (profile?.role && profile.role.toLowerCase() !== 'user' ? profile.role : null) ||
+          authUser.user_metadata?.role ||
+          (profile?.type && profile.type.toLowerCase() !== 'user' ? profile.type : null) ||
+          authUser.user_metadata?.type ||
+          profile?.role ||
+          profile?.type ||
           'user'
-        ).toLowerCase();
+        );
+
+        const normalizedRoleName = normalizeRole(rawRoleTitle);
 
         const enrichedUser = { 
           ...authUser, 
           ...(profile || {}),
           id: authUser.id,
           name: resolvedName,
-          type: resolvedRole,
-          role: resolvedRole
+          type: profile?.type || (normalizedRoleName === 'admin' ? 'admin' : 'user'),
+          role: rawRoleTitle,
+          normalizedRole: normalizedRoleName
         };
 
         setUser(enrichedUser);
@@ -192,13 +238,25 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         formattedEmailName || 
         'Usuário';
 
-      const resolvedRole = (finalData.role || finalData.type || (typeof roleOrUserData === 'string' ? roleOrUserData : 'user')).toLowerCase();
+      const rawRoleTitle = (
+        (finalData.role && finalData.role.toLowerCase() !== 'user' ? finalData.role : null) ||
+        finalData.user_metadata?.role ||
+        (finalData.type && finalData.type.toLowerCase() !== 'user' ? finalData.type : null) ||
+        finalData.user_metadata?.type ||
+        (typeof roleOrUserData === 'string' && roleOrUserData.toLowerCase() !== 'user' ? roleOrUserData : null) ||
+        finalData.role ||
+        finalData.type ||
+        'user'
+      );
+
+      const normalizedRoleName = normalizeRole(rawRoleTitle);
 
       const enrichedUser = {
         ...finalData,
         name: resolvedName,
-        type: resolvedRole,
-        role: resolvedRole
+        type: finalData.type || (normalizedRoleName === 'admin' ? 'admin' : 'user'),
+        role: rawRoleTitle,
+        normalizedRole: normalizedRoleName
       };
       setUser(enrichedUser);
       try {
@@ -219,33 +277,71 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const ownerEmail = (process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL || '').trim().toLowerCase();
   const userEmail = (user?.email || '').trim().toLowerCase();
-  const role = (user?.type || user?.role || 'user').toLowerCase();
+  const rawRole = (user?.role || user?.type || 'user').toLowerCase();
+  const normalizedRole = normalizeRole(user?.role || user?.type);
+
   const isAdmin = 
-    role === 'admin' || 
+    normalizedRole === 'admin' || 
+    rawRole.includes('admin') || 
+    rawRole.includes('administrador') ||
+    user?.type?.toLowerCase() === 'admin' ||
     (!!ownerEmail && userEmail === ownerEmail);
   
   const hasPermission = (module: string) => {
     if (isAdmin) return true;
-    const currentRole = role?.toLowerCase();
-    if (!currentRole) return false;
+    if (!user) return false;
     
-    // Check user-specific column if available
+    // 1. Verificação explícita na coluna de permissão do usuário
     const userAccessKey = `can_access_${module}`;
-    if (user && user[userAccessKey] === true) return true;
+    if (user[userAccessKey] === true) return true;
     
-    // Check role-based permissions from system settings
-    const modulePermissions = permissions[module] || [];
-    return modulePermissions.map(r => r.toLowerCase()).includes(currentRole);
+    // 2. Para entregas: entregadores, motoristas, vendedores, estoque e gerência têm acesso nativo
+    if (module === 'deliveries') {
+      if (
+        normalizedRole === 'entregador' ||
+        normalizedRole === 'vendedor' ||
+        normalizedRole === 'estoque' ||
+        normalizedRole === 'gerente' ||
+        normalizedRole === 'supervisor' ||
+        normalizedRole === 'caixa'
+      ) {
+        return true;
+      }
+    }
+
+    // 3. Verificação com a lista de papéis configurados
+    const allowedRoles = (permissions[module] && permissions[module].length > 0)
+      ? permissions[module]
+      : (DEFAULT_PERMISSIONS[module] || []);
+
+    return allowedRoles.some((allowed: string) => {
+      const allowedLower = allowed.toLowerCase().trim();
+      const normAllowed = normalizeRole(allowedLower);
+
+      return (
+        allowedLower === rawRole ||
+        allowedLower === normalizedRole ||
+        normAllowed === normalizedRole ||
+        rawRole.includes(allowedLower) ||
+        (user?.type && user.type.toLowerCase() === allowedLower)
+      );
+    });
   };
 
+  const canAccessDeliveries = 
+    isAdmin || 
+    user?.can_access_deliveries === true ||
+    normalizedRole === 'entregador' ||
+    hasPermission('deliveries');
+
   const value = {
-    role,
+    role: normalizedRole,
     user,
     isAdmin,
     canAccessLeads: hasPermission('leads'),
     canAccessSocialMedia: hasPermission('social_media'),
     canAccessWhatsapp: hasPermission('whatsapp'),
-    canAccessDeliveries: hasPermission('deliveries'),
+    canAccessDeliveries,
     canAccessTransfers: hasPermission('transfers'),
     canAccessWarranties: hasPermission('warranties'),
     canAccessReports: hasPermission('reports'),

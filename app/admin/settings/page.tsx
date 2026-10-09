@@ -68,7 +68,7 @@ export default function AdminSettingsPage() {
     leads: ['admin'],
     social_media: ['admin'],
     whatsapp: ['admin'],
-    deliveries: ['admin', 'entregador'],
+    deliveries: ['admin', 'entregador', 'vendedor', 'estoque', 'gerente'],
     transfers: ['admin', 'estoque'],
     warranties: ['admin', 'vendedor'],
     sales: ['admin', 'vendedor'],

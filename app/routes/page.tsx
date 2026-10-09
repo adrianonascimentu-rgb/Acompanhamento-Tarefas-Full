@@ -31,75 +31,63 @@ export default function RoutesPage() {
 
       const { data: { user: supabaseUser } } = await supabase.auth.getUser();
       let userId = supabaseUser?.id;
+      let userName = '';
+      let userRole = '';
 
-      if (!userId) {
-        // Fallback to localStorage session
-        const savedUser = localStorage.getItem('user-data');
-        if (savedUser) {
-          try {
-            const parsed = JSON.parse(savedUser);
-            userId = parsed.id;
-          } catch (e) {}
+      // Tenta recuperar sessão do localStorage (app_user_session ou user-data)
+      try {
+        const savedSession = localStorage.getItem('app_user_session') || localStorage.getItem('user-data');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (!userId && parsed.id) userId = parsed.id;
+          userName = parsed.name || parsed.full_name || '';
+          userRole = (parsed.role || parsed.type || '').toLowerCase();
         }
+      } catch (e) {}
+
+      if (userId) {
+        try {
+          const { data: userProfile } = await supabase.from('profiles').select('name, full_name, role, type').eq('id', userId).maybeSingle();
+          if (userProfile) {
+            userName = userProfile.name || userProfile.full_name || userName;
+            userRole = (userProfile.role || userProfile.type || userRole).toLowerCase();
+          }
+        } catch (e) {}
       }
 
-      if (!userId) {
+      if (!userId && !userName) {
         setError('Usuário não autenticado.');
         setLoading(false);
         return;
       }
 
-      // 1. Tenta buscar entregas atribuídas ao usuário logado (usando driver_id, courier_id ou collaborator_id)
-      // Buscamos entregas que não foram finalizadas
-      const { data: deliveries, error: fetchError } = await supabase
+      // Buscar entregas em aberto com vínculo por ID ou por nome do motorista
+      let matchedDeliveries: any[] = [];
+      const cleanName = userName.trim().toLowerCase();
+      const firstName = cleanName.split(' ')[0];
+      const isAdminOrManager = userRole.includes('admin') || userRole.includes('gerente') || userRole.includes('supervisor') || userRole.includes('estoque');
+
+      const { data: allUnfinished, error: fetchError } = await supabase
         .from('deliveries')
-        .select('id, product, address, neighborhood, city, lat, lng, status')
-        .or(`driver_id.eq.${userId},courier_id.eq.${userId},collaborator_id.eq.${userId}`)
+        .select('id, product, address, neighborhood, city, lat, lng, status, driver, driver_id, courier_id, collaborator_id, date')
         .neq('status', 'Finalizada')
-        .order('created_at', { ascending: true });
+        .order('date', { ascending: true });
 
-      if (fetchError) {
-        console.warn('Erro ao buscar entregas específicas:', fetchError.message);
-        
-        // Fallback 1: Se falhar (ex: colunas de ID não existem), busca tarefas com GPS como antes
-        const { data: tasks, error: tasksError } = await supabase
-          .from('tasks')
-          .select('id, title, destination_address, destination_lat, destination_lng, status, checkin_at')
-          .eq('assigned_to', userId)
-          .not('destination_lat', 'is', null)
-          .order('created_at', { ascending: true });
+      if (!fetchError && allUnfinished && allUnfinished.length > 0) {
+        matchedDeliveries = allUnfinished.filter(d => {
+          if (isAdminOrManager) return true; // Administradores e gerentes visualizam todas as rotas operacionais
 
-        if (!tasksError && tasks && tasks.length > 0) {
-          setTasks(tasks as any[]);
-          return;
-        }
+          const dDriver = (d.driver || '').trim().toLowerCase();
+          const matchesId = (userId && (d.driver_id === userId || d.courier_id === userId || d.collaborator_id === userId));
+          const matchesFullName = cleanName.length >= 3 && (dDriver.includes(cleanName) || cleanName.includes(dDriver));
+          const matchesFirstName = firstName.length >= 3 && dDriver.includes(firstName);
 
-        // Fallback 2: Se ainda não tiver nada, tenta buscar entregas pelo nome (caso driver_id não esteja preenchido)
-        const { data: userProfile } = await supabase.from('profiles').select('name').eq('id', userId).single();
-        if (userProfile?.name) {
-          const { data: nameDeliveries } = await supabase
-            .from('deliveries')
-            .select('id, product, address, neighborhood, city, lat, lng, status')
-            .eq('driver', userProfile.name)
-            .neq('status', 'Finalizada');
-          
-          if (nameDeliveries && nameDeliveries.length > 0) {
-            setTasks(nameDeliveries.map(d => ({
-              id: d.id,
-              title: d.product || 'Entrega',
-              destination_address: [d.address, d.neighborhood, d.city].filter(Boolean).join(', '),
-              destination_lat: d.lat,
-              destination_lng: d.lng,
-              status: d.status,
-              checkin_at: null
-            })));
-            return;
-          }
-        }
+          return matchesId || matchesFullName || matchesFirstName;
+        });
       }
 
-      if (deliveries && deliveries.length > 0) {
-        setTasks(deliveries.map(d => ({
+      if (matchedDeliveries.length > 0) {
+        setTasks(matchedDeliveries.map(d => ({
           id: d.id,
           title: d.product || 'Entrega',
           destination_address: [d.address, d.neighborhood, d.city].filter(Boolean).join(', '),
@@ -109,37 +97,22 @@ export default function RoutesPage() {
           checkin_at: null
         })));
       } else {
-        // Se não houver entregas, tenta tarefas
-        const { data: tasks } = await supabase
-          .from('tasks')
-          .select('id, title, destination_address, destination_lat, destination_lng, status, checkin_at')
-          .eq('assigned_to', userId)
-          .not('destination_lat', 'is', null)
-          .order('created_at', { ascending: true });
-        
-        if (tasks && tasks.length > 0) {
-          setTasks(tasks as any[]);
-        } else {
-          // Último recurso: ver todas as entregas do dia se for admin/gerente
-          const { data: allToday } = await supabase
-            .from('deliveries')
-            .select('id, product, address, neighborhood, city, lat, lng, status')
-            .neq('status', 'Finalizada')
-            .limit(10);
+        // Fallback: se não houver entregas, buscar tarefas com endereço/geolocalização atribuídas
+        if (userId) {
+          const { data: userTasks } = await supabase
+            .from('tasks')
+            .select('id, title, destination_address, destination_lat, destination_lng, status, checkin_at')
+            .eq('assigned_to', userId)
+            .not('destination_lat', 'is', null)
+            .order('created_at', { ascending: true });
           
-          if (allToday && allToday.length > 0) {
-            setTasks(allToday.map(d => ({
-              id: d.id,
-              title: d.product || 'Entrega',
-              destination_address: [d.address, d.neighborhood, d.city].filter(Boolean).join(', '),
-              destination_lat: d.lat,
-              destination_lng: d.lng,
-              status: d.status,
-              checkin_at: null
-            })));
+          if (userTasks && userTasks.length > 0) {
+            setTasks(userTasks as any[]);
           } else {
             setTasks([]);
           }
+        } else {
+          setTasks([]);
         }
       }
     } catch (err: any) {
