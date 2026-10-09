@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useRole } from '@/hooks/useRole';
 import { differenceInHours, isPast, parseISO } from 'date-fns';
@@ -12,13 +12,7 @@ export function useDeadlineChecker() {
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) return;
-
-    // Check if Supabase is configured
-    const isConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
-      process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
-      
-    if (!isConfigured) return;
+    if (!isSupabaseConfigured) return;
 
     const processTasks = async (tasks: any[]) => {
       const now = new Date();

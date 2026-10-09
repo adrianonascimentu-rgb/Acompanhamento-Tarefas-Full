@@ -129,7 +129,7 @@ export function SystemSettingsModal({ isOpen, onClose }: SystemSettingsModalProp
         .from('system_settings')
         .select('value')
         .eq('key', 'module_permissions')
-        .single();
+        .maybeSingle();
       
       if (error) {
         if (error.code === 'PGRST116') return;

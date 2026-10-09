@@ -50,17 +50,23 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const fetchPermissions = async () => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('system_settings')
         .select('value')
         .eq('key', 'module_permissions')
-        .single();
+        .maybeSingle();
       
+      if (error) {
+        if (error.code === 'PGRST116') return;
+        console.warn('Notice fetching permissions:', error.message);
+        return;
+      }
+
       if (data?.value) {
         setPermissions(data.value);
       }
-    } catch (err) {
-      console.error('Error fetching permissions:', err);
+    } catch (err: any) {
+      console.warn('Notice fetching permissions:', err?.message || err);
     }
   };
 

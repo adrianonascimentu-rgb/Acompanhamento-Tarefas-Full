@@ -2,11 +2,21 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let supabaseInstance: SupabaseClient | null = null;
 
+export function sanitizeSupabaseUrl(url?: string | null): string {
+  if (!url || typeof url !== 'string') return DEFAULT_SUPABASE_URL;
+  let clean = url.trim();
+  // Strip trailing slashes and common rest/v1, auth/v1, graphql/v1 suffixes if mistakenly provided
+  clean = clean.replace(/\/(rest|auth|graphql|storage)\/v\d+\/?$/i, '');
+  clean = clean.replace(/\/+$/, '');
+  return clean || DEFAULT_SUPABASE_URL;
+}
+
 export function isValidSupabaseUrl(url?: string | null): boolean {
   if (!url || typeof url !== 'string') return false;
-  if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+  const clean = sanitizeSupabaseUrl(url);
+  if (!clean.startsWith('http://') && !clean.startsWith('https://')) return false;
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(clean);
     return Boolean(parsed.hostname && parsed.hostname.includes('.'));
   } catch {
     return false;
@@ -22,9 +32,12 @@ export function getSafeSupabaseConfig() {
   let rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   let rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!isValidSupabaseUrl(rawUrl) || rawUrl === 'sua_supabase_url_aqui' || rawUrl === 'https://placeholder-url.supabase.co') {
+  if (!rawUrl || !isValidSupabaseUrl(rawUrl) || rawUrl === 'sua_supabase_url_aqui' || rawUrl === 'https://placeholder-url.supabase.co') {
     rawUrl = DEFAULT_SUPABASE_URL;
   }
+
+  // Ensure any mistakenly appended /rest/v1 or trailing slashes are cleanly removed
+  rawUrl = sanitizeSupabaseUrl(rawUrl);
 
   if (!rawAnonKey || rawAnonKey === 'sua_supabase_anon_key_aqui' || rawAnonKey === 'placeholder-key' || rawAnonKey.length < 20) {
     rawAnonKey = DEFAULT_SUPABASE_ANON_KEY;
