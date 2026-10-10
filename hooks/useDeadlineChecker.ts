@@ -141,9 +141,11 @@ export function useDeadlineChecker() {
       } catch (error: any) {
         const msg = error?.message || String(error);
         
-        // Don't log "Failed to fetch" as a scary error if it's just a network issue
-        if (msg.includes('Failed to fetch')) {
-          setError('Erro de conexão. Tentando novamente em breve...');
+        // Don't log "Failed to fetch" or "JWT expired" as scary errors
+        if (msg.includes('Failed to fetch') || msg.includes('JWT') || msg.includes('Auth session missing')) {
+          try {
+            await supabase.auth.refreshSession();
+          } catch {}
           return;
         }
 
