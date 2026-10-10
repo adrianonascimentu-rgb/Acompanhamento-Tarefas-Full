@@ -47,8 +47,10 @@ import {
   Globe,
   Radio,
   Plus,
-  Trash2
+  Trash2,
+  DollarSign
 } from 'lucide-react';
+import CommissionsManager from '@/components/admin/CommissionsManager';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRole, DEFAULT_ADMIN_USER } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
@@ -82,7 +84,7 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [migrationSql, setMigrationSql] = useState<string | null>(null);
   const [activeSmtpTab, setActiveSmtpTab] = useState<'resend' | 'sendgrid' | 'brevo'>('resend');
-  const [activeTab, setActiveTab] = useState<'modules' | 'integrations' | 'saas' | 'logs' | 'warranties'>('modules');
+  const [activeTab, setActiveTab] = useState<'modules' | 'integrations' | 'saas' | 'logs' | 'warranties' | 'commissions'>('modules');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Warranty Error Codes state
@@ -547,6 +549,7 @@ END $$;`;
         <div className={`flex items-center gap-1 p-1 rounded-2xl border overflow-x-auto no-scrollbar ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
           {[
             { id: 'modules', label: 'Módulos', icon: LayoutGrid },
+            { id: 'commissions', label: 'Comissionados', icon: DollarSign },
             { id: 'integrations', label: 'Integrações', icon: Webhook },
             { id: 'warranties', label: 'Garantias', icon: ShieldCheck },
             { id: 'saas', label: 'Multi-Tenant', icon: Server },
@@ -2002,6 +2005,13 @@ SMTP_SENDER_NAME="Minha Empresa"`}
         </div>
       </div>
     )}
+
+        {/* Commissions Tab */}
+        {activeTab === 'commissions' && (
+          <div className="space-y-6">
+            <CommissionsManager isDarkMode={isDarkMode} />
+          </div>
+        )}
 
         {/* Mobile Save Button */}
         <div className="sm:hidden pt-4">

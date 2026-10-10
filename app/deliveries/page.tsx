@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
-import { ArrowLeft, Search, Plus, Truck, User, Calendar, MapPin, DollarSign, Clock, X, Check, Package, ChevronRight, Filter, TrendingUp, PieChart as PieIcon, Edit2, Trash2, AlertCircle, Phone, Database, List, Map as MapIcon, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Truck, User, Calendar, MapPin, DollarSign, Clock, X, Check, CheckCircle2, Package, ChevronRight, Filter, TrendingUp, PieChart as PieIcon, Edit2, Trash2, AlertCircle, Phone, Database, List, Map as MapIcon, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
@@ -62,6 +62,8 @@ function DeliveriesContent() {
     isEstoque: hookIsEstoque, 
     isVendedor: hookIsVendedor, 
     isGerente: hookIsGerente, 
+    isSupervisor: hookIsSupervisor,
+    canUpdateDeliveryStatus: hookCanUpdateDeliveryStatus,
     canAccessDeliveries, 
     isAuthenticated, 
     isLoading: roleLoading, 
@@ -124,7 +126,8 @@ function DeliveriesContent() {
     phone: '',
     address: '',
     delivery_type: 'padrao',
-    is_special: false
+    is_special: false,
+    status: 'Agendada'
   });
 
   const [isLoadingCep, setIsLoadingCep] = useState(false);
@@ -217,11 +220,18 @@ function DeliveriesContent() {
   };
 
   const userRoleStr = (user?.role || user?.type || role || '').toLowerCase();
-  const isCaixa = hookIsCaixa || userRoleStr.includes('caixa') || userRoleStr.includes('financeiro');
+  const isCaixa = Boolean(
+    hookIsCaixa || 
+    userRoleStr.includes('caixa') || 
+    userRoleStr.includes('financeiro') || 
+    userRoleStr.includes('secretaria') ||
+    role === 'caixa'
+  );
   const isEntregas = hookIsEntregador || userRoleStr.includes('entrega') || userRoleStr.includes('motorista') || userRoleStr.includes('frete') || userRoleStr.includes('courier');
   const isEstoque = hookIsEstoque || userRoleStr.includes('estoque') || userRoleStr.includes('almoxarife') || userRoleStr.includes('separador') || userRoleStr.includes('expedi') || userRoleStr.includes('logistica');
   const isVendedor = hookIsVendedor || role === 'vendedor' || userRoleStr.includes('vendedor') || userRoleStr.includes('venda') || userRoleStr.includes('comercial');
-  const isGerente = hookIsGerente || role === 'gerente' || role === 'supervisor' || userRoleStr.includes('gerente') || userRoleStr.includes('supervisor') || userRoleStr.includes('gestor');
+  const isGerente = hookIsGerente || hookIsSupervisor || role === 'gerente' || role === 'supervisor' || userRoleStr.includes('gerente') || userRoleStr.includes('supervisor') || userRoleStr.includes('gestor');
+  const isSupervisor = hookIsSupervisor || role === 'supervisor' || userRoleStr.includes('supervisor') || userRoleStr.includes('coordenador');
   const isEntregador = role === 'entregador' || isEntregas;
   
   // Todos os usuários com permissão explícita, entregadores, vendedores, estoque, caixas e administradores têm acesso
@@ -233,10 +243,24 @@ function DeliveriesContent() {
     isEstoque || 
     isGerente || 
     isCaixa || 
-    user?.can_access_deliveries === true
+    user?.can_access_deliveries === true ||
+    user?.can_access_deliveries !== false
   );
   const canCreate = hasAccess;
-  const canUpdateStatus = isAdmin || isEntregador || isCaixa || isGerente;
+  
+  // Regra de Negócio: O usuário que tem a função de caixa também pode mudar o status das entregas
+  const canUpdateStatus = Boolean(
+    hookCanUpdateDeliveryStatus ||
+    isAdmin || 
+    isEntregador || 
+    isCaixa || 
+    isGerente ||
+    isSupervisor ||
+    userRoleStr.includes('caixa') ||
+    userRoleStr.includes('financeiro') ||
+    userRoleStr.includes('secretaria') ||
+    role === 'caixa'
+  );
 
   useEffect(() => {
     async function fetchSettings() {
@@ -300,7 +324,33 @@ function DeliveriesContent() {
           }
           setDeliveries(MOCK_DELIVERIES);
         } else {
-          setDeliveries(data || MOCK_DELIVERIES);
+          const list = data || MOCK_DELIVERIES;
+          setDeliveries(list);
+
+          // Popula dinamicamente vendedores e motoristas com dados reais de todas as entregas
+          if (Array.isArray(list) && list.length > 0) {
+            const rawSellers = Array.from(new Set(list.map((d: any) => d.seller).filter(Boolean)));
+            if (rawSellers.length > 0) {
+              setSellers(prev => {
+                const existingNames = new Set(prev.map(p => p.name?.toLowerCase().trim()));
+                const additional = rawSellers
+                  .filter(name => !existingNames.has((name as string).toLowerCase().trim()))
+                  .map(name => ({ id: name, name }));
+                return [...prev, ...additional];
+              });
+            }
+
+            const rawDrivers = Array.from(new Set(list.map((d: any) => d.driver).filter(Boolean)));
+            if (rawDrivers.length > 0) {
+              setDrivers(prev => {
+                const existingNames = new Set(prev.map(p => p.name?.toLowerCase().trim()));
+                const additional = rawDrivers
+                  .filter(name => !existingNames.has((name as string).toLowerCase().trim()))
+                  .map(name => ({ id: name, name, isProfile: false }));
+                return [...prev, ...additional];
+              });
+            }
+          }
         }
       } catch (err) {
         console.error('Error in fetchDeliveries:', err);
@@ -383,14 +433,18 @@ function DeliveriesContent() {
         .or('type.eq.vendedor,role.ilike.%vendedor%,type.eq.gerente,role.ilike.%gerente%,type.eq.administrador,role.ilike.%admin%');
       
       if (!error && data && data.length > 0) {
-        setSellers(data);
-      } else {
-        // Fallback mock sellers
-        setSellers([
-          { id: '88888888-8888-8888-8888-888888888888', name: 'Carlos Vendedor' },
-          { id: '99999999-9999-9999-9999-999999999999', name: 'Mariana Vendas' },
-          { id: '77777777-7777-7777-7777-777777777777', name: 'Gerente Silva' }
-        ]);
+        setSellers(prev => {
+          const map = new Map<string, any>();
+          data.forEach(p => {
+            if (p.name) map.set(p.name.toLowerCase().trim(), p);
+          });
+          prev.forEach(p => {
+            if (p.name && !map.has(p.name.toLowerCase().trim())) {
+              map.set(p.name.toLowerCase().trim(), p);
+            }
+          });
+          return Array.from(map.values());
+        });
       }
     } catch (err) {
       console.error('Error fetching sellers:', err);
@@ -441,7 +495,18 @@ function DeliveriesContent() {
       }
 
       if (combinedDrivers.length > 0) {
-        setDrivers(combinedDrivers);
+        setDrivers(prev => {
+          const map = new Map<string, any>();
+          combinedDrivers.forEach(d => {
+            if (d.name) map.set(d.name.toLowerCase().trim(), d);
+          });
+          prev.forEach(d => {
+            if (d.name && !map.has(d.name.toLowerCase().trim())) {
+              map.set(d.name.toLowerCase().trim(), d);
+            }
+          });
+          return Array.from(map.values());
+        });
       } else if (tableError || profileError) {
         const error = tableError || profileError;
         console.warn('Error fetching drivers:', error?.message);
@@ -629,11 +694,12 @@ function DeliveriesContent() {
       }
       
       setDeliveries(deliveries.map(d => d.id === id ? { ...d, ...updateData } : d));
+      showToast(`Status da entrega alterado para "${newStatus}" com sucesso!`, 'success');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (err) {
       console.error('Error updating status:', err);
-      alert('Erro ao atualizar status da entrega.');
+      showToast('Erro ao atualizar status da entrega.', 'error');
     }
   };
 
@@ -798,7 +864,8 @@ function DeliveriesContent() {
       phone: delivery.phone || '',
       address: delivery.address || '',
       delivery_type: isSpecial ? 'especial' : 'padrao',
-      is_special: isSpecial
+      is_special: isSpecial,
+      status: delivery.status || 'Agendada'
     });
     setEditingId(delivery.id);
     setShowAddModal(true);
@@ -962,7 +1029,7 @@ function DeliveriesContent() {
         notes: notesWithMarker,
         phone: formData.phone,
         address: formData.address,
-        status: 'Agendada',
+        status: formData.status || 'Agendada',
         delivery_type: isSpecial ? 'especial' : 'padrao',
         is_special: isSpecial,
         destination_lat: initialLat,
@@ -1106,7 +1173,8 @@ function DeliveriesContent() {
         phone: '',
         address: '',
         delivery_type: 'padrao',
-        is_special: false
+        is_special: false,
+        status: 'Agendada'
       });
     } catch (err: any) {
       console.error('Error saving delivery:', err.message);
@@ -1273,6 +1341,12 @@ function DeliveriesContent() {
           </Link>
           <div className="flex flex-col items-center flex-1">
             <h2 className="text-lg font-bold leading-tight tracking-tight text-center">Gestão de Entregas</h2>
+            {isCaixa && (
+              <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800/80 mt-0.5 flex items-center gap-1">
+                <CheckCircle2 size={11} />
+                Função Caixa (Alteração de status liberada)
+              </span>
+            )}
             {!deliveriesEnabled && isAdmin && (
               <span className="text-[8px] font-bold text-rose-500 uppercase tracking-widest">Desativado para usuários</span>
             )}
@@ -1389,8 +1463,8 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
 
           {/* Statistics Panel */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Delivery Stats in a column */}
-            <div className="grid grid-cols-1 gap-3">
+            {/* Delivery Stats: Total and Cargo Value displayed for all users */}
+            <div className="grid grid-cols-2 gap-3">
               <div className={`p-2 md:p-3 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
                 <div className="flex items-center justify-between mb-1">
                   <div className="p-1 rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
@@ -1399,20 +1473,18 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                   <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
                 </div>
                 <p className="text-lg font-black">{stats.total}</p>
-                <p className="text-[8px] text-slate-500 font-medium">Entregas hoje</p>
+                <p className="text-[8px] text-slate-500 font-medium">Entregas no período</p>
               </div>
-              {(isAdmin || (user?.role && user.role.toLowerCase().includes('gerente'))) && (
-                <div className={`p-2 md:p-3 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="p-1 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                      <DollarSign size={14} />
-                    </div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Valor</span>
+              <div className={`p-2 md:p-3 rounded-2xl border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="p-1 rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                    <DollarSign size={14} />
                   </div>
-                  <p className="text-base font-black text-emerald-600">R$ {stats.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</p>
-                  <p className="text-[8px] text-slate-500 font-medium">Valor total da carga</p>
+                  <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Valor Carga</span>
                 </div>
-              )}
+                <p className="text-base font-black text-emerald-600">R$ {stats.totalValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                <p className="text-[8px] text-slate-500 font-medium">Valor total das entregas</p>
+              </div>
             </div>
             
             {/* Status grid */}
@@ -1622,15 +1694,28 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                   </div>
                   
                   {canUpdateStatus && (
-                    <div className="flex flex-wrap gap-1.5 md:gap-2 mb-4">
+                    <div className="flex flex-wrap items-center gap-1.5 md:gap-2 mb-4 p-2 rounded-xl bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
+                        <CheckCircle2 size={12} className="text-emerald-500" />
+                        Alterar Status:
+                      </span>
                       {['Pendente', 'Agendada', 'Em Andamento', 'Finalizada'].map((status) => (
                         <button
                           key={status}
                           onClick={() => handleStatusUpdate(delivery.id, status)}
-                          className={`px-2.5 py-1.5 md:px-3 md:py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold transition-all border ${
+                          title={`Alterar status para ${status} (Acesso liberado para Caixa, Entregador e Gestão)`}
+                          className={`px-2.5 py-1.5 md:px-3 md:py-1.5 rounded-lg text-[9px] md:text-[10px] font-bold transition-all border cursor-pointer active:scale-95 ${
                             delivery.status === status
-                              ? 'bg-blue-600 border-blue-600 text-white'
-                              : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+                              ? status === 'Finalizada'
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs ring-1 ring-emerald-500/50'
+                                : status === 'Em Andamento'
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-xs ring-1 ring-blue-500/50'
+                                  : status === 'Pendente'
+                                    ? 'bg-amber-600 border-amber-600 text-white shadow-xs ring-1 ring-amber-500/50'
+                                    : 'bg-indigo-600 border-indigo-600 text-white shadow-xs ring-1 ring-indigo-500/50'
+                              : isDarkMode 
+                                ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:bg-slate-700' 
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 shadow-2xs'
                           }`}
                         >
                           {status}
@@ -1711,18 +1796,33 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                     )}
                     
                     {delivery.phone && (
-                      <div className="flex items-center gap-2">
-                        <Phone size={14} className="text-blue-500 shrink-0" />
-                        <span className="text-xs font-bold text-blue-600 truncate">{delivery.phone}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <a 
+                          href={`tel:${delivery.phone.replace(/\D/g, '')}`}
+                          className="flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 truncate"
+                          title="Ligar para o cliente"
+                        >
+                          <Phone size={14} className="text-blue-500 shrink-0" />
+                          <span className="truncate">{delivery.phone}</span>
+                        </a>
+                        <a 
+                          href={`https://wa.me/55${delivery.phone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-200 dark:border-emerald-800"
+                          title="Abrir WhatsApp"
+                        >
+                          WhatsApp
+                        </a>
                       </div>
                     )}
                     
-                    {(isAdmin || (user?.role && user.role.toLowerCase().includes('gerente'))) && (
-                      <div className="flex items-center gap-2">
-                        <DollarSign size={14} className="text-emerald-500 shrink-0" />
-                        <span className="text-xs font-bold text-emerald-600">R$ {delivery.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <DollarSign size={14} className="text-emerald-500 shrink-0" />
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        R$ {Number(delivery.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-2">
                       <User size={14} className="text-slate-400 shrink-0" />
                       <span className="text-xs text-slate-500 truncate">{delivery.vehicle}</span>
@@ -1844,7 +1944,8 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
               phone: '',
               address: '',
               delivery_type: 'padrao',
-              is_special: false
+              is_special: false,
+              status: 'Agendada'
             });
             setShowAddModal(true);
           }}
@@ -1963,6 +2064,50 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                     </motion.div>
                   )}
                 </div>
+
+                {/* Status da Entrega (Acesso: Caixa, Entregador, Gerente e Administrador) */}
+                {canUpdateStatus && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider ml-1">
+                        Status da Entrega
+                      </label>
+                      {isCaixa && (
+                        <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 size={10} />
+                          Função Caixa Autorizada
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {['Pendente', 'Agendada', 'Em Andamento', 'Finalizada'].map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, status: st })}
+                          className={`h-10 px-2 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                            formData.status === st
+                              ? st === 'Finalizada' 
+                                ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                                : st === 'Em Andamento'
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                                  : st === 'Pendente'
+                                    ? 'bg-amber-600 border-amber-600 text-white shadow-xs'
+                                    : 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                              : isDarkMode 
+                                ? 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white' 
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className={`size-1.5 rounded-full ${
+                            formData.status === st ? 'bg-white' : 'bg-slate-400'
+                          }`} />
+                          <span>{st}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">

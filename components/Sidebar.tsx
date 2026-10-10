@@ -23,7 +23,8 @@ import {
   Zap,
   Radio,
   Tag,
-  Package
+  Package,
+  DollarSign
 } from 'lucide-react';
 import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
@@ -119,6 +120,7 @@ export function Sidebar() {
       items: [
         ...(isAdmin ? [{ href: '/painel-ao-vivo', icon: Radio, label: 'Painel Ao Vivo', active: pathname?.startsWith('/painel-ao-vivo') || pathname?.startsWith('/admin/dashboard') }] : []),
         ...(isAdmin ? [{ href: '/collaborators', icon: Users, label: 'Equipe', active: pathname?.startsWith('/collaborators') }] : []),
+        { href: '/admin/commissions', icon: DollarSign, label: 'Comissionados', active: pathname?.startsWith('/admin/commissions') },
         { href: '/admin/settings', icon: Settings, label: 'Configurações', active: pathname?.startsWith('/admin/settings') },
       ]
     }
@@ -231,3 +233,5 @@ export function Sidebar() {
     </aside>
   );
 }
+
+export default Sidebar;

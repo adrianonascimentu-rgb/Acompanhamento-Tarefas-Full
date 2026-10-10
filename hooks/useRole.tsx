@@ -67,6 +67,7 @@ interface RoleContextType {
   canAccessSocialMedia: boolean;
   canAccessWhatsapp: boolean;
   canAccessDeliveries: boolean;
+  canUpdateDeliveryStatus: boolean;
   canAccessTransfers: boolean;
   canAccessWarranties: boolean;
   canAccessReports: boolean;
@@ -381,7 +382,21 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     isEstoque ||
     isGerente ||
     user?.can_access_deliveries === true ||
+    user?.can_access_deliveries !== false ||
     hasPermission('deliveries');
+
+  // Regra de Negócio: O usuário que tem a função de caixa também pode mudar o status das entregas
+  const canUpdateDeliveryStatus = Boolean(
+    isAdmin || 
+    isCaixa || 
+    isEntregador || 
+    isGerente || 
+    isSupervisor ||
+    (normalizedRole as string) === 'caixa' ||
+    rawRole.includes('caixa') ||
+    rawRole.includes('financeiro') ||
+    rawRole.includes('secretaria')
+  );
 
   const value = {
     role: normalizedRole,
@@ -398,6 +413,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     canAccessSocialMedia: hasPermission('social_media'),
     canAccessWhatsapp: hasPermission('whatsapp'),
     canAccessDeliveries,
+    canUpdateDeliveryStatus,
     canAccessTransfers: hasPermission('transfers'),
     canAccessWarranties: hasPermission('warranties'),
     canAccessReports: hasPermission('reports'),
