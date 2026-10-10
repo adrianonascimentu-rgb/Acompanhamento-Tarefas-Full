@@ -336,17 +336,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     rawRole.includes('coordenador');
 
   // Regra de Negócio: Somente Administrador, Gerente e Supervisor podem enviar o arquivo para atualização dos produtos
-  const canUploadCatalog = 
-    isAdmin || 
-    isGerente || 
-    isSupervisor || 
-    normalizedRole === 'admin' || 
-    normalizedRole === 'gerente' || 
-    normalizedRole === 'supervisor' ||
-    rawRole.includes('admin') || 
-    rawRole.includes('administrador') || 
-    rawRole.includes('gerente') || 
-    rawRole.includes('supervisor');
+  const canUploadCatalog = Boolean(isAdmin || isGerente || isSupervisor);
   
   const hasPermission = (module: string) => {
     if (isAdmin) return true;

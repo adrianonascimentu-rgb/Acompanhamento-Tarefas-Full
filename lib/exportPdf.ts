@@ -6,6 +6,8 @@ interface SalesPDFReportData {
   totalRevenue: number;
   totalSales: number;
   avgTicket: number;
+  avgConversionRate?: number;
+  yoyGrowth?: number;
   activeProductsCount?: number;
   salesBySeller?: { name: string; value: number }[];
   salesByCategory?: { name: string; value: number }[];
@@ -199,11 +201,23 @@ export function exportSalesDashboardToPDF(data: SalesPDFReportData) {
       </div>
 
       <!-- Key Metrics -->
-      <div class="metrics-grid">
+      <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));">
         <div class="metric-card">
-          <div class="label">Receita Total</div>
+          <div class="label">Receita Realizada</div>
           <div class="value emerald">R$ ${data.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
         </div>
+        ${data.yoyGrowth !== undefined ? `
+        <div class="metric-card">
+          <div class="label">Crescimento YoY</div>
+          <div class="value ${data.yoyGrowth >= 0 ? 'emerald' : 'amber'}">${data.yoyGrowth >= 0 ? '+' : ''}${data.yoyGrowth.toFixed(1)}%</div>
+        </div>
+        ` : ''}
+        ${data.avgConversionRate !== undefined ? `
+        <div class="metric-card">
+          <div class="label">Conversão da Equipe</div>
+          <div class="value blue">${data.avgConversionRate.toFixed(1)}%</div>
+        </div>
+        ` : ''}
         <div class="metric-card">
           <div class="label">Total de Vendas</div>
           <div class="value blue">${data.totalSales}</div>
@@ -211,10 +225,6 @@ export function exportSalesDashboardToPDF(data: SalesPDFReportData) {
         <div class="metric-card">
           <div class="label">Ticket Médio</div>
           <div class="value amber">R$ ${data.avgTicket.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-        </div>
-        <div class="metric-card">
-          <div class="label">Produtos em Catálogo</div>
-          <div class="value">${data.activeProductsCount || 0}</div>
         </div>
       </div>
 
