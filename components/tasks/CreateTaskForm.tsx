@@ -39,6 +39,7 @@ export default function CreateTaskForm() {
     dueDate: '',
     priority: 'Média',
     taskType: preTaskType || 'Outros',
+    isFixed: false,
     notifySlack: true,
     notifyPush: true
   });
@@ -225,12 +226,17 @@ export default function CreateTaskForm() {
     
     try {
       // 1. Create the task with primary collaborator_id (for backward compatibility)
+      const roleStr = (user?.role || user?.type || '').toLowerCase();
+      const canCreateFixed = isAdmin || roleStr.includes('admin') || roleStr.includes('gerente') || roleStr.includes('supervisor') || roleStr.includes('gestor');
+
       const taskData: any = {
         title: formData.title,
         description: formData.description,
         due_date: formData.dueDate,
         priority: formData.priority,
         task_type: formData.taskType,
+        is_fixed: canCreateFixed ? formData.isFixed : false,
+        is_permanent: canCreateFixed ? formData.isFixed : false,
         origin_demand_id: originDemandId,
         status: 'Pendente',
         progress: 0,
@@ -765,6 +771,35 @@ CREATE POLICY "Allow all on task_assignees" ON task_assignees FOR ALL USING (tru
 
           {/* Additional Options */}
         <div className="pt-2 space-y-4">
+          {/* Tarefa Fixa / Permanente Option for Admin, Manager, Supervisor */}
+          {(() => {
+            const roleStr = (user?.role || user?.type || '').toLowerCase();
+            const canCreateFixed = isAdmin || roleStr.includes('admin') || roleStr.includes('gerente') || roleStr.includes('supervisor') || roleStr.includes('gestor');
+            if (!canCreateFixed) return null;
+            return (
+              <div className="flex items-center justify-between p-4 bg-amber-50/50 border border-amber-200 dark:border-amber-900/40 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold">
+                    📌
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Tarefa Fixa / Permanente</p>
+                    <p className="text-xs text-slate-500">Fixar esta tarefa no painel superior do administrador</p>
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    className="sr-only peer" 
+                    checked={formData.isFixed}
+                    onChange={(e) => setFormData({ ...formData, isFixed: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
+              </div>
+            );
+          })()}
+
           <div className="flex items-center justify-between p-4 bg-blue-50/50 border border-blue-100 rounded-2xl">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">

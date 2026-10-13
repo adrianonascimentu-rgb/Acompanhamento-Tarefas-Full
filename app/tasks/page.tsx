@@ -2946,6 +2946,75 @@ function TasksContent() {
           renderDemands()
         ) : (
           <div className="p-4">
+            {/* Administrador Desktop View: Lembretes de Tarefas Fixas / Permanentes */}
+            {isAdmin && (() => {
+              const permanentTasks = tasks.filter(t => t.is_fixed === true || t.is_permanent === true);
+              if (permanentTasks.length === 0) return null;
+              return (
+                <div className="hidden md:block mb-6 p-4 rounded-2xl border bg-gradient-to-r from-amber-500/10 via-purple-500/5 to-blue-500/10 border-amber-500/20 shadow-xs">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📌</span>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                        Lembretes de Tarefas Fixas / Permanentes dos Usuários
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      {permanentTasks.length} fixas ativas
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {permanentTasks.map(t => {
+                      const statusStr = (t.status || '').toLowerCase();
+                      const progressNum = Number(t.progress) || 0;
+                      
+                      const isCompleted = statusStr.includes('conclu') || progressNum === 100;
+                      const isInProgress = statusStr.includes('andamento') || (progressNum > 0 && progressNum < 100);
+                      const isNotStarted = !isCompleted && !isInProgress;
+
+                      const badgeColor = isCompleted
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                        : isInProgress
+                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30';
+
+                      const statusLabel = isCompleted ? 'Concluída' : isInProgress ? 'Em Andamento' : 'Não Iniciada';
+
+                      return (
+                        <div key={t.id} className={`p-3 rounded-xl border flex flex-col justify-between gap-2 shadow-xs ${
+                          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+                        }`}>
+                          <div>
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white truncate" title={t.title}>
+                                {t.title}
+                              </span>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${badgeColor}`}>
+                                {statusLabel}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
+                              {t.description || 'Sem descrição'}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+                            <span className="text-slate-500 font-semibold truncate max-w-[120px]">
+                              👤 {t.collaborator_name || t.assignees?.[0]?.name || 'Responsável'}
+                            </span>
+                            <span className="font-mono text-slate-400">
+                              {t.due_date ? `Prazo: ${t.due_date}` : 'Sem prazo'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {viewMode === 'map' ? (
               <TasksMapView
                 tasks={filteredTasks as any}

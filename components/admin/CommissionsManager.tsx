@@ -129,7 +129,7 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
     setCommissionTiers(tiers);
     try {
       localStorage.setItem('commission_billing_tiers', JSON.stringify(tiers));
-    } {}
+    } catch {}
     showToast('Faixas de faturamento atualizadas com sucesso!', 'success');
   };
 
