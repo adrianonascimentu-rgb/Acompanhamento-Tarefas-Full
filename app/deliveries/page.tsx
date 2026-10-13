@@ -28,11 +28,21 @@ const LiveTrackerMap = dynamic(() => import('@/components/deliveries/LiveTracker
   loading: () => <div className="w-full h-64 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
 });
 
-const MOCK_DELIVERIES = [
-  { id: 1, date: '2026-03-10', shift: 'Manhã', vehicle: 'Fiorino ABC-1234', driver: 'Roberto Silva', value: 1250.50, neighborhood: 'Centro', city: 'São Paulo', product: 'Kit Manutenção Industrial', status: 'Pendente', seller: 'Carlos Vendedor', notes: '', phone: '(11) 98765-4321', address: 'Av. Paulista, 1000', delivery_type: 'padrao', is_special: false },
-  { id: 2, date: '2026-03-10', shift: 'Tarde', vehicle: 'Moto XYZ-9876', driver: 'Marcos Souza', value: 450.00, neighborhood: 'Jardins', city: 'São Paulo', product: 'Peças de Reposição', status: 'Em Andamento', seller: 'Mariana Vendas', notes: 'Entregar na portaria', phone: '(11) 91234-5678', address: 'Rua Augusta, 500', delivery_type: 'padrao', is_special: false },
-  { id: 3, date: '2026-03-11', shift: 'Manhã', vehicle: 'Caminhão DFG-5544', driver: 'João Pereira', value: 5800.00, neighborhood: 'Itaim Bibi', city: 'São Paulo', product: 'Equipamento de Proteção', status: 'Finalizada', seller: 'Carlos Vendedor', notes: '', phone: '(11) 99999-8888', address: 'Av. Faria Lima, 2000', delivery_type: 'padrao', is_special: false },
-];
+const getDefaultDeliveries = () => {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const yestStr = yesterday.toISOString().slice(0, 10);
+
+  return [
+    { id: 1, date: todayStr, shift: 'Manhã', vehicle: 'Fiorino ABC-1234', driver: 'Roberto Silva', value: 1250.50, neighborhood: 'Centro', city: 'São Paulo', product: 'Kit Manutenção Industrial', status: 'Pendente', seller: 'Carlos Vendedor', notes: '', phone: '(11) 98765-4321', address: 'Av. Paulista, 1000', delivery_type: 'padrao', is_special: false },
+    { id: 2, date: todayStr, shift: 'Tarde', vehicle: 'Moto XYZ-9876', driver: 'Marcos Souza', value: 450.00, neighborhood: 'Jardins', city: 'São Paulo', product: 'Peças de Reposição', status: 'Em Andamento', seller: 'Mariana Vendas', notes: 'Entregar na portaria', phone: '(11) 91234-5678', address: 'Rua Augusta, 500', delivery_type: 'padrao', is_special: false },
+    { id: 3, date: yestStr, shift: 'Manhã', vehicle: 'Caminhão DFG-5544', driver: 'João Pereira', value: 5800.00, neighborhood: 'Itaim Bibi', city: 'São Paulo', product: 'Equipamento de Proteção', status: 'Finalizada', seller: 'Carlos Vendedor', notes: '', phone: '(11) 99999-8888', address: 'Av. Faria Lima, 2000', delivery_type: 'padrao', is_special: false },
+  ];
+};
+
+const MOCK_DELIVERIES = getDefaultDeliveries();
 
 const isSpecialDelivery = (d: any) => {
   if (!d) return false;

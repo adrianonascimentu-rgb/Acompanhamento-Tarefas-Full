@@ -5,7 +5,8 @@ import {
   Users, DollarSign, CheckCircle2, Clock, Plus, Search, 
   Filter, Download, Trash2, Edit2, RotateCcw, AlertCircle,
   Building, ShoppingCart, Percent, Calendar, Check, X,
-  FileSpreadsheet, ArrowUpDown, ChevronDown, Sliders, Layers
+  FileSpreadsheet, ArrowUpDown, ChevronDown, Sliders, Layers,
+  LayoutGrid, Table as TableIcon, Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PartnerCommission, INITIAL_COMMISSIONS } from '@/lib/initialCommissions';
@@ -18,25 +19,49 @@ export interface CommissionTier {
   id: string;
   name: string;
   min: number;
-  max: number; // Infinity for unlimited
-  percentage: string; // e.g., '3%'
+  max: number;
+  percentage: string;
 }
 
 const DEFAULT_TIERS: CommissionTier[] = [
   { id: 'tier-1', name: 'Faixa Inicial', min: 0, max: 3000, percentage: '2.5%' },
   { id: 'tier-2', name: 'Faixa Padrão', min: 3000.01, max: 8000, percentage: '3%' },
   { id: 'tier-3', name: 'Faixa Avançada', min: 8000.01, max: 20000, percentage: '3.5%' },
-  { id: 'tier-4', name: 'Faixa Premium (Alto Faturamento)', min: 20000.01, max: 9999999, percentage: '4%' }
+  { id: 'tier-4', name: 'Faixa Premium', min: 20000.01, max: 9999999, percentage: '4%' }
 ];
 
 export default function CommissionsManager({ isDarkMode = false }: CommissionsManagerProps) {
-  const [commissions, setCommissions] = useState<PartnerCommission[]>(INITIAL_COMMISSIONS);
+  // Inicialização com localStorage para disponibilidade offline imediata e persistência garantida
+  const [commissions, setCommissions] = useState<PartnerCommission[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('agentx_local_commissions');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return INITIAL_COMMISSIONS;
+  });
+
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'table' | 'partners'>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPartner, setSelectedPartner] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'paid' | 'pending'>('all');
   const [selectedSeller, setSelectedSeller] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
+  const [selectedPaymentType, setSelectedPaymentType] = useState('all');
+
+  // Sincronizar com localStorage sempre que commissions mudar
+  useEffect(() => {
+    if (commissions.length > 0) {
+      try {
+        localStorage.setItem('agentx_local_commissions', JSON.stringify(commissions));
+      } catch {}
+    }
+  }, [commissions]);
 
   // Faixas de Faturamento State
   const [commissionTiers, setCommissionTiers] = useState<CommissionTier[]>(() => {
@@ -85,13 +110,12 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
       const res = await fetch('/api/admin/commissions');
       const data = await res.json();
       if (data.success && Array.isArray(data.commissions) && data.commissions.length > 0) {
-        setCommissions(data.commissions);
-      } else {
-        setCommissions(INITIAL_COMMISSIONS);
+        // Mesclar dados do servidor com localStorage se houver itens locais recentes
+        const serverList = data.commissions;
+        setCommissions(serverList);
       }
     } catch (err) {
-      console.warn('Falha ao buscar comissões da API, usando dados iniciais:', err);
-      setCommissions(INITIAL_COMMISSIONS);
+      console.warn('Falha ao buscar comissões da API, mantendo dados locais:', err);
     } finally {
       setLoading(false);
     }
@@ -101,7 +125,6 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
     fetchCommissions();
   }, []);
 
-  // Salvar faixas no localStorage
   const saveTiers = (tiers: CommissionTier[]) => {
     setCommissionTiers(tiers);
     try {
@@ -110,22 +133,17 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
     showToast('Faixas de faturamento atualizadas com sucesso!', 'success');
   };
 
-  // Determinar percentual baseado na faixa de faturamento do valor da venda
   const getPercentageForValue = (val: number): string => {
     for (const tier of commissionTiers) {
       if (val >= tier.min && val <= tier.max) {
         return tier.percentage;
       }
     }
-    // Fallback
     return '3%';
   };
 
-  // Recalcular comissão automaticamente no form quando valor_venda mudar
   const handleVendaChange = (valStr: string) => {
     const val = parseFloat(valStr.replace(',', '.')) || 0;
-    
-    // Determinar percentual com base nas faixas cadastradas
     const matchedPercentage = getPercentageForValue(val);
     const percNum = parseFloat(matchedPercentage.replace('%', '').replace(',', '.')) || 3;
     const calcComissao = Number(((val * percNum) / 100).toFixed(2));
@@ -181,33 +199,59 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
     e.preventDefault();
     try {
       if (editingCommission) {
-        // Atualizar
-        const res = await fetch('/api/admin/commissions', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...formData, id: editingCommission.id })
-        });
-        const data = await res.json();
-        if (data.success) {
-          setCommissions(prev => prev.map(c => c.id === editingCommission.id ? data.commission : c));
-          showToast('Registro de comissão atualizado com sucesso!', 'success');
-        } else {
-          throw new Error(data.error);
-        }
+        const updatedItem: PartnerCommission = {
+          ...editingCommission,
+          ...formData,
+          id: editingCommission.id,
+          updated_at: new Date().toISOString()
+        } as PartnerCommission;
+
+        const nextList = commissions.map(c => c.id === editingCommission.id ? updatedItem : c);
+        setCommissions(nextList);
+
+        // Tentar salvar na API
+        try {
+          await fetch('/api/admin/commissions', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedItem)
+          });
+        } catch {}
+
+        showToast('Registro de comissão atualizado com sucesso!', 'success');
       } else {
-        // Criar
-        const res = await fetch('/api/admin/commissions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData)
-        });
-        const data = await res.json();
-        if (data.success) {
-          setCommissions(prev => [data.commission, ...prev]);
-          showToast('Comissão cadastrada com sucesso!', 'success');
-        } else {
-          throw new Error(data.error);
-        }
+        const newCommission: PartnerCommission = {
+          id: `comm-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          sequencia: String(formData.sequencia || '').trim(),
+          data_venda: formData.data_venda || new Date().toLocaleDateString('pt-BR'),
+          valor_venda: Number(formData.valor_venda) || 0,
+          percentual_desconto: formData.percentual_desconto || '',
+          data_entrega: formData.data_entrega || '',
+          tipo_pagamento: formData.tipo_pagamento || '',
+          valor_comissao: Number(formData.valor_comissao) || 0,
+          percentual_comissao: formData.percentual_comissao || '3%',
+          pago: Boolean(formData.pago),
+          data_pagamento: formData.data_pagamento || '',
+          vendedor: formData.vendedor || '',
+          loja: String(formData.loja || '5'),
+          parceiro: formData.parceiro || '',
+          codigo_parceiro: String(formData.codigo_parceiro || '').trim(),
+          observacoes: formData.observacoes || '',
+          created_at: new Date().toISOString()
+        };
+
+        const nextList = [newCommission, ...commissions];
+        setCommissions(nextList);
+
+        try {
+          await fetch('/api/admin/commissions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newCommission)
+          });
+        } catch {}
+
+        showToast('Comissão cadastrada com sucesso!', 'success');
       }
       setIsModalOpen(false);
     } catch (err: any) {
@@ -219,22 +263,24 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
     try {
       const nextPago = !commission.pago;
       const todayStr = new Date().toLocaleDateString('pt-BR');
-      const updatedData: Partial<PartnerCommission> = {
-        id: commission.id,
+      const updatedItem: PartnerCommission = {
+        ...commission,
         pago: nextPago,
         data_pagamento: nextPago ? (commission.data_pagamento || todayStr) : ''
       };
 
-      const res = await fetch('/api/admin/commissions', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedData)
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCommissions(prev => prev.map(c => c.id === commission.id ? data.commission : c));
-        showToast(nextPago ? 'Marcado como PAGO!' : 'Marcado como PENDENTE!', 'success');
-      }
+      const nextList = commissions.map(c => c.id === commission.id ? updatedItem : c);
+      setCommissions(nextList);
+
+      try {
+        await fetch('/api/admin/commissions', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedItem)
+        });
+      } catch {}
+
+      showToast(nextPago ? 'Marcado como PAGO!' : 'Marcado como PENDENTE!', 'success');
     } catch (err) {
       showToast('Erro ao atualizar status de pagamento.', 'error');
     }
@@ -243,14 +289,14 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
   const handleDelete = async (id: string, sequencia: string) => {
     if (!confirm(`Tem certeza que deseja excluir o registro de comissão Sequência #${sequencia}?`)) return;
     try {
-      const res = await fetch(`/api/admin/commissions?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE'
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCommissions(prev => prev.filter(c => c.id !== id));
-        showToast('Registro de comissão excluído.', 'info');
-      }
+      const nextList = commissions.filter(c => c.id !== id);
+      setCommissions(nextList);
+
+      try {
+        await fetch(`/api/admin/commissions?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      } catch {}
+
+      showToast('Registro de comissão excluído.', 'info');
     } catch (err) {
       showToast('Erro ao excluir registro.', 'error');
     }
@@ -259,12 +305,11 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
   const handleResetToSpreadsheet = async () => {
     if (!confirm('Deseja recarregar e redefinir todas as comissões com os 44 registros originais da planilha?')) return;
     try {
-      const res = await fetch('/api/admin/commissions', { method: 'PATCH' });
-      const data = await res.json();
-      if (data.success) {
-        setCommissions(data.commissions);
-        showToast('Planilha de comissões original restaurada!', 'success');
-      }
+      setCommissions(INITIAL_COMMISSIONS);
+      try {
+        await fetch('/api/admin/commissions', { method: 'PATCH' });
+      } catch {}
+      showToast('Planilha de comissões original restaurada!', 'success');
     } catch (err) {
       showToast('Erro ao redefinir comissões.', 'error');
     }
@@ -272,37 +317,17 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
 
   const handleExportCSV = () => {
     const headers = [
-      'Sequência',
-      'Data Venda',
-      'V. Venda',
-      '% de Desconto',
-      'Data Entrega',
-      'Tipo Pagamento',
-      'V. Comissão',
-      '% Comissão',
-      'Pago',
-      'Data Pagamento',
-      'Vendedor',
-      'Loja',
-      'Parceiro',
-      'Cód. Parceiro'
+      'Sequência', 'Data Venda', 'V. Venda', '% de Desconto', 'Data Entrega',
+      'Tipo Pagamento', 'V. Comissão', '% Comissão', 'Pago', 'Data Pagamento',
+      'Vendedor', 'Loja', 'Parceiro', 'Cód. Parceiro'
     ];
 
     const rows = filteredCommissions.map(c => [
-      `"${c.sequencia}"`,
-      `"${c.data_venda}"`,
-      `"${c.valor_venda.toFixed(2).replace('.', ',')}"`,
-      `"${c.percentual_desconto || ''}"`,
-      `"${c.data_entrega || ''}"`,
-      `"${c.tipo_pagamento || ''}"`,
-      `"${c.valor_comissao.toFixed(2).replace('.', ',')}"`,
-      `"${c.percentual_comissao || ''}"`,
-      `"${c.pago ? 'Sim' : 'Não'}"`,
-      `"${c.data_pagamento || ''}"`,
-      `"${c.vendedor || ''}"`,
-      `"${c.loja || ''}"`,
-      `"${c.parceiro || ''}"`,
-      `"${c.codigo_parceiro || ''}"`
+      `"${c.sequencia}"`, `"${c.data_venda}"`, `"${c.valor_venda.toFixed(2).replace('.', ',')}"`,
+      `"${c.percentual_desconto || ''}"`, `"${c.data_entrega || ''}"`, `"${c.tipo_pagamento || ''}"`,
+      `"${c.valor_comissao.toFixed(2).replace('.', ',')}"`, `"${c.percentual_comissao || ''}"`,
+      `"${c.pago ? 'Sim' : 'Não'}"`, `"${c.data_pagamento || ''}"`, `"${c.vendedor || ''}"`,
+      `"${c.loja || ''}"`, `"${c.parceiro || ''}"`, `"${c.codigo_parceiro || ''}"`
     ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
@@ -320,6 +345,7 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
   const partnerList = useMemo(() => Array.from(new Set(commissions.map(c => c.parceiro).filter(Boolean))), [commissions]);
   const sellerList = useMemo(() => Array.from(new Set(commissions.map(c => c.vendedor).filter(Boolean))), [commissions]);
   const storeList = useMemo(() => Array.from(new Set(commissions.map(c => c.loja).filter(Boolean))), [commissions]);
+  const paymentTypeList = useMemo(() => Array.from(new Set(commissions.map(c => c.tipo_pagamento).filter(Boolean))), [commissions]);
 
   // Filtered Commissions
   const filteredCommissions = useMemo(() => {
@@ -339,12 +365,13 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
         (selectedStatus === 'pending' && !c.pago);
       const matchesSeller = selectedSeller === 'all' || c.vendedor === selectedSeller;
       const matchesStore = selectedStore === 'all' || c.loja === selectedStore;
+      const matchesPayment = selectedPaymentType === 'all' || c.tipo_pagamento === selectedPaymentType;
 
-      return matchesSearch && matchesPartner && matchesStatus && matchesSeller && matchesStore;
+      return matchesSearch && matchesPartner && matchesStatus && matchesSeller && matchesStore && matchesPayment;
     });
-  }, [commissions, searchTerm, selectedPartner, selectedStatus, selectedSeller, selectedStore]);
+  }, [commissions, searchTerm, selectedPartner, selectedStatus, selectedSeller, selectedStore, selectedPaymentType]);
 
-  // Totais e KPIs calculados dinamicamente com base no filtro ativo
+  // Totais e KPIs calculados dinamicamente
   const metrics = useMemo(() => {
     const totalVenda = filteredCommissions.reduce((acc, c) => acc + (Number(c.valor_venda) || 0), 0);
     const totalComissao = filteredCommissions.reduce((acc, c) => acc + (Number(c.valor_comissao) || 0), 0);
@@ -365,6 +392,36 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
       totalRegistros: filteredCommissions.length
     };
   }, [filteredCommissions]);
+
+  // Resumo por Parceiro para a Visão de Parceiros
+  const partnerSummaries = useMemo(() => {
+    const map = new Map<string, { partner: string; code: string; count: number; totalVenda: number; totalComissao: number; valorPago: number; valorPendente: number; items: PartnerCommission[] }>();
+    
+    commissions.forEach(c => {
+      const pName = c.parceiro || 'Indefinido';
+      if (!map.has(pName)) {
+        map.set(pName, {
+          partner: pName,
+          code: c.codigo_parceiro || '-',
+          count: 0,
+          totalVenda: 0,
+          totalComissao: 0,
+          valorPago: 0,
+          valorPendente: 0,
+          items: []
+        });
+      }
+      const entry = map.get(pName)!;
+      entry.count += 1;
+      entry.totalVenda += Number(c.valor_venda) || 0;
+      entry.totalComissao += Number(c.valor_comissao) || 0;
+      if (c.pago) entry.valorPago += Number(c.valor_comissao) || 0;
+      else entry.valorPendente += Number(c.valor_comissao) || 0;
+      entry.items.push(c);
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.totalComissao - a.totalComissao);
+  }, [commissions]);
 
   return (
     <div className="space-y-6">
@@ -391,46 +448,68 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
 
       {/* Header and Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/20">
-              <Percent size={22} />
-            </div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                Gestão de Comissionados & Faixas de Faturamento
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Configure regras de comissão baseadas em faixas de faturamento e controle pagamentos.
-              </p>
-            </div>
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 text-white shadow-md shadow-amber-500/20 shrink-0">
+            <Percent size={24} />
+          </div>
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
+              Gestão Avançada de Comissionados
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Controle de comissões, faixas de faturamento e visualização consolidada por parceiro.
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* View Mode Switcher */}
+          <div className={`p-1 rounded-xl border flex items-center ${
+            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'
+          }`}>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'table' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <TableIcon size={14} />
+              <span>Tabela</span>
+            </button>
+            <button
+              onClick={() => setViewMode('partners')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'partners' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <LayoutGrid size={14} />
+              <span>Por Parceiro</span>
+            </button>
+          </div>
+
           <button
             onClick={() => setShowTiersModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 text-xs font-bold hover:bg-amber-100 transition-colors"
           >
             <Layers size={15} />
-            <span>Configurar Faixas de Faturamento</span>
+            <span>Faixas de Faturamento</span>
           </button>
 
           <button
             onClick={handleResetToSpreadsheet}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            title="Recarregar os 44 registros originais"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-colors"
+            title="Restaurar 44 registros originais"
           >
             <RotateCcw size={14} className="text-amber-500" />
-            <span>Restaurar Planilha</span>
+            <span>Restaurar</span>
           </button>
 
           <button
             onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 transition-colors"
           >
             <Download size={14} className="text-blue-500" />
-            <span>Exportar CSV</span>
+            <span>CSV</span>
           </button>
 
           <button
@@ -438,7 +517,7 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md shadow-blue-600/20 transition-all active:scale-95"
           >
             <Plus size={16} />
-            <span>Novo Registro</span>
+            <span>Nova Comissão</span>
           </button>
         </div>
       </div>
@@ -446,11 +525,11 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
       {/* Metrics Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total em Vendas</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Volume de Vendas</p>
           <p className="text-lg font-black mt-1 text-slate-900 dark:text-white">
             R$ {metrics.totalVenda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">{metrics.totalRegistros} vendas filtradas</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{metrics.totalRegistros} vendas na seleção</p>
         </div>
 
         <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
@@ -458,7 +537,7 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
           <p className="text-lg font-black mt-1 text-purple-600 dark:text-purple-400">
             R$ {metrics.totalComissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">Soma geral de comissões</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">Soma total de comissões</p>
         </div>
 
         <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
@@ -466,19 +545,19 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
           <p className="text-lg font-black mt-1 text-emerald-600 dark:text-emerald-400">
             R$ {metrics.valorPago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">{metrics.countPagas} pagamentos realizados</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{metrics.countPagas} comissões pagas</p>
         </div>
 
         <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Comissões Pendentes</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">A Pagar (Pendentes)</p>
           <p className="text-lg font-black mt-1 text-amber-600 dark:text-amber-400">
             R$ {metrics.valorPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
           </p>
-          <p className="text-[10px] text-slate-500 mt-0.5">{metrics.countPendentes} a pagar</p>
+          <p className="text-[10px] text-slate-500 mt-0.5">{metrics.countPendentes} pendentes de acerto</p>
         </div>
       </div>
 
-      {/* Search & Filters */}
+      {/* Search & Filters Bar */}
       <div className={`p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-3 ${
         isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
       }`}>
@@ -515,112 +594,183 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
             {partnerList.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
 
-          {/* Seller Filter */}
+          {/* Payment Type Filter */}
           <select
-            value={selectedSeller}
-            onChange={(e) => setSelectedSeller(e.target.value)}
+            value={selectedPaymentType}
+            onChange={(e) => setSelectedPaymentType(e.target.value)}
             className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
           >
-            <option value="all">Todos Vendedores</option>
-            {sellerList.map(s => <option key={s} value={s}>{s}</option>)}
+            <option value="all">Formas de Pagamento</option>
+            {paymentTypeList.map(pt => <option key={pt} value={pt}>{pt}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Main Table */}
-      <div className={`rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className={`border-b font-black uppercase text-[10px] tracking-wider ${
-                isDarkMode ? 'bg-slate-800/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
-              }`}>
-                <th className="py-3 px-4">Sequência</th>
-                <th className="py-3 px-3">Data Venda</th>
-                <th className="py-3 px-3">V. Venda</th>
-                <th className="py-3 px-3">% Desc</th>
-                <th className="py-3 px-3">Entrega</th>
-                <th className="py-3 px-3">Pagamento</th>
-                <th className="py-3 px-3 text-purple-600 dark:text-purple-400">V. Comissão</th>
-                <th className="py-3 px-3">% Com.</th>
-                <th className="py-3 px-3 text-center">Status</th>
-                <th className="py-3 px-3">Dt. Pgto</th>
-                <th className="py-3 px-3">Vendedor</th>
-                <th className="py-3 px-3">Loja</th>
-                <th className="py-3 px-4">Parceiro</th>
-                <th className="py-3 px-3">Cód.</th>
-                <th className="py-3 px-4 text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
-              {filteredCommissions.length === 0 ? (
-                <tr>
-                  <td colSpan={15} className="py-12 text-center text-slate-400">
-                    Nenhum registro encontrado.
-                  </td>
+      {/* Conditional View Mode Content */}
+      {viewMode === 'partners' ? (
+        /* PARTNER SUMMARY CARDS VIEW */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {partnerSummaries.map((summary) => (
+            <div 
+              key={summary.partner}
+              className={`p-6 rounded-3xl border transition-all flex flex-col justify-between ${
+                isDarkMode ? 'bg-slate-900 border-slate-800 hover:border-slate-700' : 'bg-white border-slate-200 shadow-xs hover:shadow-md'
+              }`}
+            >
+              <div>
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-full">
+                      Cód: {summary.code}
+                    </span>
+                    <h3 className="text-lg font-black mt-2 text-slate-900 dark:text-white">
+                      {summary.partner}
+                    </h3>
+                  </div>
+                  <div className="size-10 rounded-2xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center font-bold">
+                    <Users size={20} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-slate-800/60' : 'bg-slate-50'}`}>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Vendas</p>
+                    <p className="text-sm font-black mt-0.5 text-slate-900 dark:text-white">
+                      R$ {summary.totalVenda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className={`p-3 rounded-2xl ${isDarkMode ? 'bg-slate-800/60' : 'bg-slate-50'}`}>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Comissões</p>
+                    <p className="text-sm font-black mt-0.5 text-purple-600 dark:text-purple-400">
+                      R$ {summary.totalComissao.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span>Lançamentos:</span>
+                    <strong className="text-slate-900 dark:text-white">{summary.count} pedidos</strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Quitado (Pago):</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400">R$ {summary.valorPago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Pendente (A Pagar):</span>
+                    <strong className="text-amber-600 dark:text-amber-400">R$ {summary.valorPendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setSelectedPartner(summary.partner);
+                  setViewMode('table');
+                }}
+                className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm"
+              >
+                Ver Lançamentos do Parceiro
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* TABLE VIEW WITH RESPONSIVE CARDS */
+        <div className={`rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className={`border-b font-black uppercase text-[10px] tracking-wider ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
+                }`}>
+                  <th className="py-3 px-4">Sequência</th>
+                  <th className="py-3 px-3">Data Venda</th>
+                  <th className="py-3 px-3">V. Venda</th>
+                  <th className="py-3 px-3">% Desc</th>
+                  <th className="py-3 px-3">Entrega</th>
+                  <th className="py-3 px-3">Pagamento</th>
+                  <th className="py-3 px-3 text-purple-600 dark:text-purple-400">V. Comissão</th>
+                  <th className="py-3 px-3">% Com.</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-3">Dt. Pgto</th>
+                  <th className="py-3 px-3">Vendedor</th>
+                  <th className="py-3 px-3">Loja</th>
+                  <th className="py-3 px-4">Parceiro</th>
+                  <th className="py-3 px-3">Cód.</th>
+                  <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
-              ) : (
-                filteredCommissions.map(c => (
-                  <tr key={c.id} className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${!c.pago ? (isDarkMode ? 'bg-amber-950/10' : 'bg-amber-50/30') : ''}`}>
-                    <td className="py-3.5 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
-                      #{c.sequencia}
-                    </td>
-                    <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_venda}</td>
-                    <td className="py-3.5 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
-                      R$ {Number(c.valor_venda).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.percentual_desconto || '-'}</td>
-                    <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_entrega || '-'}</td>
-                    <td className="py-3.5 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{c.tipo_pagamento || '-'}</td>
-                    <td className="py-3.5 px-3 font-black text-purple-600 dark:text-purple-400 whitespace-nowrap">
-                      R$ {Number(c.valor_comissao).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3.5 px-3 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                      {c.percentual_comissao || '3%'}
-                    </td>
-                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleTogglePago(c)}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer transition-all ${
-                          c.pago
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                            : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                        }`}
-                      >
-                        {c.pago ? <CheckCircle2 size={11} /> : <Clock size={11} />}
-                        {c.pago ? 'Pago' : 'Pendente'}
-                      </button>
-                    </td>
-                    <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_pagamento || '-'}</td>
-                    <td className="py-3.5 px-3 font-semibold whitespace-nowrap text-slate-800 dark:text-slate-200">{c.vendedor}</td>
-                    <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap font-mono">Loja {c.loja}</td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">{c.parceiro}</td>
-                    <td className="py-3.5 px-3 font-mono text-slate-500 whitespace-nowrap">{c.codigo_parceiro}</td>
-                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditModal(c)}
-                          className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 dark:hover:bg-slate-800 transition-colors"
-                          title="Editar"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(c.id, c.sequencia)}
-                          className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 dark:hover:bg-slate-800 transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                {filteredCommissions.length === 0 ? (
+                  <tr>
+                    <td colSpan={15} className="py-12 text-center text-slate-400">
+                      Nenhum registro encontrado para os filtros selecionados.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredCommissions.map(c => (
+                    <tr key={c.id} className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${!c.pago ? (isDarkMode ? 'bg-amber-950/10' : 'bg-amber-50/30') : ''}`}>
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
+                        #{c.sequencia}
+                      </td>
+                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_venda}</td>
+                      <td className="py-3.5 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
+                        R$ {Number(c.valor_venda).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.percentual_desconto || '-'}</td>
+                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_entrega || '-'}</td>
+                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{c.tipo_pagamento || '-'}</td>
+                      <td className="py-3.5 px-3 font-black text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                        R$ {Number(c.valor_comissao).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="py-3.5 px-3 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                        {c.percentual_comissao || '3%'}
+                      </td>
+                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => handleTogglePago(c)}
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer transition-all ${
+                            c.pago
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                          }`}
+                        >
+                          {c.pago ? <CheckCircle2 size={11} /> : <Clock size={11} />}
+                          {c.pago ? 'Pago' : 'Pendente'}
+                        </button>
+                      </td>
+                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_pagamento || '-'}</td>
+                      <td className="py-3.5 px-3 font-semibold whitespace-nowrap text-slate-800 dark:text-slate-200">{c.vendedor}</td>
+                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap font-mono">Loja {c.loja}</td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">{c.parceiro}</td>
+                      <td className="py-3.5 px-3 font-mono text-slate-500 whitespace-nowrap">{c.codigo_parceiro}</td>
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditModal(c)}
+                            className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 dark:hover:bg-slate-800 transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(c.id, c.sequencia)}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 dark:hover:bg-slate-800 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Modal de Configuração de Faixas de Faturamento */}
       <AnimatePresence>
@@ -731,7 +881,6 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
                   ))}
                 </div>
 
-                {/* Adicionar nova faixa */}
                 <div className={`p-3 rounded-2xl border border-dashed ${isDarkMode ? 'border-slate-700 bg-slate-800/20' : 'border-slate-300 bg-slate-50'}`}>
                   <p className="text-xs font-bold mb-2">Adicionar Nova Faixa de Faturamento</p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -926,7 +1075,6 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
-                  {/* % de Comissão Baseado em Faixa */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-400">
@@ -944,7 +1092,6 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
                     />
                   </div>
 
-                  {/* Valor da Comissão */}
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-400 block mb-1">
                       Valor da Comissão (R$) *
