@@ -710,53 +710,60 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
                   </tr>
                 ) : (
                   filteredCommissions.map(c => (
-                    <tr key={c.id} className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${!c.pago ? (isDarkMode ? 'bg-amber-950/10' : 'bg-amber-50/30') : ''}`}>
-                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
+                    <tr 
+                      key={c.id} 
+                      className={`transition-colors duration-150 ${
+                        !c.pago 
+                          ? (isDarkMode ? 'bg-amber-950/20 hover:bg-amber-900/30' : 'bg-amber-50/60 hover:bg-amber-100/65')
+                          : (isDarkMode ? 'even:bg-slate-900/60 hover:bg-blue-950/40' : 'even:bg-slate-50/80 hover:bg-blue-50/80')
+                      }`}
+                    >
+                      <td className="py-4 px-3 sm:px-4 font-mono font-bold text-blue-600 dark:text-blue-400 text-xs sm:text-sm">
                         #{c.sequencia}
                       </td>
-                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_venda}</td>
-                      <td className="py-3.5 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap">
+                      <td className="py-4 px-3 text-slate-500 whitespace-nowrap text-xs sm:text-sm">{c.data_venda}</td>
+                      <td className="py-4 px-3 font-black text-slate-900 dark:text-white whitespace-nowrap text-xs sm:text-sm">
                         R$ {Number(c.valor_venda).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.percentual_desconto || '-'}</td>
-                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_entrega || '-'}</td>
-                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{c.tipo_pagamento || '-'}</td>
-                      <td className="py-3.5 px-3 font-black text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                      <td className="py-4 px-3 text-slate-500 whitespace-nowrap text-xs sm:text-sm">{c.percentual_desconto || '-'}</td>
+                      <td className="py-4 px-3 text-slate-500 whitespace-nowrap text-xs sm:text-sm">{c.data_entrega || '-'}</td>
+                      <td className="py-4 px-3 text-slate-600 dark:text-slate-300 whitespace-nowrap text-xs sm:text-sm">{c.tipo_pagamento || '-'}</td>
+                      <td className="py-4 px-3 font-black text-purple-600 dark:text-purple-400 whitespace-nowrap text-xs sm:text-sm">
                         R$ {Number(c.valor_comissao).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </td>
-                      <td className="py-3.5 px-3 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                      <td className="py-4 px-3 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap text-xs sm:text-sm">
                         {c.percentual_comissao || '3%'}
                       </td>
-                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                      <td className="py-4 px-3 text-center whitespace-nowrap">
                         <button
                           onClick={() => handleTogglePago(c)}
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer transition-all ${
+                          className={`px-3 py-1.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider inline-flex items-center gap-1 cursor-pointer transition-all shadow-xs active:scale-95 ${
                             c.pago
-                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/20'
+                              : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/35 hover:bg-amber-500/25'
                           }`}
                         >
-                          {c.pago ? <CheckCircle2 size={11} /> : <Clock size={11} />}
+                          {c.pago ? <CheckCircle2 size={12} /> : <Clock size={12} />}
                           {c.pago ? 'Pago' : 'Pendente'}
                         </button>
                       </td>
-                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap">{c.data_pagamento || '-'}</td>
-                      <td className="py-3.5 px-3 font-semibold whitespace-nowrap text-slate-800 dark:text-slate-200">{c.vendedor}</td>
-                      <td className="py-3.5 px-3 text-slate-500 whitespace-nowrap font-mono">Loja {c.loja}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">{c.parceiro}</td>
-                      <td className="py-3.5 px-3 font-mono text-slate-500 whitespace-nowrap">{c.codigo_parceiro}</td>
-                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-4 px-3 text-slate-500 whitespace-nowrap text-xs sm:text-sm">{c.data_pagamento || '-'}</td>
+                      <td className="py-4 px-3 font-semibold whitespace-nowrap text-slate-800 dark:text-slate-200 text-xs sm:text-sm">{c.vendedor}</td>
+                      <td className="py-4 px-3 text-slate-500 whitespace-nowrap font-mono text-xs sm:text-sm">Loja {c.loja}</td>
+                      <td className="py-4 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap text-xs sm:text-sm">{c.parceiro}</td>
+                      <td className="py-4 px-3 font-mono text-slate-500 whitespace-nowrap text-xs sm:text-sm">{c.codigo_parceiro}</td>
+                      <td className="py-4 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenEditModal(c)}
-                            className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600 dark:hover:bg-slate-800 transition-colors"
+                            className="p-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors shadow-xs"
                             title="Editar"
                           >
                             <Edit2 size={14} />
                           </button>
                           <button
                             onClick={() => handleDelete(c.id, c.sequencia)}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 text-rose-500 dark:hover:bg-slate-800 transition-colors"
+                            className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-500 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors shadow-xs"
                             title="Excluir"
                           >
                             <Trash2 size={14} />

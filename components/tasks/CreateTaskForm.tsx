@@ -203,16 +203,16 @@ export default function CreateTaskForm() {
     if (e) e.preventDefault();
     setDateError('');
 
-    if (!formData.dueDate) {
+    if (!formData.dueDate && !formData.isFixed) {
       setDateError('A data de entrega é obrigatória.');
       return;
     }
 
-    const selectedDate = new Date(formData.dueDate + 'T00:00:00');
+    const selectedDate = formData.dueDate ? new Date(formData.dueDate + 'T00:00:00') : null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    if (isNaN(selectedDate.getTime())) {
+    if (formData.dueDate && selectedDate && isNaN(selectedDate.getTime())) {
       setDateError('Data inválida.');
       return;
     }
@@ -276,7 +276,7 @@ export default function CreateTaskForm() {
           }
           
           // Retry without problematic columns
-          const { created_by, task_type, origin_demand_id, ...retryData } = taskData;
+          const { created_by, task_type, origin_demand_id, is_fixed, is_permanent, ...retryData } = taskData;
           
           // Re-add them conditionally if they weren't the cause
           if (!isMissingCreatedBy && taskData.created_by) (retryData as any).created_by = taskData.created_by;

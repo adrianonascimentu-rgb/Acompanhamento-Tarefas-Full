@@ -148,6 +148,54 @@ const MOCK_TASKS = [
     assignees: [{ name: 'Roberto' }],
     category: 'Logística',
     task_type: 'Estoque'
+  },
+  {
+    id: 101,
+    title: 'Conferência Diária de Caixa',
+    description: 'Verificar fechamento de caixa e suprimentos do dia.',
+    due: 'Hoje',
+    due_date: new Date().toISOString().split('T')[0],
+    priority: 'Urgente',
+    progress: 0,
+    status: 'Pendente',
+    is_fixed: true,
+    is_permanent: true,
+    assignees: [{ name: 'Carlos' }],
+    collaborator_name: 'Carlos',
+    category: 'Financeiro',
+    task_type: 'Rotina'
+  },
+  {
+    id: 102,
+    title: 'Organização do Estoque Setor A',
+    description: 'Organizar prateleiras e conferir etiquetas.',
+    due: 'Hoje',
+    due_date: new Date().toISOString().split('T')[0],
+    priority: 'Alta',
+    progress: 50,
+    status: 'Em Andamento',
+    is_fixed: true,
+    is_permanent: true,
+    assignees: [{ name: 'Roberto' }],
+    collaborator_name: 'Roberto',
+    category: 'Logística',
+    task_type: 'Rotina'
+  },
+  {
+    id: 103,
+    title: 'Backup Geral dos Servidores',
+    description: 'Realizar backup semanal e validar integridade.',
+    due: 'Hoje',
+    due_date: new Date().toISOString().split('T')[0],
+    priority: 'Média',
+    progress: 100,
+    status: 'Concluída',
+    is_fixed: true,
+    is_permanent: true,
+    assignees: [{ name: 'Alex' }],
+    collaborator_name: 'Alex',
+    category: 'TI',
+    task_type: 'Rotina'
   }
 ];
 
