@@ -6,10 +6,11 @@ import {
   Filter, Download, Trash2, Edit2, RotateCcw, AlertCircle,
   Building, ShoppingCart, Percent, Calendar, Check, X,
   FileSpreadsheet, ArrowUpDown, ChevronDown, Sliders, Layers,
-  LayoutGrid, Table as TableIcon, Printer
+  LayoutGrid, Table as TableIcon, Printer, TrendingUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PartnerCommission, INITIAL_COMMISSIONS } from '@/lib/initialCommissions';
+import CommissionGoalsChart from './CommissionGoalsChart';
 
 interface CommissionsManagerProps {
   isDarkMode?: boolean;
@@ -46,7 +47,7 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
   });
 
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'table' | 'partners'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'partners' | 'chart'>('table');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPartner, setSelectedPartner] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'paid' | 'pending'>('all');
@@ -485,6 +486,15 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
               <LayoutGrid size={14} />
               <span>Por Parceiro</span>
             </button>
+            <button
+              onClick={() => setViewMode('chart')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                viewMode === 'chart' ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <TrendingUp size={14} />
+              <span>Metas & Tiers</span>
+            </button>
           </div>
 
           <button
@@ -557,57 +567,69 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
         </div>
       </div>
 
-      {/* Search & Filters Bar */}
-      <div className={`p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-3 ${
-        isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
-      }`}>
-        <div className="relative w-full md:w-80">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar por sequência, parceiro..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium outline-none focus:border-blue-500"
-          />
+      {/* Search & Filters Bar (Table and Partner Views) */}
+      {viewMode !== 'chart' && (
+        <div className={`p-4 rounded-2xl border flex flex-col md:flex-row items-center justify-between gap-3 ${
+          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-xs'
+        }`}>
+          <div className="relative w-full md:w-80">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por sequência, parceiro..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as any)}
+              className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
+            >
+              <option value="all">Todos os Status</option>
+              <option value="paid">Pagos</option>
+              <option value="pending">Pendentes</option>
+            </select>
+
+            {/* Partner Filter */}
+            <select
+              value={selectedPartner}
+              onChange={(e) => setSelectedPartner(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
+            >
+              <option value="all">Todos os Parceiros</option>
+              {partnerList.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+
+            {/* Payment Type Filter */}
+            <select
+              value={selectedPaymentType}
+              onChange={(e) => setSelectedPaymentType(e.target.value)}
+              className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
+            >
+              <option value="all">Formas de Pagamento</option>
+              {paymentTypeList.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+            </select>
+          </div>
         </div>
-
-        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
-          {/* Status Filter */}
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value as any)}
-            className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
-          >
-            <option value="all">Todos os Status</option>
-            <option value="paid">Pagos</option>
-            <option value="pending">Pendentes</option>
-          </select>
-
-          {/* Partner Filter */}
-          <select
-            value={selectedPartner}
-            onChange={(e) => setSelectedPartner(e.target.value)}
-            className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
-          >
-            <option value="all">Todos os Parceiros</option>
-            {partnerList.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-
-          {/* Payment Type Filter */}
-          <select
-            value={selectedPaymentType}
-            onChange={(e) => setSelectedPaymentType(e.target.value)}
-            className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
-          >
-            <option value="all">Formas de Pagamento</option>
-            {paymentTypeList.map(pt => <option key={pt} value={pt}>{pt}</option>)}
-          </select>
-        </div>
-      </div>
+      )}
 
       {/* Conditional View Mode Content */}
-      {viewMode === 'partners' ? (
+      {viewMode === 'chart' ? (
+        <CommissionGoalsChart
+          commissions={commissions}
+          tiers={commissionTiers}
+          isDarkMode={isDarkMode}
+          onSelectCollaborator={(name) => {
+            setSelectedPartner(name);
+            setViewMode('table');
+          }}
+        />
+      ) : viewMode === 'partners' ? (
         /* PARTNER SUMMARY CARDS VIEW */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {partnerSummaries.map((summary) => (
