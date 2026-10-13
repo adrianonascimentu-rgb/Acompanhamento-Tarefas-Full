@@ -10,7 +10,7 @@ import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
 import { useUI } from '@/hooks/useUI';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { supabase, handleSupabaseAuthError } from '@/lib/supabase';
+import { supabase, handleSupabaseAuthError, isSupabaseConfigured } from '@/lib/supabase';
 import { getTodayLocalDateString, formatLocalDate } from '@/lib/utils';
 import { getNeighborhoodCoords } from '@/lib/neighborhoodCoords';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -89,11 +89,13 @@ function DeliveriesContent() {
         const saved = localStorage.getItem('agentx_local_deliveries');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0]?.id === 'string' && parsed[0]?.id.length > 10) {
+            return parsed;
+          }
         }
       } catch {}
     }
-    return MOCK_DELIVERIES;
+    return [];
   });
 
   useEffect(() => {
@@ -331,16 +333,16 @@ function DeliveriesContent() {
           const raw = localStorage.getItem('agentx_local_deliveries');
           if (raw) {
             const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) localSaved = parsed;
+            if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0]?.id === 'string' && parsed[0]?.id.length > 10) {
+              localSaved = parsed;
+            }
           }
         } catch {}
 
-        const isConfigured = 
-          process.env.NEXT_PUBLIC_SUPABASE_URL && 
-          process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+        const isConfigured = isSupabaseConfigured && !isMockMode;
 
         if (!isConfigured) {
-          setDeliveries(localSaved.length > 0 ? localSaved : MOCK_DELIVERIES);
+          setDeliveries(localSaved.length > 0 ? localSaved : []);
           setLoading(false);
           return;
         }
@@ -352,7 +354,7 @@ function DeliveriesContent() {
         
         let list: any[] = [];
         if (error) {
-          console.warn('Error fetching deliveries from Supabase, using local/mock:', error.message);
+          console.warn('Error fetching deliveries from Supabase, using local cache:', error.message);
           if (error.code === '42P01' || error.message?.includes('Could not find the table')) {
             setIsMockMode(true);
           }
@@ -362,14 +364,17 @@ function DeliveriesContent() {
               setMissingColumns(prev => [...new Set([...prev, match[1]])]);
             }
           }
-          list = localSaved.length > 0 ? localSaved : MOCK_DELIVERIES;
+          list = localSaved;
         } else {
           const supList = data || [];
-          const mergedMap = new Map();
-          [...localSaved, ...supList].forEach(d => {
-            if (d && d.id) mergedMap.set(d.id, d);
-          });
-          list = mergedMap.size > 0 ? Array.from(mergedMap.values()) : MOCK_DELIVERIES;
+          if (supList.length > 0) {
+            list = supList;
+            try {
+              localStorage.setItem('agentx_local_deliveries', JSON.stringify(supList));
+            } catch {}
+          } else {
+            list = localSaved;
+          }
         }
 
         setDeliveries(list);
@@ -692,10 +697,7 @@ function DeliveriesContent() {
       return;
     }
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co' &&
-        !isMockMode;
+      const isConfigured = isSupabaseConfigured && !isMockMode;
 
       const delivery = deliveries.find(d => d.id === id);
       let updateData: any = { 
@@ -805,10 +807,7 @@ function DeliveriesContent() {
         updateData.finalized_at = new Date().toISOString();
       }
 
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co' &&
-        !isMockMode;
+      const isConfigured = isSupabaseConfigured && !isMockMode;
 
       if (isConfigured) {
         let currentPayload = { ...updateData };
@@ -880,10 +879,7 @@ function DeliveriesContent() {
   const handleEdit = (delivery: any) => {
     // Tenta resolver o driver_id de forma segura
     // Se estivermos em modo real (isConfigured), só aceitamos IDs que existam na lista de motoristas do banco
-    const isConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
-      process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co' &&
-      !isMockMode;
+    const isConfigured = isSupabaseConfigured && !isMockMode;
 
     const matchedDriver = drivers.find(d => d.id === delivery.driver_id || d.name === delivery.driver);
     
@@ -929,9 +925,7 @@ function DeliveriesContent() {
     if (!confirm('Tem certeza que deseja excluir esta entrega?')) return;
     
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = isSupabaseConfigured && !isMockMode;
 
       if (isConfigured) {
         const { error } = await supabase
@@ -999,10 +993,7 @@ function DeliveriesContent() {
     let deliveryData: any = null;
     let supabasePayload: any = null;
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co' &&
-        !isMockMode;
+      const isConfigured = isSupabaseConfigured && !isMockMode;
 
       // Resolve initial coordinates using regional table or geocoding
       let initialLat = -7.1150;
