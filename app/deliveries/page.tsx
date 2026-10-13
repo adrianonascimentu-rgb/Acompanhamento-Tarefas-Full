@@ -73,7 +73,27 @@ function DeliveriesContent() {
   const { showToast, showConfirm } = useUI();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [deliveries, setDeliveries] = useState<any[]>([]);
+  const [deliveries, setDeliveries] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('agentx_local_deliveries');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return MOCK_DELIVERIES;
+  });
+
+  useEffect(() => {
+    if (deliveries.length > 0) {
+      try {
+        localStorage.setItem('agentx_local_deliveries', JSON.stringify(deliveries));
+      } catch {}
+    }
+  }, [deliveries]);
+
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
   const [isMockMode, setIsMockMode] = useState(false);
   const [missingColumns, setMissingColumns] = useState<string[]>([]);
@@ -296,12 +316,21 @@ function DeliveriesContent() {
 
     async function fetchDeliveries() {
       try {
+        let localSaved: any[] = [];
+        try {
+          const raw = localStorage.getItem('agentx_local_deliveries');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) localSaved = parsed;
+          }
+        } catch {}
+
         const isConfigured = 
           process.env.NEXT_PUBLIC_SUPABASE_URL && 
           process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
 
         if (!isConfigured) {
-          setDeliveries(MOCK_DELIVERIES);
+          setDeliveries(localSaved.length > 0 ? localSaved : MOCK_DELIVERIES);
           setLoading(false);
           return;
         }
@@ -311,8 +340,9 @@ function DeliveriesContent() {
           .select('*')
           .order('date', { ascending: false });
         
+        let list: any[] = [];
         if (error) {
-          console.warn('Error fetching deliveries, using mock data:', error.message);
+          console.warn('Error fetching deliveries from Supabase, using local/mock:', error.message);
           if (error.code === '42P01' || error.message?.includes('Could not find the table')) {
             setIsMockMode(true);
           }
@@ -322,39 +352,53 @@ function DeliveriesContent() {
               setMissingColumns(prev => [...new Set([...prev, match[1]])]);
             }
           }
-          setDeliveries(MOCK_DELIVERIES);
+          list = localSaved.length > 0 ? localSaved : MOCK_DELIVERIES;
         } else {
-          const list = data || MOCK_DELIVERIES;
-          setDeliveries(list);
+          const supList = data || [];
+          const mergedMap = new Map();
+          [...localSaved, ...supList].forEach(d => {
+            if (d && d.id) mergedMap.set(d.id, d);
+          });
+          list = mergedMap.size > 0 ? Array.from(mergedMap.values()) : MOCK_DELIVERIES;
+        }
 
-          // Popula dinamicamente vendedores e motoristas com dados reais de todas as entregas
-          if (Array.isArray(list) && list.length > 0) {
-            const rawSellers = Array.from(new Set(list.map((d: any) => d.seller).filter(Boolean)));
-            if (rawSellers.length > 0) {
-              setSellers(prev => {
-                const existingNames = new Set(prev.map(p => p.name?.toLowerCase().trim()));
-                const additional = rawSellers
-                  .filter(name => !existingNames.has((name as string).toLowerCase().trim()))
-                  .map(name => ({ id: name, name }));
-                return [...prev, ...additional];
-              });
-            }
+        setDeliveries(list);
 
-            const rawDrivers = Array.from(new Set(list.map((d: any) => d.driver).filter(Boolean)));
-            if (rawDrivers.length > 0) {
-              setDrivers(prev => {
-                const existingNames = new Set(prev.map(p => p.name?.toLowerCase().trim()));
-                const additional = rawDrivers
-                  .filter(name => !existingNames.has((name as string).toLowerCase().trim()))
-                  .map(name => ({ id: name, name, isProfile: false }));
-                return [...prev, ...additional];
-              });
-            }
+        // Popula dinamicamente vendedores e motoristas com dados reais de todas as entregas
+        if (Array.isArray(list) && list.length > 0) {
+          const rawSellers = Array.from(new Set(list.map((d: any) => d.seller).filter(Boolean)));
+          if (rawSellers.length > 0) {
+            setSellers(prev => {
+              const existingNames = new Set(prev.map(p => p.name?.toLowerCase().trim()));
+              const additional = rawSellers
+                .filter(name => !existingNames.has((name as string).toLowerCase().trim()))
+                .map(name => ({ id: name, name }));
+              return [...prev, ...additional];
+            });
+          }
+
+          const rawDrivers = Array.from(new Set(list.map((d: any) => d.driver).filter(Boolean)));
+          if (rawDrivers.length > 0) {
+            setDrivers(prev => {
+              const existingNames = new Set(prev.map(p => p.name?.toLowerCase().trim()));
+              const additional = rawDrivers
+                .filter(name => !existingNames.has((name as string).toLowerCase().trim()))
+                .map(name => ({ id: name, name, isProfile: false }));
+              return [...prev, ...additional];
+            });
           }
         }
       } catch (err) {
         console.error('Error in fetchDeliveries:', err);
-        setDeliveries(MOCK_DELIVERIES);
+        let localSaved: any[] = [];
+        try {
+          const raw = localStorage.getItem('agentx_local_deliveries');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) localSaved = parsed;
+          }
+        } catch {}
+        setDeliveries(localSaved.length > 0 ? localSaved : MOCK_DELIVERIES);
       } finally {
         setLoading(false);
       }
