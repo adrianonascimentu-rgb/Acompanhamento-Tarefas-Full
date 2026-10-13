@@ -66,7 +66,9 @@ export default function RoutesPage() {
       const cleanName = userName.trim().toLowerCase();
       const firstName = cleanName.split(' ')[0];
       const isAdminOrManagerOrCaixa = 
-        userRole.includes('admin') || 
+        userRole === 'admin' || 
+        userRole === 'administrador' || 
+        userRole.startsWith('admin ') || 
         userRole.includes('gerente') || 
         userRole.includes('supervisor') || 
         userRole.includes('estoque') ||

@@ -25,12 +25,21 @@ export async function POST(req: NextRequest) {
     if (!auth.authorized) return auth.response;
 
     const userRole = (auth.user?.role || auth.user?.type || '').toLowerCase();
+    const isAdministrativeStaff = 
+      userRole.includes('auxiliar') || 
+      userRole.includes('assistente') || 
+      userRole.includes('administrativ') ||
+      (auth.user?.name || '').toLowerCase().includes('adriana') ||
+      (auth.user?.email || '').toLowerCase().includes('adriana');
+
     const isAllowed = 
-      auth.user?.isAdmin || 
-      userRole.includes('admin') || 
-      userRole.includes('administrador') || 
-      userRole.includes('gerente') || 
-      userRole.includes('supervisor');
+      !isAdministrativeStaff && (
+        auth.user?.isAdmin || 
+        userRole === 'admin' || 
+        userRole === 'administrador' || 
+        userRole.includes('gerente') || 
+        userRole.includes('supervisor')
+      );
 
     if (!isAllowed) {
       return NextResponse.json(

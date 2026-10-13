@@ -102,7 +102,7 @@ VALUES
 ('33333333-3333-3333-3333-333333333333', 'Izabella', 'Estoque', 'user', 'Setor de Estoque', 'https://picsum.photos/seed/izabella/200', 'izabella@empresa.com', '+55 (11) 99999-3333', '123456', 12, '100%', 1),
 ('44444444-4444-4444-4444-444444444444', 'Messias', 'Entregas e Estoque', 'user', 'Logística', 'https://picsum.photos/seed/messias/200', 'messias@empresa.com', '+55 (11) 99999-4444', '123456', 312, '99%', 8),
 ('55555555-5555-5555-5555-555555555555', 'Roberto', 'Entregas e Estoque', 'user', 'Logística', 'https://picsum.photos/seed/roberto/200', 'roberto@empresa.com', '+55 (11) 99999-5555', '123456', 89, '92%', 4),
-('66666666-6666-6666-6666-666666666666', 'Adriana', 'Caixa e Auxiliar Administrativo', 'user', 'Escritório Central', 'https://picsum.photos/seed/adriana/200', 'adriana@empresa.com', '+55 (11) 99999-6666', '123456', 245, '100%', 3),
+('66666666-6666-6666-6666-666666666666', 'Adriana', 'user', 'user', 'Escritório Central', 'https://picsum.photos/seed/adriana/200', 'adriana@empresa.com', '+55 (11) 99999-6666', '123456', 245, '100%', 3),
 ('88888888-8888-8888-8888-888888888888', 'Carlos Vendedor', 'Consultor de Vendas', 'vendedor', 'Campo', 'https://picsum.photos/seed/carlos/200', 'carlos@empresa.com', '+55 (11) 99999-8888', '123456', 150, '95%', 10),
 ('99999999-9999-9999-9999-999999999999', 'Mariana Vendas', 'Consultora de Vendas', 'vendedor', 'Campo', 'https://picsum.photos/seed/mariana/200', 'mariana@empresa.com', '+55 (11) 99999-9999', '123456', 200, '98%', 15)
 ON CONFLICT (email) DO UPDATE SET

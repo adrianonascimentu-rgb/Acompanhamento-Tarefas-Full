@@ -84,12 +84,20 @@ export default function PdfUploadModal({
 
   // Check role authorization: somente administrador, gerente e supervisor podem enviar o arquivo
   const normalizedRole = (userRole || '').toLowerCase();
+  const isAdministrativeStaff = 
+    normalizedRole.includes('auxiliar') || 
+    normalizedRole.includes('assistente') || 
+    normalizedRole.includes('administrativ') ||
+    normalizedRole.includes('adriana');
+
   const isAuthorized = 
-    isAdmin || 
-    normalizedRole.includes('admin') || 
-    normalizedRole.includes('administrador') || 
-    normalizedRole.includes('gerente') || 
-    normalizedRole.includes('supervisor');
+    !isAdministrativeStaff && (
+      isAdmin || 
+      normalizedRole === 'admin' || 
+      normalizedRole === 'administrador' || 
+      normalizedRole.includes('gerente') || 
+      normalizedRole.includes('supervisor')
+    );
 
   // Compute diffs between extracted products and current catalog
   const diffs: ProductDiff[] = useMemo(() => {

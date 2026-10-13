@@ -22,7 +22,7 @@ export default function CreateTaskForm() {
   const preDescription = searchParams?.get('description');
   const preTaskType = searchParams?.get('taskType');
   const originDemandId = searchParams?.get('origin_demand_id');
-  const { isAdmin, user, isAuthenticated, isLoading: roleLoading } = useRole();
+  const { isAdmin, isGerente, isSupervisor, user, isAuthenticated, isLoading: roleLoading } = useRole();
   const { isDarkMode } = useTheme();
   const { showToast } = useUI();
   const { createNotification } = useNotifications();
@@ -227,7 +227,22 @@ export default function CreateTaskForm() {
     try {
       // 1. Create the task with primary collaborator_id (for backward compatibility)
       const roleStr = (user?.role || user?.type || '').toLowerCase();
-      const canCreateFixed = isAdmin || roleStr.includes('admin') || roleStr.includes('gerente') || roleStr.includes('supervisor') || roleStr.includes('gestor');
+      const isAdministrativeStaff = 
+        roleStr.includes('auxiliar') || 
+        roleStr.includes('assistente') || 
+        roleStr.includes('administrativ') ||
+        (user?.name || '').toLowerCase().includes('adriana') ||
+        (user?.email || '').toLowerCase().includes('adriana');
+
+      const canCreateFixed = !isAdministrativeStaff && Boolean(
+        isAdmin || 
+        isGerente || 
+        isSupervisor || 
+        roleStr === 'admin' || 
+        roleStr.startsWith('admin ') || 
+        roleStr.includes('gerente') || 
+        roleStr.includes('supervisor')
+      );
 
       const taskData: any = {
         title: formData.title,
@@ -774,7 +789,22 @@ CREATE POLICY "Allow all on task_assignees" ON task_assignees FOR ALL USING (tru
           {/* Tarefa Fixa / Permanente Option for Admin, Manager, Supervisor */}
           {(() => {
             const roleStr = (user?.role || user?.type || '').toLowerCase();
-            const canCreateFixed = isAdmin || roleStr.includes('admin') || roleStr.includes('gerente') || roleStr.includes('supervisor') || roleStr.includes('gestor');
+            const isAdministrativeStaff = 
+              roleStr.includes('auxiliar') || 
+              roleStr.includes('assistente') || 
+              roleStr.includes('administrativ') ||
+              (user?.name || '').toLowerCase().includes('adriana') ||
+              (user?.email || '').toLowerCase().includes('adriana');
+
+            const canCreateFixed = !isAdministrativeStaff && Boolean(
+              isAdmin || 
+              isGerente || 
+              isSupervisor || 
+              roleStr === 'admin' || 
+              roleStr.startsWith('admin ') || 
+              roleStr.includes('gerente') || 
+              roleStr.includes('supervisor')
+            );
             if (!canCreateFixed) return null;
             return (
               <div className="flex items-center justify-between p-4 bg-amber-50/50 border border-amber-200 dark:border-amber-900/40 rounded-2xl">

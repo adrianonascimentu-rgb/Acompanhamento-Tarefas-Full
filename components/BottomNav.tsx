@@ -135,7 +135,7 @@ export function BottomNav() {
     { href: '/reports', label: 'Relatórios', icon: BarChart3, show: canAccessReports },
     { href: '/collaborators', label: 'Equipe', icon: Users, show: isAdmin },
     { href: '/painel-ao-vivo', label: 'Painel Ao Vivo', icon: Radio, show: isAdmin },
-    { href: '/admin/commissions', label: 'Comissionados', icon: DollarSign, show: true },
+    { href: '/admin/commissions', label: 'Comissionados', icon: DollarSign, show: isAdmin },
   ].filter(item => item.show);
 
   return (

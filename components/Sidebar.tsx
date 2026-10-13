@@ -118,10 +118,12 @@ export function Sidebar() {
     {
       title: 'Administração',
       items: [
-        ...(isAdmin ? [{ href: '/painel-ao-vivo', icon: Radio, label: 'Painel Ao Vivo', active: pathname?.startsWith('/painel-ao-vivo') || pathname?.startsWith('/admin/dashboard') }] : []),
-        ...(isAdmin ? [{ href: '/collaborators', icon: Users, label: 'Equipe', active: pathname?.startsWith('/collaborators') }] : []),
-        { href: '/admin/commissions', icon: DollarSign, label: 'Comissionados', active: pathname?.startsWith('/admin/commissions') },
-        { href: '/admin/settings', icon: Settings, label: 'Configurações', active: pathname?.startsWith('/admin/settings') },
+        ...(isAdmin ? [
+          { href: '/painel-ao-vivo', icon: Radio, label: 'Painel Ao Vivo', active: pathname?.startsWith('/painel-ao-vivo') || pathname?.startsWith('/admin/dashboard') },
+          { href: '/collaborators', icon: Users, label: 'Equipe', active: pathname?.startsWith('/collaborators') },
+          { href: '/admin/commissions', icon: DollarSign, label: 'Comissionados', active: pathname?.startsWith('/admin/commissions') },
+          { href: '/admin/settings', icon: Settings, label: 'Configurações', active: pathname?.startsWith('/admin/settings') },
+        ] : []),
       ]
     }
   ].filter(section => section.items.length > 0);

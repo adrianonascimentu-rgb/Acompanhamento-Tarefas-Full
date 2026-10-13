@@ -74,6 +74,7 @@ type TransferStatus = 'Solicitado' | 'Em separação' | 'Separado' | 'Enviado' |
 interface Collaborator {
   id: string;
   name: string;
+  email?: string;
   type?: string;
   role?: string;
   status?: string;
@@ -825,18 +826,26 @@ export default function TransfersPage() {
     // Permissão especial de visualização:
     // "Somente o administrador, gerente e supervisor deve visualizar todas as transferencias de todos os usuários."
     const userRoleStr = (user?.type || user?.role || currentRole || '').toLowerCase().trim();
+    const isAdministrativeStaff = 
+      userRoleStr.includes('auxiliar') || 
+      userRoleStr.includes('assistente') || 
+      userRoleStr.includes('administrativ') ||
+      (user?.name || '').toLowerCase().includes('adriana') ||
+      (user?.email || '').toLowerCase().includes('adriana');
+
     const canViewAllTransfers = Boolean(
-      isAdmin || 
-      userRoleStr === 'admin' || 
-      userRoleStr === 'administrador' || 
-      userRoleStr.includes('admin') || 
-      userRoleStr === 'gerente' || 
-      userRoleStr === 'gerência' || 
-      userRoleStr === 'gerencia' || 
-      userRoleStr.includes('gerent') || 
-      userRoleStr === 'supervisor' || 
-      userRoleStr === 'supervisora' || 
-      userRoleStr.includes('supervisor')
+      !isAdministrativeStaff && (
+        isAdmin || 
+        userRoleStr === 'admin' || 
+        userRoleStr === 'administrador' || 
+        userRoleStr === 'gerente' || 
+        userRoleStr === 'gerência' || 
+        userRoleStr === 'gerencia' || 
+        userRoleStr.includes('gerent') || 
+        userRoleStr === 'supervisor' || 
+        userRoleStr === 'supervisora' || 
+        userRoleStr.includes('supervisor')
+      )
     );
 
     // Regra estrita de visibilidade:
@@ -924,14 +933,22 @@ export default function TransfersPage() {
         role.includes('conferent');
 
       // 2. Administrador
+      const isAdministrativeCollab = 
+        role.includes('auxiliar') || 
+        role.includes('assistente') || 
+        role.includes('administrativ') ||
+        (c.name || '').toLowerCase().includes('adriana') ||
+        (c.email || '').toLowerCase().includes('adriana');
+
       const isAdminCollab = 
-        type === 'admin' || 
-        type === 'administrador' || 
-        role === 'admin' ||
-        role === 'administrador' ||
-        role.includes('admin') || 
-        role.includes('administrador') || 
-        role.includes('administradora');
+        !isAdministrativeCollab && (
+          type === 'admin' || 
+          type === 'administrador' || 
+          role === 'admin' ||
+          role === 'administrador' ||
+          role.startsWith('admin ') || 
+          role.endsWith(' admin')
+        );
 
       // 3. Gerência / Gerente
       const isGerencia = 

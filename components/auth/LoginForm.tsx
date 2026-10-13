@@ -170,12 +170,24 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         } catch {}
       }
 
+      const inputLower = cleanInput.toLowerCase().trim();
+      const isInputAdmin = 
+        !inputLower.includes('auxiliar') && 
+        !inputLower.includes('assistente') && 
+        !inputLower.includes('administrativ') && 
+        !inputLower.includes('adriana') && 
+        !targetEmail.includes('adriana') && (
+          inputLower === 'admin' || 
+          inputLower === 'administrador' || 
+          targetEmail.includes('adrianonascimentu')
+        );
+
       const finalUser = profileUser || {
         id: authUser?.id || '77777777-7777-7777-7777-777777777777',
-        name: authUser?.user_metadata?.name || (cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1)) || 'Adriano Nascimento',
+        name: authUser?.user_metadata?.name || (cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1)) || 'Colaborador',
         email: targetEmail,
-        type: (cleanInput.toLowerCase().includes('admin') || targetEmail.includes('adrianonascimentu')) ? 'admin' : 'user',
-        role: (cleanInput.toLowerCase().includes('admin') || targetEmail.includes('adrianonascimentu')) ? 'Administrador Geral' : 'Colaborador',
+        type: isInputAdmin ? 'admin' : 'user',
+        role: isInputAdmin ? 'Administrador Geral' : (inputLower.includes('adriana') ? 'user' : 'Colaborador'),
         status: 'Ativo'
       };
 

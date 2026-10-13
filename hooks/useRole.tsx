@@ -161,14 +161,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
         const normalizedRoleName = normalizeRole(rawRoleTitle);
 
+        const isUserAdriana = resolvedName.toLowerCase().includes('adriana') || (authUser.email || '').toLowerCase().includes('adriana');
+
         const enrichedUser = { 
           ...authUser, 
           ...(profile || {}),
           id: authUser.id,
           name: resolvedName,
-          type: profile?.type || (normalizedRoleName === 'admin' ? 'admin' : 'user'),
-          role: rawRoleTitle,
-          normalizedRole: normalizedRoleName
+          type: isUserAdriana ? 'user' : (profile?.type || (normalizedRoleName === 'admin' ? 'admin' : 'user')),
+          role: isUserAdriana ? 'user' : rawRoleTitle,
+          normalizedRole: isUserAdriana ? 'user' : normalizedRoleName
         };
 
         setUser(enrichedUser);
@@ -260,13 +262,14 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       );
 
       const normalizedRoleName = normalizeRole(rawRoleTitle);
+      const isUserAdriana = resolvedName.toLowerCase().includes('adriana') || (finalData.email || '').toLowerCase().includes('adriana');
 
       const enrichedUser = {
         ...finalData,
         name: resolvedName,
-        type: finalData.type || (normalizedRoleName === 'admin' ? 'admin' : 'user'),
-        role: rawRoleTitle,
-        normalizedRole: normalizedRoleName
+        type: isUserAdriana ? 'user' : (finalData.type || (normalizedRoleName === 'admin' ? 'admin' : 'user')),
+        role: isUserAdriana ? 'user' : rawRoleTitle,
+        normalizedRole: isUserAdriana ? 'user' : normalizedRoleName
       };
       setUser(enrichedUser);
       try {

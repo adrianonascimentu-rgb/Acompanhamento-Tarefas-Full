@@ -83,16 +83,25 @@ export default function ProductsCatalogPage() {
   } | null>(null);
 
   const currentUserRole = (user?.role || user?.type || '').toLowerCase();
+  const isAdministrativeStaff = 
+    currentUserRole.includes('auxiliar') || 
+    currentUserRole.includes('assistente') || 
+    currentUserRole.includes('administrativ') ||
+    (user?.name || '').toLowerCase().includes('adriana') ||
+    (user?.email || '').toLowerCase().includes('adriana');
+
   // Regra de Negócio: Somente Administrador, Gerente e Supervisor podem enviar o arquivo para atualização dos produtos
   const canUploadCatalog = 
-    Boolean(roleCanUpload) ||
-    isAdmin || 
-    isGerente || 
-    isSupervisor ||
-    currentUserRole.includes('admin') || 
-    currentUserRole.includes('administrador') || 
-    currentUserRole.includes('gerente') || 
-    currentUserRole.includes('supervisor');
+    !isAdministrativeStaff && (
+      Boolean(roleCanUpload) ||
+      isAdmin || 
+      isGerente || 
+      isSupervisor ||
+      currentUserRole === 'admin' || 
+      currentUserRole === 'administrador' || 
+      currentUserRole.includes('gerente') || 
+      currentUserRole.includes('supervisor')
+    );
 
   // Carrega produtos: localStorage para render instantâneo + Supabase system_settings para sincronização entre todos os colaboradores
   useEffect(() => {

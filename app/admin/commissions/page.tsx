@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { ArrowLeft, DollarSign, Settings } from 'lucide-react';
+import { ArrowLeft, DollarSign, Settings, Lock } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
 import CommissionsManager from '@/components/admin/CommissionsManager';
@@ -12,6 +12,44 @@ import { BottomNav } from '@/components/BottomNav';
 export default function AdminCommissionsPage() {
   const { isDarkMode } = useTheme();
   const { isAdmin, user, isLoading } = useRole();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
+        <div className="size-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center p-4 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
+        <div className={`max-w-md w-full p-8 rounded-3xl border shadow-xl text-center space-y-5 ${
+          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+          <div className="size-16 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto border border-amber-500/20">
+            <Lock size={30} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold">Acesso Restrito a Administradores</h2>
+            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+              O módulo de controle de comissionados requer permissão de administrador.
+            </p>
+          </div>
+          <div className="pt-2 flex flex-col gap-2.5">
+            <Link
+              href="/"
+              className={`w-full py-3 px-4 rounded-xl border text-xs font-bold transition-all text-center ${
+                isDarkMode ? 'border-slate-800 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+              }`}
+            >
+              Voltar ao Início
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen flex ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>

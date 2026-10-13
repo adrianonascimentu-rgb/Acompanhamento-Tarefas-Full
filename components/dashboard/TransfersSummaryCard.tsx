@@ -130,18 +130,26 @@ export function TransfersSummaryCard({ isDarkMode }: TransfersSummaryCardProps) 
 
   // Permissão especial: Apenas Administrador, Gerente e Supervisor visualizam todas as solicitações
   const userRoleStr = (user?.type || user?.role || currentRole || '').toLowerCase().trim();
+  const isAdministrativeStaff = 
+    userRoleStr.includes('auxiliar') || 
+    userRoleStr.includes('assistente') || 
+    userRoleStr.includes('administrativ') ||
+    (user?.name || '').toLowerCase().includes('adriana') ||
+    (user?.email || '').toLowerCase().includes('adriana');
+
   const canViewAllTransfers = Boolean(
-    isAdmin || 
-    userRoleStr === 'admin' || 
-    userRoleStr === 'administrador' || 
-    userRoleStr.includes('admin') || 
-    userRoleStr === 'gerente' || 
-    userRoleStr === 'gerência' || 
-    userRoleStr === 'gerencia' || 
-    userRoleStr.includes('gerent') || 
-    userRoleStr === 'supervisor' || 
-    userRoleStr === 'supervisora' || 
-    userRoleStr.includes('supervisor')
+    !isAdministrativeStaff && (
+      isAdmin || 
+      userRoleStr === 'admin' || 
+      userRoleStr === 'administrador' || 
+      userRoleStr === 'gerente' || 
+      userRoleStr === 'gerência' || 
+      userRoleStr === 'gerencia' || 
+      userRoleStr.includes('gerent') || 
+      userRoleStr === 'supervisor' || 
+      userRoleStr === 'supervisora' || 
+      userRoleStr.includes('supervisor')
+    )
   );
 
   // Filtragem: Totais e solicitações individuais por colaborador vs consolidado para gestores
