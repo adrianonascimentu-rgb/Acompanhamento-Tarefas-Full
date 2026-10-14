@@ -102,6 +102,7 @@ function DeliveriesContent() {
     if (deliveries.length > 0) {
       try {
         localStorage.setItem('agentx_local_deliveries', JSON.stringify(deliveries));
+        window.dispatchEvent(new Event('deliveries-updated'));
       } catch {}
     }
   }, [deliveries]);

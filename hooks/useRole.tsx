@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { supabase } from '@/lib/supabase';
+import { supabase, handleSupabaseAuthError } from '@/lib/supabase';
 
 export type Role = 'admin' | 'vendedor' | 'user' | 'gerente' | 'estoque' | 'entregador' | 'supervisor' | 'caixa';
 
@@ -105,6 +105,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       
       if (error) {
         if (error.code === 'PGRST116') return;
+        if (error.code === 'PGRST303' || error.message?.includes('JWT expired') || error.message?.includes('jwt expired')) {
+          await handleSupabaseAuthError(error);
+          return;
+        }
         console.warn('Notice fetching permissions:', error.message);
         return;
       }
@@ -116,6 +120,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         }));
       }
     } catch (err: any) {
+      if (err?.code === 'PGRST303' || err?.message?.includes('JWT expired') || err?.message?.includes('jwt expired')) {
+        await handleSupabaseAuthError(err);
+        return;
+      }
       console.warn('Notice fetching permissions:', err?.message || err);
     }
   };

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight } from 'lucide-react';
+import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -25,6 +25,7 @@ import { useUI } from '@/hooks/useUI';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase, handleSupabaseAuthError, isSupabaseConfigured } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
+import { PermanentTasksNotepadGrid } from '@/components/dashboard/PermanentTasksNotepadGrid';
 
 const stats = [
   { id: 'total', label: 'Total', value: '48', change: '+5%', icon: ClipboardList, color: 'text-blue-600', trend: 'up' },
@@ -58,6 +59,7 @@ export default function Dashboard() {
   const { showToast, showConfirm, showSettingsModal } = useUI();
   const [isDemandModalOpen, setIsDemandModalOpen] = useState(false);
   const [currentDateString, setCurrentDateString] = useState<string>('');
+  const [dashboardMode, setDashboardMode] = useState<'permanent_notes' | 'full'>('permanent_notes');
 
   useEffect(() => {
     try {
@@ -850,6 +852,41 @@ export default function Dashboard() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-6 space-y-6 pb-28">
+        {/* Dashboard View Switcher: Permanent Notes vs Full Metrics */}
+        <div className="flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-200/60 dark:bg-slate-900 border border-slate-300/60 dark:border-slate-800">
+          <button
+            onClick={() => setDashboardMode('permanent_notes')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              dashboardMode === 'permanent_notes'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Pin size={15} className="rotate-12" />
+            <span>📌 Bloquinhos de Anotações (Tarefas Permanentes)</span>
+          </button>
+          <button
+            onClick={() => setDashboardMode('full')}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              dashboardMode === 'full'
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <LayoutGrid size={15} />
+            <span>📊 Painel Geral de Métricas</span>
+          </button>
+        </div>
+
+        {dashboardMode === 'permanent_notes' ? (
+          <PermanentTasksNotepadGrid 
+            isDarkMode={isDarkMode} 
+            userId={user?.id} 
+            isAdmin={isAdmin} 
+            role={role}
+          />
+        ) : (
+          <>
         {!isSupabaseConfigured && (
           <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl text-amber-800 dark:text-amber-300 text-xs">
             <p className="font-semibold mb-0.5">Atenção: Supabase não configurado</p>
@@ -1425,6 +1462,8 @@ export default function Dashboard() {
               </div>
             )}
           </section>
+        )}
+        </>
         )}
       </main>
 

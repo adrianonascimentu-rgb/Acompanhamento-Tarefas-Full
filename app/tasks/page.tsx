@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ArrowLeft, Search, User, Send, Calendar, ClipboardList, Users, Folder, Settings, X, LayoutGrid, List as ListIcon, Edit2, Trash2, MoreVertical, Bell, BellOff, CheckCircle2, ChevronDown, Flag, Plus, Columns as KanbanIcon, Clock, Filter, AlertCircle, Sun, Moon, MessageSquare, Package, HelpCircle, ListChecks, History, Link as LinkIcon, MapPin, Navigation } from 'lucide-react';
+import { ArrowLeft, Search, User, Send, Calendar, ClipboardList, Users, Folder, Settings, X, LayoutGrid, List as ListIcon, Edit2, Trash2, MoreVertical, Bell, BellOff, CheckCircle2, ChevronDown, ChevronUp, Flag, Plus, Columns as KanbanIcon, Clock, Filter, AlertCircle, Sun, Moon, MessageSquare, Package, HelpCircle, ListChecks, History, Link as LinkIcon, MapPin, Navigation, Pin, Repeat } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
@@ -163,7 +163,7 @@ const MOCK_TASKS = [
     assignees: [{ name: 'Carlos' }],
     collaborator_name: 'Carlos',
     category: 'Financeiro',
-    task_type: 'Rotina'
+    task_type: 'Permanente'
   },
   {
     id: 102,
@@ -179,7 +179,7 @@ const MOCK_TASKS = [
     assignees: [{ name: 'Roberto' }],
     collaborator_name: 'Roberto',
     category: 'Logística',
-    task_type: 'Rotina'
+    task_type: 'Permanente'
   },
   {
     id: 103,
@@ -195,7 +195,39 @@ const MOCK_TASKS = [
     assignees: [{ name: 'Alex' }],
     collaborator_name: 'Alex',
     category: 'TI',
-    task_type: 'Rotina'
+    task_type: 'Permanente'
+  },
+  {
+    id: 104,
+    title: 'Revisão de Qualidade do Atendimento',
+    description: 'Auditoria de chamados e pesquisas de satisfação dos clientes.',
+    due: 'Hoje',
+    due_date: new Date().toISOString().split('T')[0],
+    priority: 'Alta',
+    progress: 75,
+    status: 'Revisão',
+    is_fixed: true,
+    is_permanent: true,
+    assignees: [{ name: 'Mariana' }],
+    collaborator_name: 'Mariana',
+    category: 'Qualidade',
+    task_type: 'Permanente'
+  },
+  {
+    id: 105,
+    title: 'Manutenção Preventiva Semanal da Frota',
+    description: 'Verificação de óleos, freios e pneus dos caminhões de entrega.',
+    due: 'Ontem',
+    due_date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    priority: 'Urgente',
+    progress: 25,
+    status: 'Atrasada',
+    is_fixed: true,
+    is_permanent: true,
+    assignees: [{ name: 'Carlos' }],
+    collaborator_name: 'Carlos',
+    category: 'Manutenção',
+    task_type: 'Permanente'
   }
 ];
 
@@ -320,7 +352,8 @@ function TasksContent() {
   const [statusFilter, setStatusFilter] = useState('Todas');
   const [dateFilter, setDateFilter] = useState('Todas as Datas');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'assigned' | 'demands' | 'history'>('mine');
+  const [activeTab, setActiveTab] = useState<'all' | 'mine' | 'assigned' | 'permanent' | 'demands' | 'history'>('mine');
+  const [showPermanentSection, setShowPermanentSection] = useState(true);
 
   useEffect(() => {
     if (!roleLoading) {
@@ -777,6 +810,9 @@ function TasksContent() {
       } else if (effectiveTab === 'assigned') {
         // Tasks I created for others
         query = query.eq('created_by', user.id);
+      } else if (effectiveTab === 'permanent') {
+        // Permanent and fixed routine tasks
+        query = query.eq('task_type', 'Permanente');
       } else if (effectiveTab === 'history') {
         // Completed tasks (still limited by security filter)
         query = query.eq('status', 'Concluída');
@@ -1583,6 +1619,11 @@ function TasksContent() {
     if (completedTaskIds.includes(t.id.toString())) return true;
     if (showNearby) {
       return t.status !== 'Concluída';
+    }
+    if (activeTab === 'permanent') {
+      return t.task_type === 'Permanente';
+    } else if (activeTab === 'mine' || activeTab === 'all' || activeTab === 'assigned') {
+      return t.task_type !== 'Permanente';
     }
     return true; // Most filtering is now server-side
   });
@@ -2640,6 +2681,25 @@ function TasksContent() {
                 </button>
               )}
               <button
+                onClick={() => setActiveTab('permanent')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                  activeTab === 'permanent' 
+                    ? (isDarkMode ? 'bg-purple-950/90 text-purple-300 ring-1 ring-purple-500/50 shadow-xs' : 'bg-white text-purple-700 ring-1 ring-purple-400/50 shadow-xs') 
+                    : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+                }`}
+              >
+                <Pin size={13} className="text-purple-500 shrink-0" />
+                Tarefas Permanentes
+                {(() => {
+                  const pCount = tasks.filter(t => t.task_type === 'Permanente').length;
+                  return pCount > 0 ? (
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                      {pCount}
+                    </span>
+                  ) : null;
+                })()}
+              </button>
+              <button
                 onClick={() => setActiveTab('history')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
                   activeTab === 'history' 
@@ -2994,71 +3054,202 @@ function TasksContent() {
           renderDemands()
         ) : (
           <div className="p-4">
-            {/* Administrador Desktop View: Lembretes de Tarefas Fixas / Permanentes */}
-            {isAdmin && (() => {
-              const permanentTasks = tasks.filter(t => t.is_fixed === true || t.is_permanent === true);
-              if (permanentTasks.length === 0) return null;
+            {/* Seção de Tarefas Permanentes / Fixas com Cores Distintas por Status */}
+            {(() => {
+              const permanentTasks = tasks.filter(t => t.task_type === 'Permanente');
+              if (activeTab !== 'permanent') return null;
+
+              // Stat Counts
+              const pendingCount = permanentTasks.filter(t => {
+                const s = (t.status || '').toLowerCase();
+                return s.includes('pendent') || s.includes('não') || s.includes('fazer') || (s === '' && !t.progress);
+              }).length;
+              const inProgressCount = permanentTasks.filter(t => (t.status || '').toLowerCase().includes('andamento') || (t.progress > 0 && t.progress < 100)).length;
+              const reviewCount = permanentTasks.filter(t => (t.status || '').toLowerCase().includes('revis')).length;
+              const completedCount = permanentTasks.filter(t => (t.status || '').toLowerCase().includes('conclu') || t.progress === 100).length;
+              const overdueCount = permanentTasks.filter(t => (t.status || '').toLowerCase().includes('atrasa') || (t.status || '').toLowerCase().includes('venci')).length;
+
+              const getStatusStyle = (statusStr?: string, progressVal?: number) => {
+                const s = (statusStr || '').toLowerCase();
+                const p = Number(progressVal) || 0;
+                if (s.includes('conclu') || p === 100) {
+                  return {
+                    label: 'Concluída',
+                    badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40 font-bold',
+                    border: 'border-l-4 border-l-emerald-500',
+                    dot: 'bg-emerald-500'
+                  };
+                }
+                if (s.includes('revis')) {
+                  return {
+                    label: 'Em Revisão',
+                    badge: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40 font-bold',
+                    border: 'border-l-4 border-l-purple-500',
+                    dot: 'bg-purple-500'
+                  };
+                }
+                if (s.includes('andamento') || (p > 0 && p < 100)) {
+                  return {
+                    label: 'Em Andamento',
+                    badge: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 font-bold',
+                    border: 'border-l-4 border-l-amber-500',
+                    dot: 'bg-amber-500 animate-pulse'
+                  };
+                }
+                if (s.includes('atrasa') || s.includes('venci')) {
+                  return {
+                    label: 'Atrasada',
+                    badge: 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40 font-bold',
+                    border: 'border-l-4 border-l-rose-500',
+                    dot: 'bg-rose-500 animate-ping'
+                  };
+                }
+                return {
+                  label: 'Pendente',
+                  badge: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/40 font-bold',
+                  border: 'border-l-4 border-l-sky-500',
+                  dot: 'bg-sky-500'
+                };
+              };
+
               return (
-                <div className="hidden md:block mb-6 p-4 rounded-2xl border bg-gradient-to-r from-amber-500/10 via-purple-500/5 to-blue-500/10 border-amber-500/20 shadow-xs">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">📌</span>
-                      <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
-                        Lembretes de Tarefas Fixas / Permanentes dos Usuários
-                      </h3>
+                <div className="mb-6 p-4 sm:p-5 rounded-2xl border bg-gradient-to-br from-purple-500/10 via-slate-900/5 to-indigo-500/10 border-purple-500/30 shadow-xs">
+                  {/* Top Title Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-300">
+                        <Pin size={18} />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-wide text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                          Tarefas Fixas e Permanentes
+                          <span className="text-[10px] normal-case font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                            {permanentTasks.length} {permanentTasks.length === 1 ? 'rotina ativa' : 'rotinas ativas'}
+                          </span>
+                        </h3>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Rotinas recorrentes com acompanhamento de status em tempo real por cores
+                        </p>
+                      </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
-                      {permanentTasks.length} fixas ativas
-                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowPermanentSection(!showPermanentSection)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300/60 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {showPermanentSection ? (
+                          <>Recolher <ChevronUp size={14} /></>
+                        ) : (
+                          <>Expandir <ChevronDown size={14} /></>
+                        )}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                    {permanentTasks.map(t => {
-                      const statusStr = (t.status || '').toLowerCase();
-                      const progressNum = Number(t.progress) || 0;
-                      
-                      const isCompleted = statusStr.includes('conclu') || progressNum === 100;
-                      const isInProgress = statusStr.includes('andamento') || (progressNum > 0 && progressNum < 100);
-                      const isNotStarted = !isCompleted && !isInProgress;
+                  {/* Status Indicator Summary Bar */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+                    <div className="flex items-center justify-between p-2 rounded-xl border bg-sky-500/10 border-sky-500/25 text-sky-800 dark:text-sky-200">
+                      <span className="text-[11px] font-bold flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-sky-500" />
+                        Pendente
+                      </span>
+                      <span className="text-xs font-black">{pendingCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-xl border bg-amber-500/10 border-amber-500/25 text-amber-800 dark:text-amber-200">
+                      <span className="text-[11px] font-bold flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
+                        Em Andamento
+                      </span>
+                      <span className="text-xs font-black">{inProgressCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-xl border bg-purple-500/10 border-purple-500/25 text-purple-800 dark:text-purple-200">
+                      <span className="text-[11px] font-bold flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-purple-500" />
+                        Em Revisão
+                      </span>
+                      <span className="text-xs font-black">{reviewCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-xl border bg-emerald-500/10 border-emerald-500/25 text-emerald-800 dark:text-emerald-200">
+                      <span className="text-[11px] font-bold flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-emerald-500" />
+                        Concluída
+                      </span>
+                      <span className="text-xs font-black">{completedCount}</span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 rounded-xl border bg-rose-500/10 border-rose-500/25 text-rose-800 dark:text-rose-200 col-span-2 sm:col-span-1">
+                      <span className="text-[11px] font-bold flex items-center gap-1.5">
+                        <span className="size-2 rounded-full bg-rose-500 animate-ping" />
+                        Atrasada
+                      </span>
+                      <span className="text-xs font-black">{overdueCount}</span>
+                    </div>
+                  </div>
 
-                      const badgeColor = isCompleted
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-                        : isInProgress
-                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
-                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30';
+                  {/* Cards Grid */}
+                  {showPermanentSection && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {permanentTasks.map(t => {
+                        const styleConfig = getStatusStyle(t.status, t.progress);
+                        return (
+                          <div
+                            key={`permanent-${t.id}`}
+                            className={`p-3.5 rounded-xl border flex flex-col justify-between gap-3 shadow-xs relative overflow-hidden transition-all hover:shadow-md ${styleConfig.border} ${
+                              isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2 mb-1.5">
+                                <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate" title={t.title}>
+                                  {t.title}
+                                </span>
+                                <div className="relative shrink-0">
+                                  <select
+                                    value={t.status || 'Pendente'}
+                                    onChange={(e) => handleStatusUpdate(t.id, e.target.value)}
+                                    className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border cursor-pointer outline-none appearance-none pr-3 ${styleConfig.badge}`}
+                                  >
+                                    <option value="Pendente" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🔵 Pendente</option>
+                                    <option value="Em Andamento" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟡 Em Andamento</option>
+                                    <option value="Revisão" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟣 Em Revisão</option>
+                                    <option value="Concluída" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟢 Concluída</option>
+                                  </select>
+                                </div>
+                              </div>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mb-2">
+                                {t.description || 'Tarefa recorrente de rotina.'}
+                              </p>
 
-                      const statusLabel = isCompleted ? 'Concluída' : isInProgress ? 'Em Andamento' : 'Não Iniciada';
+                              {/* Progress bar */}
+                              <div className="space-y-1">
+                                <div className="flex justify-between items-center text-[9px] font-semibold text-slate-400">
+                                  <span>Progresso</span>
+                                  <span>{t.progress || 0}%</span>
+                                </div>
+                                <div className="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all duration-300 ${
+                                      t.progress === 100 ? 'bg-emerald-500' : 'bg-purple-500'
+                                    }`} 
+                                    style={{ width: `${t.progress || 0}%` }} 
+                                  />
+                                </div>
+                              </div>
+                            </div>
 
-                      return (
-                        <div key={t.id} className={`p-3 rounded-xl border flex flex-col justify-between gap-2 shadow-xs ${
-                          isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-                        }`}>
-                          <div>
-                            <div className="flex items-start justify-between gap-2 mb-1">
-                              <span className="text-xs font-bold text-slate-900 dark:text-white truncate" title={t.title}>
-                                {t.title}
+                            <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800/80 text-[10px]">
+                              <span className="text-slate-600 dark:text-slate-300 font-semibold truncate max-w-[120px] flex items-center gap-1">
+                                👤 {t.collaborator_name || t.assignees?.[0]?.name || 'Responsável'}
                               </span>
-                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${badgeColor}`}>
-                                {statusLabel}
+                              <span className="font-mono text-slate-500 dark:text-slate-400">
+                                {t.due_date ? `Prazo: ${t.due_date}` : 'Rotina Contínua'}
                               </span>
                             </div>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
-                              {t.description || 'Sem descrição'}
-                            </p>
                           </div>
-
-                          <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
-                            <span className="text-slate-500 font-semibold truncate max-w-[120px]">
-                              👤 {t.collaborator_name || t.assignees?.[0]?.name || 'Responsável'}
-                            </span>
-                            <span className="font-mono text-slate-400">
-                              {t.due_date ? `Prazo: ${t.due_date}` : 'Sem prazo'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })()}

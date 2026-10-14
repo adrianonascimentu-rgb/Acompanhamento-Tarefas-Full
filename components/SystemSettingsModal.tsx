@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
-import { supabase } from '@/lib/supabase';
+import { supabase, handleSupabaseAuthError } from '@/lib/supabase';
 import { generateUserManualPDF } from '@/lib/generateManualPdf';
 import { authFetch } from '@/lib/authFetch';
 
@@ -137,6 +137,11 @@ export function SystemSettingsModal({ isOpen, onClose }: SystemSettingsModalProp
           console.warn('Aviso: Recursão RLS no Supabase (42P17). Execute o script SQL no Supabase para corrigir.');
           return;
         }
+        if (error.code === 'PGRST303' || error.message?.includes('JWT expired') || error.message?.includes('jwt expired')) {
+          console.warn('Aviso: Token do Supabase expirado (PGRST303). Usando permissões padrão.');
+          await handleSupabaseAuthError(error);
+          return;
+        }
         const isNetworkError = error.message?.includes('Failed to fetch') || error.message?.includes('TypeError');
         if (isNetworkError) {
           console.warn('Aviso: Conexão ao Supabase indisponível no momento para carregar permissões. Mantendo permissões padrão.');
@@ -156,6 +161,11 @@ export function SystemSettingsModal({ isOpen, onClose }: SystemSettingsModalProp
         setPermissions(val);
       }
     } catch (error: any) {
+      if (error?.code === 'PGRST303' || error?.message?.includes('JWT expired') || error?.message?.includes('jwt expired')) {
+        console.warn('Aviso: Token expirado ao buscar permissões (PGRST303). Usando padrão.');
+        await handleSupabaseAuthError(error);
+        return;
+      }
       const isNetworkError = error?.message?.includes('Failed to fetch') || error?.name === 'TypeError' || error instanceof TypeError;
       if (isNetworkError) {
         console.warn('Aviso: Falha de rede ao conectar ao Supabase (offline).');

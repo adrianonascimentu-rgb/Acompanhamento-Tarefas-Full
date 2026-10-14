@@ -244,14 +244,13 @@ export default function CreateTaskForm() {
         roleStr.includes('supervisor')
       );
 
+      const isFixedOrPermanent = Boolean(formData.isFixed || formData.taskType === 'Permanente');
       const taskData: any = {
         title: formData.title,
         description: formData.description,
         due_date: formData.dueDate,
         priority: formData.priority,
-        task_type: formData.taskType,
-        is_fixed: canCreateFixed ? formData.isFixed : false,
-        is_permanent: canCreateFixed ? formData.isFixed : false,
+        task_type: isFixedOrPermanent ? 'Permanente' : (formData.taskType || 'Outros'),
         origin_demand_id: originDemandId,
         status: 'Pendente',
         progress: 0,

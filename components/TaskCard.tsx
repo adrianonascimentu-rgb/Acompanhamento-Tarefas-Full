@@ -39,6 +39,8 @@ interface Task {
   assignees: Assignee[];
   category?: string;
   task_type?: string;
+  is_fixed?: boolean;
+  is_permanent?: boolean;
   isDueSoon?: boolean;
   location?: string;
   destination_address?: string;
@@ -188,11 +190,16 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const priorityColor = priorityConfig.color;
   const priorityBadgeStyle = priorityConfig.badge;
 
+  const isPermanentTask = Boolean(task.task_type === 'Permanente' || task.is_permanent === true);
+
+  const statusStr = (task.status || '').toLowerCase();
   const statusBadgeStyle = 
-    task.status === 'Concluída' ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200/60 dark:border-emerald-900/50' :
-    task.status === 'Revisão' ? 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200/60 dark:border-amber-900/50' :
-    task.status === 'Em Andamento' ? 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border-blue-200/60 dark:border-blue-900/50' :
-    'text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 border-slate-200/60 dark:border-slate-700/50';
+    statusStr.includes('conclu') ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 border-emerald-300 dark:border-emerald-800 font-bold' :
+    statusStr.includes('revis') ? 'text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 border-purple-300 dark:border-purple-800 font-bold' :
+    statusStr.includes('andamento') ? 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/80 border-amber-300 dark:border-amber-800 font-bold' :
+    statusStr.includes('paus') || statusStr.includes('espera') ? 'text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/80 border-orange-300 dark:border-orange-800 font-bold' :
+    statusStr.includes('atrasa') || statusStr.includes('venci') || statusStr.includes('cancela') ? 'text-rose-700 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/80 border-rose-300 dark:border-rose-800 font-bold' :
+    'text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/80 border-sky-300 dark:border-sky-800 font-bold';
 
   return (
     <motion.div
@@ -270,6 +277,16 @@ export const TaskCard: React.FC<TaskCardProps> = ({
                 </span>
                 <span className="opacity-40">·</span>
               </div>
+            )}
+
+            {/* Permanent Task Tag */}
+            {isPermanentTask && (
+              <>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-2 py-0.5 rounded-full border border-purple-300 dark:border-purple-800 shadow-2xs">
+                  📌 PERMANENTE
+                </span>
+                <span className="opacity-40">·</span>
+              </>
             )}
 
             {/* Category */}
