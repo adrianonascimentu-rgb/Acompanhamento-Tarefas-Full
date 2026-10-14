@@ -62,7 +62,7 @@ const clientGeocodeCache = new Map<string, [number, number]>();
 
 export function DeliveriesMap({ deliveries }: DeliveriesMapProps) {
   const { mapsApiKey } = useTheme();
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
   const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => effectiveApiKey ? 'google' : 'leaflet');
   const [activeGoogleDelivery, setActiveGoogleDelivery] = useState<Delivery | null>(null);
   const [MapComponents, setMapComponents] = useState<any>(null);

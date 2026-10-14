@@ -23,6 +23,11 @@ const DeliveriesMap = dynamic(() => import('@/components/deliveries/DeliveriesMa
   loading: () => <div className="w-full h-[600px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-[2.5rem]" />
 });
 
+const FleetTrackingGoogleMap = dynamic(() => import('@/components/deliveries/FleetTrackingGoogleMap').then(mod => mod.FleetTrackingGoogleMap), { 
+  ssr: false,
+  loading: () => <div className="w-full h-[600px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-[2.5rem]" />
+});
+
 const LiveTrackerMap = dynamic(() => import('@/components/deliveries/LiveTrackerMap'), { 
   ssr: false,
   loading: () => <div className="w-full h-64 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
@@ -107,7 +112,7 @@ function DeliveriesContent() {
     }
   }, [deliveries]);
 
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'map' | 'fleet_tracking'>('list');
   const [isMockMode, setIsMockMode] = useState(false);
   const [missingColumns, setMissingColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +125,10 @@ function DeliveriesContent() {
 
   useEffect(() => {
     const status = searchParams?.get('status');
+    const mode = searchParams?.get('mode') || searchParams?.get('tab');
+    if (mode === 'tracking' || mode === 'fleet' || mode === 'google-maps') {
+      setViewMode('fleet_tracking');
+    }
     if (status) {
       setStatusFilter(status);
       setPeriodFilter('all');
@@ -1424,13 +1433,54 @@ function DeliveriesContent() {
               ))}
             </select>
             
-            <button
-              onClick={() => setViewMode(viewMode === 'list' ? 'map' : 'list')}
-              className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
-              title={viewMode === 'list' ? 'Ver no Mapa' : 'Ver em Lista'}
-            >
-              {viewMode === 'list' ? <MapIcon size={20} /> : <List size={20} />}
-            </button>
+            {/* View Mode Toggle: Lista, Mapa e Rastreamento em Tempo Real Google Maps */}
+            <div className="flex items-center gap-1 p-1 rounded-2xl border bg-slate-100/80 dark:bg-slate-900/80 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  viewMode === 'list'
+                    ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Visualizar em Lista"
+              >
+                <List size={14} />
+                <span className="hidden sm:inline">Lista</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('map')}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 ${
+                  viewMode === 'map'
+                    ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+                title="Visualizar Mapa de Entregas"
+              >
+                <MapIcon size={14} />
+                <span className="hidden sm:inline">Mapa</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewMode('fleet_tracking')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                  viewMode === 'fleet_tracking'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                    : 'bg-blue-50/80 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100'
+                }`}
+                title="Rastreamento em Tempo Real no Google Maps & Rotas Otimizadas"
+              >
+                <Truck size={14} className={viewMode === 'fleet_tracking' ? 'animate-bounce' : ''} />
+                <span>Rastreamento GPS</span>
+                <span className="relative flex h-2 w-2 ml-0.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -1640,8 +1690,14 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
               </div>
             </div>
             
-            {/* Deliveries List or Map */}
-          {viewMode === 'map' ? (
+            {/* Deliveries List, Regular Map, or Live Fleet Tracking Google Map */}
+          {viewMode === 'fleet_tracking' ? (
+            <div className="space-y-4">
+              <FleetTrackingGoogleMap 
+                deliveries={filteredDeliveries.length > 0 ? filteredDeliveries : deliveries} 
+              />
+            </div>
+          ) : viewMode === 'map' ? (
             <DeliveriesMap deliveries={filteredDeliveries} />
           ) : (
             <div className="space-y-3">

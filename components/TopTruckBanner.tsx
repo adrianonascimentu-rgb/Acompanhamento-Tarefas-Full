@@ -8,6 +8,7 @@ import {
   Edit3, 
   History, 
   Sparkles,
+  Navigation,
 } from 'lucide-react';
 import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
@@ -19,6 +20,7 @@ import {
   DEFAULT_TRUCK_SCHEDULE 
 } from '@/lib/truckSchedule';
 import { TruckScheduleModal } from '@/components/TruckScheduleModal';
+import { LastTruckDetailsModal } from '@/components/LastTruckDetailsModal';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -34,6 +36,7 @@ export function TopTruckBanner() {
   const [scheduleData, setScheduleData] = useState<TruckScheduleData>(DEFAULT_TRUCK_SCHEDULE);
   const [, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -139,6 +142,7 @@ export function TopTruckBanner() {
   }
 
   const daysUntilArrival = getDaysUntilArrival(scheduleData.next_arrival_date);
+  const latest = scheduleData.history && scheduleData.history.length > 0 ? scheduleData.history[0] : null;
 
   // Esquema visual dinâmico com cores confortáveis para não cansar a vista:
   // - 1 dia restante (diffDays === 1): Amarelo / Âmbar agradável
@@ -181,13 +185,14 @@ export function TopTruckBanner() {
   const { bannerBg, badgeBg, badgeLabel, buttonTextColor } = getBannerStyles();
 
   const nextDateDisplay = formatFriendlyDate(scheduleData.next_arrival_date);
-  const lastDateDisplay = formatFriendlyDate(scheduleData.last_arrival_date);
+  const effectiveLastDate = latest?.arrival_date || scheduleData.last_arrival_date;
+  const lastDateDisplay = formatFriendlyDate(effectiveLastDate);
 
   const hasNextDate = !!scheduleData.next_arrival_date;
 
   return (
     <>
-      <div className={`${isHomePage ? 'w-full' : 'hidden md:block w-full'} px-3 sm:px-4 md:px-6 pt-3 pb-1`}>
+      <div className="w-full px-3 sm:px-4 md:px-6 pt-3 pb-1">
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -229,16 +234,48 @@ export function TopTruckBanner() {
                 </div>
 
                 {/* Texto Menor Logo Abaixo: DATA DO ÚLTIMO CARRO */}
-                <div className="flex items-center gap-1.5 mt-0.5 text-[11px] md:text-xs text-white/80 font-medium">
+                <div className="flex items-center gap-1.5 mt-0.5 text-[11px] md:text-xs text-white/80 font-medium flex-wrap">
                   <Clock size={12} className="shrink-0 text-white/60" />
                   <span>Último Carro Recebido:</span>
                   <strong className="font-bold text-white/95">{lastDateDisplay}</strong>
+                  {latest && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDetailsModalOpen(true)}
+                      className="ml-1 text-[11px] font-bold text-yellow-300 hover:text-white underline transition-colors cursor-pointer"
+                    >
+                      (Ver detalhes)
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Lado Direito: Ações (Alterar Datas para Gestores e Ver Histórico) */}
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-white/15 shrink-0">
+            {/* Lado Direito: Ações (Alterar Datas para Gestores, Rastrear no Mapa e Ver Histórico) */}
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-white/15 shrink-0 flex-wrap">
+              {/* Link para o Rastreamento em Tempo Real do Caminhão no Google Maps */}
+              <Link
+                href="/deliveries?mode=tracking"
+                className="px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/25 backdrop-blur-sm whitespace-nowrap shadow-sm"
+                title="Rastrear deslocamento do caminhão de reposição no Google Maps"
+              >
+                <Navigation size={13} className="text-yellow-300 animate-pulse shrink-0" />
+                <span className="hidden sm:inline">Rastrear no Mapa</span>
+                <span className="sm:hidden">GPS</span>
+              </Link>
+
+              {/* Botão de Ver Detalhes do Último Caminhão */}
+              {latest && (
+                <button
+                  type="button"
+                  onClick={() => setIsDetailsModalOpen(true)}
+                  className="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 backdrop-blur-sm whitespace-nowrap"
+                  title="Ver detalhes do motorista, ajudante e notas do último caminhão"
+                >
+                  <span>Info Carga</span>
+                </button>
+              )}
+
               {/* Link para o Histórico / Relatório de Caminhões */}
               <Link
                 href="/reports/truck-history"
@@ -246,7 +283,7 @@ export function TopTruckBanner() {
                 title="Visualizar histórico completo com motoristas e ajudantes"
               >
                 <History size={14} className="shrink-0" />
-                <span className="hidden sm:inline">Histórico & Relatório</span>
+                <span className="hidden sm:inline">Histórico</span>
                 <span className="sm:hidden">Relatório</span>
               </Link>
 
@@ -275,6 +312,14 @@ export function TopTruckBanner() {
           isDarkMode={isDarkMode}
         />
       )}
+
+      {/* Modal de Detalhes do Último Caminhão */}
+      <LastTruckDetailsModal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        data={scheduleData}
+        isDarkMode={isDarkMode}
+      />
     </>
   );
 }

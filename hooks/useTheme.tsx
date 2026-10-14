@@ -16,7 +16,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [location, setLocation] = useState('Escritório Central');
-  const [mapsApiKey, setMapsApiKey] = useState(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '');
+  const [mapsApiKey, setMapsApiKey] = useState(
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY'
+  );
 
   const toggleDarkMode = (val: boolean) => {
     setIsDarkMode(val);
@@ -70,7 +72,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (savedLocation) {
       setTimeout(() => setLocation(savedLocation), 0);
     }
-    const effectiveKey = savedMapsKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+    const effectiveKey = savedMapsKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
     if (effectiveKey) {
       setTimeout(() => setMapsApiKey(effectiveKey), 0);
     }

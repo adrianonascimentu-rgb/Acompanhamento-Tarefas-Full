@@ -26,7 +26,6 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase, handleSupabaseAuthError, isSupabaseConfigured } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import { PermanentTasksNotepadGrid } from '@/components/dashboard/PermanentTasksNotepadGrid';
-import { ReplenishmentTruckCard } from '@/components/dashboard/ReplenishmentTruckCard';
 
 const stats = [
   { id: 'total', label: 'Total', value: '48', change: '+5%', icon: ClipboardList, color: 'text-blue-600', trend: 'up' },
@@ -880,14 +879,13 @@ export default function Dashboard() {
         </div>
 
         {dashboardMode === 'permanent_notes' ? (
-          <div className='space-y-4 mb-4'>
-            <ReplenishmentTruckCard isDarkMode={isDarkMode} />
+          <div className='mb-4'>
             <PermanentTasksNotepadGrid 
-            isDarkMode={isDarkMode} 
-            userId={user?.id} 
-            isAdmin={isAdmin} 
-            role={role}
-          />
+              isDarkMode={isDarkMode} 
+              userId={user?.id} 
+              isAdmin={isAdmin} 
+              role={role}
+            />
           </div>
         ) : (
           <>
