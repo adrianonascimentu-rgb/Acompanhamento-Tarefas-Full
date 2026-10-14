@@ -286,19 +286,25 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
       } catch {}
     }
 
-    // 2. Exclude other operational task types
+    // 2. Strict task_type check: must be explicitly 'Permanente'
     const taskType = (t.task_type || '').toLowerCase();
     if (
       taskType === 'transferência' || 
       taskType === 'transferencia' || 
       taskType === 'estoque' || 
       taskType === 'outros' ||
-      taskType === 'rotina'
+      taskType === 'rotina' ||
+      taskType === 'padrão' ||
+      taskType === 'padrao' ||
+      taskType === 'social media' ||
+      taskType === 'comercial' ||
+      taskType === 'financeiro' ||
+      taskType === ''
     ) {
       if (t.task_type !== 'Permanente') return false;
     }
 
-    // 3. Exclude operational title patterns (demands, stock counts, transfers, maintenance)
+    // 3. Exclude operational title patterns (demands, stock counts, transfers, maintenance, etc.)
     const titleLower = (t.title || '').toLowerCase();
     if (
       titleLower.includes('transferência') ||
