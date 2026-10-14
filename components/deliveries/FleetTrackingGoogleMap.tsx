@@ -503,8 +503,7 @@ export function FleetTrackingGoogleMap({
               updated_at: new Date().toISOString()
             })
             .eq('driver', user?.name || '')
-            .then(() => {})
-            .catch(() => {});
+            .then(() => {}, () => {});
         } catch {}
       },
       err => {
