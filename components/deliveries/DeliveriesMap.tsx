@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Truck, Navigation, List as ListIcon, X, MapPin, Eye, CheckCircle2, AlertCircle, Clock, Globe } from 'lucide-react';
+import { Truck, Navigation, List as ListIcon, X, MapPin, Eye, CheckCircle2, AlertCircle, Clock, Globe, AlertTriangle, ExternalLink } from 'lucide-react';
 import { renderToString } from 'react-dom/server';
 import { getNeighborhoodCoords } from '@/lib/neighborhoodCoords';
 import { useTheme } from '@/hooks/useTheme';
@@ -61,15 +61,22 @@ const BoundsController = ({ deliveries, L }: { deliveries: Delivery[], L: any })
 const clientGeocodeCache = new Map<string, [number, number]>();
 
 export function DeliveriesMap({ deliveries }: DeliveriesMapProps) {
-  const { mapsApiKey } = useTheme();
+  const { mapsApiKey, hasBillingError, setHasBillingError } = useTheme();
   const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
-  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => effectiveApiKey ? 'google' : 'leaflet');
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => (effectiveApiKey && !hasBillingError) ? 'google' : 'leaflet');
   const [activeGoogleDelivery, setActiveGoogleDelivery] = useState<Delivery | null>(null);
   const [MapComponents, setMapComponents] = useState<any>(null);
   const [L, setL] = useState<any>(null);
   const [geocodedDeliveries, setGeocodedDeliveries] = useState<Delivery[]>([]);
   const [selectedDriverId, setSelectedDriverId] = useState<number | string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
+
+  // Auto-switch to leaflet on billing error
+  useEffect(() => {
+    if (hasBillingError) {
+      setMapEngine('leaflet');
+    }
+  }, [hasBillingError]);
 
   // Expose useMap for inner controllers
   useEffect(() => {
@@ -363,225 +370,255 @@ export function DeliveriesMap({ deliveries }: DeliveriesMapProps) {
         </button>
       )}
 
-      <div className="flex-1 relative">
-        {effectiveApiKey && (
-          <div className="absolute top-4 right-4 z-[1000] flex items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 text-xs font-bold gap-1">
-            <button
-              type="button"
-              onClick={() => setMapEngine('google')}
-              className={`px-3 py-1.5 rounded-xl transition-all ${mapEngine === 'google' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'}`}
+      <div className="flex-1 relative flex flex-col">
+        {hasBillingError && (
+          <div className="bg-amber-500/15 border-b border-amber-500/30 text-amber-950 dark:text-amber-200 px-4 py-2.5 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 z-[1001]">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                <strong>Aviso Google Maps:</strong> Faturamento não ativado (<code>BillingNotEnabledMapError</code>). O mapa foi alternado automaticamente para OpenStreetMap.
+              </span>
+            </div>
+            <a
+              href="https://console.cloud.google.com/billing?utm_campaign=gmp_mcp_codeassist_v1_aistudio"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] flex items-center gap-1 shrink-0"
             >
-              Google Maps
-            </button>
-            <button
-              type="button"
-              onClick={() => setMapEngine('leaflet')}
-              className={`px-3 py-1.5 rounded-xl transition-all ${mapEngine === 'leaflet' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'}`}
-            >
-              OpenStreetMap
-            </button>
+              <ExternalLink size={11} /> Ativar Faturamento no Google Cloud
+            </a>
           </div>
         )}
 
-        {mapEngine === 'google' && effectiveApiKey ? (
-          <APIProvider apiKey={effectiveApiKey} solutionChannel="gmp_mcp_codeassist_v1_aistudio">
-            <GoogleMap
-              defaultCenter={{ lat: defaultCenter[0], lng: defaultCenter[1] }}
-              defaultZoom={13}
-              mapId="DEMO_MAP_ID"
-              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-              style={{ width: '100%', height: '100%' }}
-              gestureHandling="greedy"
+        <div className="flex-1 relative">
+          {effectiveApiKey && (
+            <div className="absolute top-4 right-4 z-[1000] flex items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 text-xs font-bold gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setMapEngine('google');
+                }}
+                className={`px-3 py-1.5 rounded-xl transition-all ${mapEngine === 'google' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'}`}
+              >
+                Google Maps
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapEngine('leaflet')}
+                className={`px-3 py-1.5 rounded-xl transition-all ${mapEngine === 'leaflet' ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'}`}
+              >
+                OpenStreetMap
+              </button>
+            </div>
+          )}
+
+          {mapEngine === 'google' && effectiveApiKey ? (
+            <APIProvider 
+              apiKey={effectiveApiKey} 
+              solutionChannel="gmp_mcp_codeassist_v1_aistudio"
+              onError={() => {
+                setHasBillingError(true);
+                setMapEngine('leaflet');
+              }}
             >
-              {mapDeliveries.map((delivery) => {
-                const isSelected = selectedDriverId === delivery.id || activeGoogleDelivery?.id === delivery.id;
-                const isFinal = delivery.status === 'Finalizada';
-                const isSpecial = (delivery as any).delivery_type === 'especial' || (delivery as any).is_special;
-                const pinColor = isSpecial ? '#f59e0b' : isFinal ? '#10b981' : delivery.status === 'Em Andamento' ? '#2563eb' : '#64748b';
+              <GoogleMap
+                defaultCenter={{ lat: defaultCenter[0], lng: defaultCenter[1] }}
+                defaultZoom={13}
+                mapId="DEMO_MAP_ID"
+                internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                style={{ width: '100%', height: '100%' }}
+                gestureHandling="greedy"
+              >
+                {mapDeliveries.map((delivery) => {
+                  const isSelected = selectedDriverId === delivery.id || activeGoogleDelivery?.id === delivery.id;
+                  const isFinal = delivery.status === 'Finalizada';
+                  const isSpecial = (delivery as any).delivery_type === 'especial' || (delivery as any).is_special;
+                  const pinColor = isSpecial ? '#f59e0b' : isFinal ? '#10b981' : delivery.status === 'Em Andamento' ? '#2563eb' : '#64748b';
 
-                return (
-                  <AdvancedMarker
-                    key={String(delivery.id)}
-                    position={{ lat: delivery.lat!, lng: delivery.lng! }}
-                    onClick={() => {
-                      setSelectedDriverId(delivery.id);
-                      setActiveGoogleDelivery(delivery);
-                    }}
-                    title={delivery.driver || 'Entregador'}
-                  >
-                    <Pin
-                      background={pinColor}
-                      borderColor="#ffffff"
-                      glyphColor="#ffffff"
-                      scale={isSelected ? 1.3 : 1.0}
-                    />
-                  </AdvancedMarker>
-                );
-              })}
-
-              {activeGoogleDelivery && activeGoogleDelivery.lat && activeGoogleDelivery.lng && (
-                <InfoWindow
-                  position={{ lat: activeGoogleDelivery.lat, lng: activeGoogleDelivery.lng }}
-                  onCloseClick={() => setActiveGoogleDelivery(null)}
-                >
-                  <div className="p-2 min-w-[200px] text-slate-900 font-sans">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-bold text-sm text-slate-900">
-                        {activeGoogleDelivery.driver || 'Entregador'}
-                      </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                        activeGoogleDelivery.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-800' :
-                        activeGoogleDelivery.status === 'Em Andamento' ? 'bg-blue-100 text-blue-800' :
-                        'bg-slate-100 text-slate-800'
-                      }`}>
-                        {activeGoogleDelivery.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 mb-1">
-                      {activeGoogleDelivery.address}, {activeGoogleDelivery.neighborhood}
-                    </p>
-                    <p className="text-xs font-bold text-emerald-600">
-                      R$ {Number(activeGoogleDelivery.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                </InfoWindow>
-              )}
-            </GoogleMap>
-          </APIProvider>
-        ) : (
-        <MapContainer 
-          center={defaultCenter}
-          zoom={13} 
-          style={{ height: '100%', width: '100%' }}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          
-          <MapController selectedCoords={selectedCoords} L={L} />
-          <BoundsController deliveries={mapDeliveries} L={L} />
-          
-          {mapDeliveries.map(delivery => (
-            <React.Fragment key={delivery.id}>
-              {/* Render Route */}
-              {delivery.route && delivery.route.length > 1 && (
-                <Polyline 
-                  positions={delivery.route} 
-                  color={getRouteColor(delivery.status)}
-                  weight={selectedDriverId === delivery.id ? 10 : 4}
-                  opacity={selectedDriverId === delivery.id ? 1 : 0.6}
-                  dashArray={delivery.status === 'Finalizada' ? '' : '10, 10'}
-                  pathOptions={{
-                    lineCap: 'round',
-                    lineJoin: 'round',
-                    className: selectedDriverId === delivery.id ? 'active-route-path animate-dash' : ''
-                  }}
-                />
-              )}
-              
-              {/* Render Navigation Icons for Active Delivery */}
-              {selectedDriverId === delivery.id && delivery.status === 'Em Andamento' && (
-                <>
-                  {/* Current Location as Navigation Icon */}
-                  <Marker 
-                    position={[delivery.lat!, delivery.lng!]} 
-                    icon={getNavigationIcon()}
-                    zIndexOffset={1000}
-                  >
-                    <Tooltip permanent direction="top" offset={[0, -15]} opacity={1}>
-                      <div className="bg-blue-600 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter">
-                        Localização Atual ({delivery.driver})
-                      </div>
-                    </Tooltip>
-                  </Marker>
-
-                  {/* Destination Point */}
-                  {delivery.route && delivery.route.length > 0 && (
-                     <Marker 
-                      position={delivery.route[delivery.route.length - 1]} 
-                      icon={getDestinationIcon()}
-                      zIndexOffset={900}
+                  return (
+                    <AdvancedMarker
+                      key={String(delivery.id)}
+                      position={{ lat: delivery.lat!, lng: delivery.lng! }}
+                      onClick={() => {
+                        setSelectedDriverId(delivery.id);
+                        setActiveGoogleDelivery(delivery);
+                      }}
+                      title={delivery.driver || 'Entregador'}
                     >
-                      <Tooltip permanent direction="top" offset={[0, -15]} opacity={1}>
-                        <div className="bg-emerald-600 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter">
-                          Destino da Entrega
-                        </div>
-                      </Tooltip>
-                    </Marker>
-                  )}
-                </>
-              )}
-                
-              {/* Render Standard Marker for non-active or non-selected */}
-              {selectedDriverId !== delivery.id && (() => {
-                const isSpecial = (delivery as any).delivery_type === 'especial' || 
-                                  (delivery as any).is_special === true || 
-                                  (delivery as any).notes?.includes('[ESPECIAL]') || 
-                                  (delivery as any).product?.includes('[ESPECIAL]');
-                return (
-                <Marker 
-                  position={[delivery.lat!, delivery.lng!]} 
-                  icon={getIcon(delivery.status, isSpecial)}
-                >
-                  <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                    <div className="font-bold text-[10px] uppercase tracking-wider">
-                      {isSpecial && <span className="text-amber-500 mr-1 font-black">★ ESPECIAL •</span>}
-                      {delivery.driver || 'Entregador'} • <span className={
-                        isSpecial ? 'text-amber-600 font-extrabold' :
-                        delivery.status === 'Finalizada' ? 'text-emerald-600' :
-                        delivery.status === 'Em Andamento' ? 'text-blue-600' :
-                        'text-slate-600'
-                      }>{delivery.status}</span>
-                    </div>
-                  </Tooltip>
-                  <Popup>
-                    <div className="p-2 min-w-[190px]">
-                      {isSpecial && (
-                        <div className="mb-2 px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase tracking-wider text-center">
-                          ★ Entrega/Retirada Especial ★
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between mb-1.5">
-                        <h3 className="font-bold text-sm text-slate-800">{delivery.driver || 'Sem entregador'}</h3>
-                        <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
-                          isSpecial ? 'bg-amber-100 text-amber-800 font-black' :
-                          delivery.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-700' :
-                          delivery.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700' :
-                          'bg-amber-100 text-amber-700'
+                      <Pin
+                        background={pinColor}
+                        borderColor="#ffffff"
+                        glyphColor="#ffffff"
+                        scale={isSelected ? 1.3 : 1.0}
+                      />
+                    </AdvancedMarker>
+                  );
+                })}
+
+                {activeGoogleDelivery && activeGoogleDelivery.lat && activeGoogleDelivery.lng && (
+                  <InfoWindow
+                    position={{ lat: activeGoogleDelivery.lat, lng: activeGoogleDelivery.lng }}
+                    onCloseClick={() => setActiveGoogleDelivery(null)}
+                  >
+                    <div className="p-2 min-w-[200px] text-slate-900 font-sans">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-bold text-sm text-slate-900">
+                          {activeGoogleDelivery.driver || 'Entregador'}
+                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          activeGoogleDelivery.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-800' :
+                          activeGoogleDelivery.status === 'Em Andamento' ? 'bg-blue-100 text-blue-800' :
+                          'bg-slate-100 text-slate-800'
                         }`}>
-                          {delivery.status}
+                          {activeGoogleDelivery.status}
                         </span>
                       </div>
-                      
-                      {delivery.address ? (
-                        <p className="text-xs font-semibold text-slate-700 leading-tight mb-1 flex items-start gap-1">
-                          <MapPin size={12} className="text-blue-600 shrink-0 mt-0.5" />
-                          <span>{delivery.address}</span>
-                        </p>
-                      ) : null}
-
-                      <p className="text-[11px] text-slate-500 font-medium">
-                        {[delivery.neighborhood, delivery.city].filter(Boolean).join(', ') || 'Paraíba'}
+                      <p className="text-xs text-slate-600 mb-1">
+                        {activeGoogleDelivery.address}, {activeGoogleDelivery.neighborhood}
                       </p>
-
-                      <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
-                        <span className="text-xs font-black text-blue-600">
-                          R$ {Number(delivery.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                        {delivery.route && delivery.route.length > 0 && (
-                          <span className="text-[8px] text-slate-400 font-bold uppercase">{delivery.route.length} pts rota</span>
-                        )}
-                      </div>
+                      <p className="text-xs font-bold text-emerald-600">
+                        R$ {Number(activeGoogleDelivery.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
                     </div>
-                  </Popup>
-                </Marker>
-                );
-              })()}
-            </React.Fragment>
-          ))}
-        </MapContainer>
-        )}
+                  </InfoWindow>
+                )}
+              </GoogleMap>
+            </APIProvider>
+          ) : (
+            <MapContainer 
+              center={defaultCenter}
+              zoom={13} 
+              style={{ height: '100%', width: '100%' }}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              
+              <MapController selectedCoords={selectedCoords} L={L} />
+              <BoundsController deliveries={mapDeliveries} L={L} />
+              
+              {mapDeliveries.map(delivery => (
+                <React.Fragment key={delivery.id}>
+                  {/* Render Route */}
+                  {delivery.route && delivery.route.length > 1 && (
+                    <Polyline 
+                      positions={delivery.route} 
+                      color={getRouteColor(delivery.status)}
+                      weight={selectedDriverId === delivery.id ? 10 : 4}
+                      opacity={selectedDriverId === delivery.id ? 1 : 0.6}
+                      dashArray={delivery.status === 'Finalizada' ? '' : '10, 10'}
+                      pathOptions={{
+                        lineCap: 'round',
+                        lineJoin: 'round',
+                        className: selectedDriverId === delivery.id ? 'active-route-path animate-dash' : ''
+                      }}
+                    />
+                  )}
+                  
+                  {/* Render Navigation Icons for Active Delivery */}
+                  {selectedDriverId === delivery.id && delivery.status === 'Em Andamento' && (
+                    <>
+                      {/* Current Location as Navigation Icon */}
+                      <Marker 
+                        position={[delivery.lat!, delivery.lng!]} 
+                        icon={getNavigationIcon()}
+                        zIndexOffset={1000}
+                      >
+                        <Tooltip permanent direction="top" offset={[0, -15]} opacity={1}>
+                          <div className="bg-blue-600 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter">
+                            Localização Atual ({delivery.driver})
+                          </div>
+                        </Tooltip>
+                      </Marker>
+
+                      {/* Destination Point */}
+                      {delivery.route && delivery.route.length > 0 && (
+                         <Marker 
+                          position={delivery.route[delivery.route.length - 1]} 
+                          icon={getDestinationIcon()}
+                          zIndexOffset={900}
+                        >
+                          <Tooltip permanent direction="top" offset={[0, -15]} opacity={1}>
+                            <div className="bg-emerald-600 text-white px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter">
+                              Destino da Entrega
+                            </div>
+                          </Tooltip>
+                        </Marker>
+                      )}
+                    </>
+                  )}
+                    
+                  {/* Render Standard Marker for non-active or non-selected */}
+                  {selectedDriverId !== delivery.id && (() => {
+                    const isSpecial = (delivery as any).delivery_type === 'especial' || 
+                                      (delivery as any).is_special === true || 
+                                      (delivery as any).notes?.includes('[ESPECIAL]') || 
+                                      (delivery as any).product?.includes('[ESPECIAL]');
+                    return (
+                      <Marker 
+                        position={[delivery.lat!, delivery.lng!]} 
+                        icon={getIcon(delivery.status, isSpecial)}
+                      >
+                        <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                          <div className="font-bold text-[10px] uppercase tracking-wider">
+                            {isSpecial && <span className="text-amber-500 mr-1 font-black">★ ESPECIAL •</span>}
+                            {delivery.driver || 'Entregador'} • <span className={
+                              isSpecial ? 'text-amber-600 font-extrabold' :
+                              delivery.status === 'Finalizada' ? 'text-emerald-600' :
+                              delivery.status === 'Em Andamento' ? 'text-blue-600' :
+                              'text-slate-600'
+                            }>{delivery.status}</span>
+                          </div>
+                        </Tooltip>
+                        <Popup>
+                          <div className="p-2 min-w-[190px]">
+                            {isSpecial && (
+                              <div className="mb-2 px-2 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[9px] font-black uppercase tracking-wider text-center">
+                                ★ Entrega/Retirada Especial ★
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between mb-1.5">
+                              <h3 className="font-bold text-sm text-slate-800">{delivery.driver || 'Sem entregador'}</h3>
+                              <span className={`text-[8px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
+                                isSpecial ? 'bg-amber-100 text-amber-800 font-black' :
+                                delivery.status === 'Finalizada' ? 'bg-emerald-100 text-emerald-700' :
+                                delivery.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700' :
+                                'bg-amber-100 text-amber-700'
+                              }`}>
+                                {delivery.status}
+                              </span>
+                            </div>
+                            
+                            {delivery.address ? (
+                              <p className="text-xs font-semibold text-slate-700 leading-tight mb-1 flex items-start gap-1">
+                                <MapPin size={12} className="text-blue-600 shrink-0 mt-0.5" />
+                                <span>{delivery.address}</span>
+                              </p>
+                            ) : null}
+
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {[delivery.neighborhood, delivery.city].filter(Boolean).join(', ') || 'Paraíba'}
+                            </p>
+
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-center">
+                              <span className="text-xs font-black text-blue-600">
+                                R$ {Number(delivery.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              </span>
+                              {delivery.route && delivery.route.length > 0 && (
+                                <span className="text-[8px] text-slate-400 font-bold uppercase">{delivery.route.length} pts rota</span>
+                              )}
+                            </div>
+                          </div>
+                        </Popup>
+                      </Marker>
+                    );
+                  })()}
+                </React.Fragment>
+              ))}
+            </MapContainer>
+          )}
+        </div>
       </div>
     </div>
   );

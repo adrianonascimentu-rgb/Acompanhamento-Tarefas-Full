@@ -9,6 +9,8 @@ interface ThemeContextType {
   updateLocation: (val: string) => void;
   mapsApiKey: string;
   updateMapsApiKey: (val: string) => void;
+  hasBillingError: boolean;
+  setHasBillingError: (val: boolean) => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -16,6 +18,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [location, setLocation] = useState('Escritório Central');
+  const [hasBillingError, setHasBillingError] = useState(false);
   const [mapsApiKey, setMapsApiKey] = useState(
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY'
   );
@@ -42,8 +45,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const updateMapsApiKey = (val: string) => {
     setMapsApiKey(val);
+    setHasBillingError(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem('GOOGLE_MAPS_PLATFORM_KEY', val);
+      window.dispatchEvent(new CustomEvent('gmp-key-updated', { detail: { key: val } }));
     }
   };
 
@@ -77,6 +82,32 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setTimeout(() => setMapsApiKey(effectiveKey), 0);
     }
 
+    // Monitor Google Maps auth/billing failures
+    const handleMapsError = () => {
+      setHasBillingError(true);
+    };
+
+    window.addEventListener('gmp-billing-error', handleMapsError);
+
+    const origAuthFailure = (window as any).gm_authFailure;
+    (window as any).gm_authFailure = () => {
+      if (origAuthFailure) {
+        try { origAuthFailure(); } catch {}
+      }
+      setHasBillingError(true);
+      window.dispatchEvent(new CustomEvent('gmp-billing-error', { detail: { type: 'gm_authFailure' } }));
+    };
+
+    const origConsoleError = console.error;
+    console.error = (...args: any[]) => {
+      origConsoleError.apply(console, args);
+      const str = args.map(a => String(a?.message || a || '')).join(' ');
+      if (str.includes('BillingNotEnabledMapError') || str.includes('BillingNotEnabled') || str.includes('billing-not-enabled')) {
+        setHasBillingError(true);
+        window.dispatchEvent(new CustomEvent('gmp-billing-error', { detail: { type: 'BillingNotEnabledMapError' } }));
+      }
+    };
+
     // Listen for system preference changes
     const matchMedia = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
@@ -85,11 +116,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       }
     };
     matchMedia.addEventListener('change', handler);
-    return () => matchMedia.removeEventListener('change', handler);
+    return () => {
+      matchMedia.removeEventListener('change', handler);
+      window.removeEventListener('gmp-billing-error', handleMapsError);
+      console.error = origConsoleError;
+    };
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, location, updateLocation, mapsApiKey, updateMapsApiKey }}>
+    <ThemeContext.Provider value={{ isDarkMode, toggleDarkMode, location, updateLocation, mapsApiKey, updateMapsApiKey, hasBillingError, setHasBillingError }}>
       {children}
     </ThemeContext.Provider>
   );

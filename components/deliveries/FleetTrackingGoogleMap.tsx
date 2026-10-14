@@ -242,7 +242,7 @@ export function FleetTrackingGoogleMap({
 }: FleetTrackingGoogleMapProps) {
   const { isDarkMode, mapsApiKey } = useTheme();
   const { user, isAdmin, role } = useRole();
-  const isManagerOrAdmin = isAdmin || role === 'gerente' || role === 'supervisor' || role === 'administrador';
+  const isManagerOrAdmin = isAdmin || (role as string) === 'gerente' || (role as string) === 'supervisor' || (role as string) === 'administrador';
 
   const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
 
