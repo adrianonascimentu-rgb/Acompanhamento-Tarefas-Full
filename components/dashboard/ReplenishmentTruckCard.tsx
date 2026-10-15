@@ -90,68 +90,50 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
 
   return (
     <>
-      <div className={`p-4 rounded-3xl border shadow-lg ${
+      <div className={`p-2 sm:p-2.5 rounded-xl border shadow-xs ${
         isDarkMode 
           ? 'bg-gradient-to-r from-slate-900 via-indigo-950/70 to-blue-950/70 border-indigo-500/30 text-white' 
           : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 border-blue-500/40 text-white'
       }`}>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-              <Truck size={26} className="animate-pulse" />
+        <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+            <div className="w-6 h-6 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-xs">
+              <Truck size={13} className="animate-pulse" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-sm flex items-center gap-1">
-                  <Sparkles size={11} className="fill-current" /> Caminhão de Reposição
-                </span>
-              </div>
-              <div className="flex items-baseline gap-1.5 flex-wrap">
-                <span className="text-xs font-medium text-white/90">Próximo Carro:</span>
-                <span className="text-base font-black tracking-tight text-white">
-                  {hasNextDate ? nextDateDisplay : 'Aguardando definição'}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-white/80 font-medium">
-                <Clock size={12} className="shrink-0 text-white/60" />
-                <span>Último Carro Recebido:</span>
-                <strong className="font-bold text-white/95">{lastDateDisplay}</strong>
-                {latest && (
-                  <button
-                    onClick={() => setIsDetailsModalOpen(true)}
-                    className="ml-1 text-xs underline font-bold text-yellow-200 hover:text-white transition-colors cursor-pointer"
-                  >
-                    (Ver Detalhes)
-                  </button>
-                )}
-              </div>
+            <span className="px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-xs flex items-center gap-1 shrink-0">
+              <Sparkles size={10} className="fill-current" /> Reposição
+            </span>
+            <div className="flex items-center gap-2 text-xs font-semibold text-white truncate">
+              <span>Próximo: <strong className="font-black text-white">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
+              <span className="opacity-40 hidden sm:inline">|</span>
+              <span className="opacity-90 text-[11px] hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+          <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
             <button
               onClick={() => setIsDetailsModalOpen(true)}
-              className="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 backdrop-blur-sm"
+              className="px-2 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-[10px] font-bold cursor-pointer"
+              title="Info Carga"
             >
-              <Info size={14} className="text-yellow-300" />
-              <span>Info Último Caminhão</span>
+              Info
             </button>
 
             <Link
               href="/reports/truck-history"
-              className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/15 backdrop-blur-sm"
+              className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-[10px] font-bold flex items-center gap-1"
             >
-              <History size={14} />
-              <span>Histórico</span>
+              <History size={11} />
+              <span className="hidden md:inline">Histórico</span>
             </Link>
 
             {canEdit && (
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-white text-blue-700 hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-md flex items-center gap-1.5"
+                className="px-2 py-0.5 rounded-lg bg-white text-blue-700 hover:bg-white/95 active:scale-95 transition-all text-[10px] font-black shadow-xs flex items-center gap-1 cursor-pointer"
               >
-                <Edit3 size={14} />
-                <span>Alterar Datas</span>
+                <Edit3 size={11} />
+                <span>Alterar</span>
               </button>
             )}
           </div>

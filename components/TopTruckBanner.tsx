@@ -192,109 +192,68 @@ export function TopTruckBanner() {
 
   return (
     <>
-      <div className="w-full px-3 sm:px-4 md:px-6 pt-3 pb-1">
+      <div className="w-full px-2 sm:px-4 pt-1.5 pb-0.5">
         <motion.div
-          initial={{ opacity: 0, y: -8 }}
+          initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`relative overflow-hidden rounded-2xl md:rounded-3xl border shadow-lg transition-all duration-300 ${bannerBg}`}
+          className={`relative overflow-hidden rounded-xl border shadow-xs transition-all duration-300 ${bannerBg}`}
         >
-          {/* Background Ambient Glow */}
-          <div className="absolute -right-12 -top-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute left-1/3 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative p-3.5 sm:p-4 md:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
-            {/* Lado Esquerdo: Ícone e Texto em Destaque */}
-            <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
-              <div className="w-11 h-11 md:w-13 md:h-13 rounded-2xl bg-white/15 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-                <Truck className="size-6 md:size-7 animate-pulse text-white" />
+          <div className="relative px-2.5 py-1 sm:py-1.5 flex flex-wrap items-center justify-between gap-1.5 text-xs">
+            {/* Esquerda: Ícone + Badge + Próximo + Último */}
+            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap sm:flex-nowrap">
+              <div className="w-6 h-6 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-xs">
+                <Truck size={13} className="animate-pulse text-white" />
               </div>
 
-              <div className="flex flex-col min-w-0">
-                {/* Linha Superior: Selo e Título */}
-                <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-wider ${badgeBg} shadow-sm flex items-center gap-1`}>
-                    <Sparkles size={11} className="fill-current" />
-                    {badgeLabel}
-                  </span>
-                  {canEdit && (
-                    <span className="hidden md:inline text-[10px] text-white/75 font-medium">
-                      (Apenas Admin / Gerente / Supervisor editam)
-                    </span>
-                  )}
-                </div>
+              <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${badgeBg} shrink-0`}>
+                {badgeLabel}
+              </span>
 
-                {/* Destaque Principal: DATA DO PRÓXIMO CARRO */}
-                <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <span className="text-xs md:text-sm font-medium text-white/90">
-                    Próximo Carro:
-                  </span>
-                  <span className="text-sm md:text-base lg:text-lg font-black tracking-tight text-white drop-shadow-sm">
-                    {hasNextDate ? nextDateDisplay : 'Aguardando definição'}
-                  </span>
-                </div>
-
-                {/* Texto Menor Logo Abaixo: DATA DO ÚLTIMO CARRO */}
-                <div className="flex items-center gap-1.5 mt-0.5 text-[11px] md:text-xs text-white/80 font-medium flex-wrap">
-                  <Clock size={12} className="shrink-0 text-white/60" />
-                  <span>Último Carro Recebido:</span>
-                  <strong className="font-bold text-white/95">{lastDateDisplay}</strong>
-                  {latest && (
-                    <button
-                      type="button"
-                      onClick={() => setIsDetailsModalOpen(true)}
-                      className="ml-1 text-[11px] font-bold text-yellow-300 hover:text-white underline transition-colors cursor-pointer"
-                    >
-                      (Ver detalhes)
-                    </button>
-                  )}
-                </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-white truncate">
+                <span className="truncate">Próximo: <strong className="font-black text-white">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
+                <span className="opacity-40 hidden sm:inline">|</span>
+                <span className="opacity-90 text-[11px] hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
               </div>
             </div>
 
-            {/* Lado Direito: Ações (Alterar Datas para Gestores, Rastrear no Mapa e Ver Histórico) */}
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-white/15 shrink-0 flex-wrap">
-              {/* Link para o Rastreamento em Tempo Real do Caminhão no Google Maps */}
+            {/* Direita: Ações compactas */}
+            <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
               <Link
                 href="/deliveries?mode=tracking"
-                className="px-3 py-2 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/25 backdrop-blur-sm whitespace-nowrap shadow-sm"
-                title="Rastrear deslocamento do caminhão de reposição no Google Maps"
+                className="px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-[10px] font-bold flex items-center gap-1 border border-white/25 shadow-xs"
+                title="Rastrear no Mapa"
               >
-                <Navigation size={13} className="text-yellow-300 animate-pulse shrink-0" />
-                <span className="hidden sm:inline">Rastrear no Mapa</span>
-                <span className="sm:hidden">GPS</span>
+                <Navigation size={11} className="text-yellow-300 shrink-0" />
+                <span className="hidden xs:inline">Mapa</span>
               </Link>
 
-              {/* Botão de Ver Detalhes do Último Caminhão */}
               {latest && (
                 <button
                   type="button"
                   onClick={() => setIsDetailsModalOpen(true)}
-                  className="px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/20 backdrop-blur-sm whitespace-nowrap"
-                  title="Ver detalhes do motorista, ajudante e notas do último caminhão"
+                  className="px-2 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-[10px] font-bold cursor-pointer"
+                  title="Ver detalhes da carga"
                 >
-                  <span>Info Carga</span>
+                  Info
                 </button>
               )}
 
-              {/* Link para o Histórico / Relatório de Caminhões */}
               <Link
                 href="/reports/truck-history"
-                className="flex-1 sm:flex-initial justify-center px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1.5 border border-white/15 backdrop-blur-sm whitespace-nowrap"
-                title="Visualizar histórico completo com motoristas e ajudantes"
+                className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-[10px] font-bold flex items-center gap-1"
+                title="Histórico"
               >
-                <History size={14} className="shrink-0" />
-                <span className="hidden sm:inline">Histórico</span>
-                <span className="sm:hidden">Relatório</span>
+                <History size={11} className="shrink-0" />
+                <span className="hidden md:inline">Histórico</span>
               </Link>
 
-              {/* Botão de Alteração Exclusivo para Gestores */}
               {canEdit && (
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className={`flex-1 sm:flex-initial justify-center px-3.5 py-2 rounded-xl bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-md shadow-black/10 flex items-center gap-1.5 whitespace-nowrap`}
+                  className={`px-2 py-0.5 rounded-lg bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-[10px] font-black shadow-xs flex items-center gap-1 cursor-pointer`}
                 >
-                  <Edit3 size={14} className="shrink-0" />
-                  <span>Alterar Datas</span>
+                  <Edit3 size={11} className="shrink-0" />
+                  <span>Alterar</span>
                 </button>
               )}
             </div>

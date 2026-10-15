@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
   experimental: {
     optimizePackageImports: ['lucide-react', 'date-fns', 'recharts', 'motion', '@vis.gl/react-google-maps'],
   },

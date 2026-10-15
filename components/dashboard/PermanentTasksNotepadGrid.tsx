@@ -847,55 +847,52 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
   };
 
   return (
-    <div className="space-y-6">
-      <div className={`p-5 sm:p-6 rounded-3xl border shadow-lg relative overflow-hidden transition-all ${
+    <div className="space-y-3">
+      <div className={`p-2.5 sm:p-3 rounded-2xl border shadow-sm relative overflow-hidden transition-all ${
         isDarkMode 
           ? 'bg-gradient-to-br from-purple-950/70 via-slate-900 to-indigo-950/80 border-purple-800/60' 
           : 'bg-gradient-to-br from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-500'
       }`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-start gap-3.5">
-            <div className="p-3.5 rounded-2xl bg-white/20 backdrop-blur-md text-white shrink-0 shadow-md">
-              <Pin size={26} className="rotate-12" />
+        <div className="flex flex-wrap items-center justify-between gap-2 relative z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0 shadow-xs">
+              <Pin size={16} className="rotate-12" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg sm:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                <h2 className="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-1.5">
                   Bloquinhos de Anotações — Tarefas Permanentes
                 </h2>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-xs text-white border border-white/30">
+                <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.2 rounded-full bg-white/20 text-white border border-white/30">
                   {totalCount} Bloquinhos
                 </span>
                 {activeNoticesCount > 0 && (
-                  <span className="animate-pulse text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-400 text-emerald-950 shadow-xs flex items-center gap-1">
-                    <Sparkles size={12} className="animate-spin" />
-                    {activeNoticesCount} Execução Notificada
+                  <span className="animate-pulse text-[9px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-400 text-emerald-950 shadow-2xs flex items-center gap-1">
+                    <Sparkles size={10} className="animate-spin" />
+                    {activeNoticesCount} Notificada
                   </span>
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-purple-100 opacity-90 mt-1 max-w-2xl leading-relaxed">
-                Suas rotinas contínuas com escolha do colaborador, renovação diária às 00:00 e aviso discreto para a gestão.
-              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-1.5 flex-wrap shrink-0 ml-auto sm:ml-0">
             <button
               onClick={() => setIsHistoryModalOpen(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 text-xs font-bold text-white backdrop-blur-md border border-white/20 transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-[11px] font-bold text-white border border-white/20 transition-all cursor-pointer shrink-0"
               title="Consultar Histórico de Execuções Diárias"
             >
-              <History size={16} />
-              <span>📜 Histórico (00:00)</span>
+              <History size={13} />
+              <span>Histórico (00:00)</span>
             </button>
 
             <button
               onClick={() => performDailyRenewal(false)}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 text-xs font-bold text-white backdrop-blur-md border border-white/20 transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-[11px] font-bold text-white border border-white/20 transition-all cursor-pointer shrink-0"
               title="Simular Renovação Diária das 00:00"
             >
-              <RefreshCw size={15} />
-              <span className="hidden sm:inline">Renovar 00:00</span>
+              <RefreshCw size={13} />
+              <span className="hidden sm:inline">Renovar</span>
             </button>
 
             <button
@@ -903,9 +900,9 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                 loadCollaborators();
                 setIsModalOpen(true);
               }}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white text-purple-700 hover:bg-purple-50 active:scale-95 text-xs font-black shadow-lg transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl bg-white text-purple-700 hover:bg-purple-50 active:scale-95 text-[11px] font-black shadow-xs transition-all cursor-pointer shrink-0"
             >
-              <Plus size={18} className="text-purple-600" />
+              <Plus size={14} className="text-purple-600" />
               <span>+ Criar Bloquinho</span>
             </button>
           </div>
@@ -914,28 +911,28 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
 
       {activeNoticesCount > 0 && isManagerOrSupervisor && (
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3.5 rounded-2xl bg-emerald-500/15 dark:bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-between gap-3 shadow-sm"
+          className="p-2 rounded-xl bg-emerald-500/15 dark:bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-between gap-2 shadow-2xs"
         >
-          <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-            <Sparkles size={16} className="text-emerald-500 animate-spin shrink-0" />
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+            <Sparkles size={14} className="text-emerald-500 animate-spin shrink-0" />
             <span>
-              <strong>Aviso da Gestão:</strong> {activeNoticesCount} {activeNoticesCount === 1 ? 'tarefa foi executada' : 'tarefas foram executadas'} por colaboradores e aguardam seu visto.
+              <strong>Aviso da Gestão:</strong> {activeNoticesCount} {activeNoticesCount === 1 ? 'tarefa executada' : 'tarefas executadas'} por colaboradores.
             </span>
           </div>
           <button
             onClick={handleAcknowledgeAllNotices}
-            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black tracking-wide shrink-0 transition-all cursor-pointer shadow-xs"
+            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black tracking-wide shrink-0 transition-all cursor-pointer shadow-2xs"
           >
             Dar Visto em Todos
           </button>
         </motion.div>
       )}
 
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+      <div className="space-y-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5">
             {[
               { id: 'Todas', label: 'Todas', count: totalCount, activeColor: 'bg-purple-600 text-white' },
               { id: 'Pendente', label: 'Pendentes', count: pendingCount, activeColor: 'bg-sky-600 text-white' },
@@ -949,16 +946,16 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                 <button
                   key={tab.id}
                   onClick={() => setStatusFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 border ${
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 border ${
                     isActive
-                      ? `${tab.activeColor} border-transparent shadow-md active:scale-95`
+                      ? `${tab.activeColor} border-transparent shadow-xs active:scale-95`
                       : isDarkMode
                       ? 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
-                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs'
                   }`}
                 >
                   <span>{tab.label}</span>
-                  <span className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-full ${
+                  <span className={`text-[9px] font-extrabold px-1.5 py-0.1 rounded-full ${
                     isActive 
                       ? 'bg-white/20 text-white' 
                       : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
@@ -970,25 +967,25 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
             })}
           </div>
 
-          <div className="relative min-w-[220px]">
+          <div className="relative min-w-[200px]">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por rotina ou colaborador..."
-              className={`w-full h-10 pl-9 pr-4 rounded-xl text-xs font-medium outline-none border transition-all ${
+              placeholder="Buscar..."
+              className={`w-full h-8 pl-8 pr-3 rounded-lg text-[11px] font-medium outline-none border transition-all ${
                 isDarkMode 
                   ? 'bg-slate-900 border-slate-800 text-slate-100 placeholder:text-slate-500 focus:border-purple-500' 
-                  : 'bg-white border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-purple-500 shadow-xs'
+                  : 'bg-white border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-purple-500 shadow-2xs'
               }`}
             />
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               >
-                <X size={14} />
+                <X size={12} />
               </button>
             )}
           </div>
@@ -996,35 +993,35 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(n => (
-            <div key={n} className={`h-56 rounded-2xl border animate-pulse ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+          {[1, 2, 3, 4, 5].map(n => (
+            <div key={n} className={`h-40 rounded-xl border animate-pulse ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-100 border-slate-200'}`} />
           ))}
         </div>
       ) : filteredTasks.length === 0 ? (
-        <div className={`p-12 text-center rounded-3xl border ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-xs'}`}>
-          <div className="p-4 rounded-full bg-purple-500/10 text-purple-500 inline-block mb-3">
-            <Pin size={32} />
+        <div className={`p-8 text-center rounded-2xl border ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'}`}>
+          <div className="p-3 rounded-full bg-purple-500/10 text-purple-500 inline-block mb-2">
+            <Pin size={24} />
           </div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Nenhum bloquinho encontrado</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Nenhum bloquinho encontrado</h3>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-md mx-auto">
             {searchQuery || statusFilter !== 'Todas' 
-              ? 'Nenhum bloquinho de anotações corresponde aos filtros selecionados.' 
-              : 'Você ainda não possui tarefas permanentes salvas.'}
+              ? 'Nenhum bloquinho de anotações atende aos critérios.' 
+              : 'Nenhuma tarefa permanente cadastrada.'}
           </p>
           <button
             onClick={() => {
               loadCollaborators();
               setIsModalOpen(true);
             }}
-            className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl transition-all shadow-md inline-flex items-center gap-2 cursor-pointer"
+            className="mt-3 px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold rounded-lg transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus size={16} />
-            <span>Adicionar Primeiro Bloquinho</span>
+            <Plus size={14} />
+            <span>Adicionar Bloquinho</span>
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           <AnimatePresence>
             {filteredTasks.map((task, idx) => {
               const style = getNoteStyles(task.color_theme, task.status);
@@ -1033,88 +1030,88 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                 <motion.div
                   key={task.id}
                   layout
-                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2, delay: idx * 0.03 }}
-                  className={`group relative rounded-2xl border p-4 sm:p-5 flex flex-col justify-between shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${style.cardBg} ${
+                  transition={{ duration: 0.15, delay: idx * 0.02 }}
+                  className={`group relative rounded-xl border p-3 flex flex-col justify-between shadow-xs transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${style.cardBg} ${
                     task.has_execution_notice 
                       ? 'ring-2 ring-emerald-500/70 shadow-emerald-500/20' 
                       : ''
                   }`}
                 >
-                  <div className={`absolute -top-2 left-1/2 -translate-x-1/2 w-16 h-3 rounded-xs ${style.tapeColor} border border-white/20 backdrop-blur-xs`} />
+                  <div className={`absolute -top-1.5 left-1/2 -translate-x-1/2 w-12 h-2 rounded-xs ${style.tapeColor} border border-white/20 backdrop-blur-xs`} />
 
                   <div>
-                    <div className="flex items-start justify-between gap-2 mb-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className={`p-1.5 rounded-lg shrink-0 ${style.pinBg} shadow-xs`}>
-                          <Pin size={14} className="rotate-45" />
+                    <div className="flex items-start justify-between gap-1.5 mb-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className={`p-1 rounded-md shrink-0 ${style.pinBg} shadow-2xs`}>
+                          <Pin size={11} className="rotate-45" />
                         </div>
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-slate-800 dark:text-slate-200 truncate">
+                        <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-slate-800 dark:text-slate-200 truncate">
                           📌 {task.category || 'Rotina'}
                         </span>
                       </div>
 
                       <button
                         onClick={() => handleDeleteNote(task.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer shrink-0"
+                        className="opacity-0 group-hover:opacity-100 p-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-500/10 rounded transition-all cursor-pointer shrink-0"
                         title="Excluir bloquinho"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                       </button>
                     </div>
 
                     {task.has_execution_notice && (
-                      <div className="mb-2.5">
+                      <div className="mb-2">
                         <button
                           onClick={() => handleAcknowledgeNotice(task.id)}
-                          className="w-full py-1.5 px-2.5 rounded-xl bg-emerald-500/20 dark:bg-emerald-950/80 border border-emerald-500/50 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold flex items-center justify-between gap-1.5 animate-pulse shadow-sm cursor-pointer hover:bg-emerald-500/30 transition-all"
-                          title="Clique para registrar visto na execução do colaborador"
+                          className="w-full py-1 px-2 rounded-lg bg-emerald-500/20 dark:bg-emerald-950/80 border border-emerald-500/50 text-emerald-800 dark:text-emerald-300 text-[9px] font-extrabold flex items-center justify-between gap-1 animate-pulse shadow-2xs cursor-pointer hover:bg-emerald-500/30 transition-all"
+                          title="Clique para registrar visto"
                         >
-                          <span className="flex items-center gap-1.5 truncate">
-                            <Sparkles size={13} className="text-emerald-500 animate-spin shrink-0" />
-                            <span className="truncate">Executado por {task.collaborator_name}</span>
+                          <span className="flex items-center gap-1 truncate">
+                            <Sparkles size={11} className="text-emerald-500 animate-spin shrink-0" />
+                            <span className="truncate">{task.collaborator_name}</span>
                           </span>
-                          <span className="underline shrink-0 text-[9px] uppercase font-black bg-emerald-600 text-white px-1.5 py-0.5 rounded-md">Visto</span>
+                          <span className="underline shrink-0 text-[8px] uppercase font-black bg-emerald-600 text-white px-1 py-0.2 rounded">Visto</span>
                         </button>
                       </div>
                     )}
 
-                    <h3 className="text-sm font-black tracking-tight leading-snug mb-2 break-words">
+                    <h3 className="text-xs font-extrabold tracking-tight leading-tight mb-1 break-words">
                       {task.title}
                     </h3>
 
-                    <p className="text-xs opacity-85 leading-relaxed line-clamp-3 mb-4 font-sans">
+                    <p className="text-[11px] opacity-80 leading-snug line-clamp-2 mb-2 font-sans">
                       {task.description || 'Instruções da rotina permanente.'}
                     </p>
                   </div>
 
-                  <div className="space-y-3 pt-3 border-t border-black/5 dark:border-white/10">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">Status:</span>
+                  <div className="space-y-2 pt-2 border-t border-black/5 dark:border-white/10 text-[10px]">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <span className="font-bold uppercase tracking-wider opacity-60 text-[9px]">Status:</span>
                       <div className="relative shrink-0">
                         <select
                           value={task.status || 'Pendente'}
                           onChange={(e) => handleStatusChange(task.id, e.target.value)}
-                          className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border outline-none cursor-pointer appearance-none pr-6 shadow-2xs transition-all ${style.badgeBg}`}
+                          className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border outline-none cursor-pointer appearance-none pr-5 shadow-2xs transition-all ${style.badgeBg}`}
                         >
                           <option value="Pendente" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🔵 Pendente</option>
-                          <option value="Em Andamento" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟡 Em Andamento</option>
-                          <option value="Revisão" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟣 Em Revisão</option>
+                          <option value="Em Andamento" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟡 Andamento</option>
+                          <option value="Revisão" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟣 Revisão</option>
                           <option value="Concluída" className="text-slate-900 bg-white dark:bg-slate-900 dark:text-slate-100">🟢 Concluída</option>
                         </select>
-                        <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
+                        <ChevronDown size={10} className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[10px] font-bold opacity-75">
+                    <div className="space-y-0.5">
+                      <div className="flex justify-between items-center text-[9px] font-bold opacity-75">
                         <span>Progresso</span>
                         <span>{task.progress || 0}%</span>
                       </div>
-                      <div className="relative flex items-center gap-2">
-                        <div className="flex-1 bg-black/10 dark:bg-white/10 h-2 rounded-full overflow-hidden">
+                      <div className="relative flex items-center gap-1.5">
+                        <div className="flex-1 bg-black/10 dark:bg-white/10 h-1.5 rounded-full overflow-hidden">
                           <div 
                             className={`h-full transition-all duration-300 ${style.progressFill}`}
                             style={{ width: `${task.progress || 0}%` }}
@@ -1122,7 +1119,7 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                         </div>
                         <button
                           onClick={() => handleProgressChange(task.id, task.progress === 100 ? 0 : 100)}
-                          className={`text-[9px] font-black px-1.5 py-0.5 rounded-md border transition-all cursor-pointer ${
+                          className={`text-[8px] font-black px-1 py-0.2 rounded border transition-all cursor-pointer ${
                             task.progress === 100
                               ? 'bg-emerald-600 text-white border-emerald-500'
                               : 'bg-black/5 dark:bg-white/10 hover:bg-black/10'
@@ -1134,13 +1131,13 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] opacity-85 pt-1.5 border-t border-black/5 dark:border-white/5">
-                      <span className="font-bold flex items-center gap-1.5 truncate max-w-[150px] text-purple-700 dark:text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-md border border-purple-500/20">
-                        <UserCheck size={13} className="shrink-0 text-purple-600 dark:text-purple-400" />
+                    <div className="flex items-center justify-between text-[9px] opacity-85 pt-1 border-t border-black/5 dark:border-white/5">
+                      <span className="font-bold flex items-center gap-1 truncate max-w-[130px] text-purple-700 dark:text-purple-300 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
+                        <UserCheck size={11} className="shrink-0 text-purple-600 dark:text-purple-400" />
                         <span className="truncate">{task.collaborator_name || 'Não Atribuído'}</span>
                       </span>
-                      <span className="font-extrabold flex items-center gap-1 shrink-0 opacity-70">
-                        <Calendar size={11} />
+                      <span className="font-extrabold flex items-center gap-0.5 shrink-0 opacity-70">
+                        <Calendar size={10} />
                         {task.due_date || 'Diário'}
                       </span>
                     </div>
