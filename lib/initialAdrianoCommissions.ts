@@ -1,5 +1,6 @@
 export interface AcordoComissaoRow {
   id: string;
+  meta_nome?: string; // 'Meta 1' | 'Meta 2'
   valor_base: number;
   valor_alcancado: number;
   diferenca: number;
@@ -37,8 +38,8 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 1,
     ano: 2026,
     acordo: [
-      { id: 'jan-1', valor_base: 200000, valor_alcancado: 318517.27, diferenca: 118517.27, percentual: 0.005, comissao: 592.59 },
-      { id: 'jan-2', valor_base: 320000, valor_alcancado: 0, diferenca: 0, percentual: 0.006, comissao: 0 }
+      { id: 'jan-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 318517.27, diferenca: 118517.27, percentual: 0.005, comissao: 592.59 },
+      { id: 'jan-2', meta_nome: 'Meta 2', valor_base: 320000, valor_alcancado: 0, diferenca: 0, percentual: 0.006, comissao: 0 }
     ],
     redes_sociais: [
       { id: 'jan-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Janeiro', acessoria: 0 },
@@ -54,8 +55,8 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 2,
     ano: 2026,
     acordo: [
-      { id: 'fev-1', valor_base: 200000, valor_alcancado: 351208.10, diferenca: 151208.10, percentual: 0.005, comissao: 756.04 },
-      { id: 'fev-2', valor_base: 320000, valor_alcancado: 351208.10, diferenca: 31208.10, percentual: 0.006, comissao: 187.25 }
+      { id: 'fev-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 351208.10, diferenca: 151208.10, percentual: 0.005, comissao: 756.04 },
+      { id: 'fev-2', meta_nome: 'Meta 2', valor_base: 320000, valor_alcancado: 351208.10, diferenca: 31208.10, percentual: 0.006, comissao: 187.25 }
     ],
     redes_sociais: [
       { id: 'fev-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Fevereiro', acessoria: 0 },
@@ -71,8 +72,8 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 3,
     ano: 2026,
     acordo: [
-      { id: 'mar-1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 },
-      { id: 'mar-2', valor_base: 320000, valor_alcancado: 0, diferenca: -320000.00, percentual: 0.006, comissao: -1920.00 }
+      { id: 'mar-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 },
+      { id: 'mar-2', meta_nome: 'Meta 2', valor_base: 320000, valor_alcancado: 0, diferenca: -320000.00, percentual: 0.006, comissao: -1920.00 }
     ],
     redes_sociais: [
       { id: 'mar-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Março', acessoria: 0 },
@@ -87,7 +88,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 4,
     ano: 2026,
     acordo: [
-      { id: 'abr-1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
+      { id: 'abr-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
     ],
     redes_sociais: [
       { id: 'abr-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Abril', acessoria: 0 },
@@ -102,7 +103,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 5,
     ano: 2026,
     acordo: [
-      { id: 'mai-1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
+      { id: 'mai-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
     ],
     redes_sociais: [
       { id: 'mai-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Maio', acessoria: 0 },
@@ -117,7 +118,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 6,
     ano: 2026,
     acordo: [
-      { id: 'jun-1', valor_base: 200000, valor_alcancado: 200274.51, diferenca: 274.51, percentual: 0.005, comissao: 1.37 }
+      { id: 'jun-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 200274.51, diferenca: 274.51, percentual: 0.005, comissao: 1.37 }
     ],
     redes_sociais: [
       { id: 'jun-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Junho', acessoria: 0 },
@@ -133,7 +134,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 7,
     ano: 2026,
     acordo: [
-      { id: 'jul-1', valor_base: 200000, valor_alcancado: 213150.42, diferenca: 13150.42, percentual: 0.005, comissao: 65.75 }
+      { id: 'jul-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 213150.42, diferenca: 13150.42, percentual: 0.005, comissao: 65.75 }
     ],
     redes_sociais: [
       { id: 'jul-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Julho', acessoria: 0 }
@@ -148,7 +149,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 8,
     ano: 2026,
     acordo: [
-      { id: 'ago-1', valor_base: 200000, valor_alcancado: 229623.07, diferenca: 29623.07, percentual: 0.005, comissao: 148.12 }
+      { id: 'ago-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 229623.07, diferenca: 29623.07, percentual: 0.005, comissao: 148.12 }
     ],
     redes_sociais: [
       { id: 'ago-rs-1', rede: 'Google', valor_nota: 500.57, numero_nf: '38742348', mes: 'Agosto', acessoria: 250.29 }
@@ -163,7 +164,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 9,
     ano: 2026,
     acordo: [
-      { id: 'set-1', valor_base: 200000, valor_alcancado: 282938.42, diferenca: 82938.42, percentual: 0.005, comissao: 414.69 }
+      { id: 'set-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 282938.42, diferenca: 82938.42, percentual: 0.005, comissao: 414.69 }
     ],
     redes_sociais: [
       { id: 'set-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Setembro', acessoria: 0 },
@@ -179,7 +180,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 10,
     ano: 2026,
     acordo: [
-      { id: 'out-1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
+      { id: 'out-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
     ],
     redes_sociais: [
       { id: 'out-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Outubro', acessoria: 0 },
@@ -194,7 +195,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 11,
     ano: 2026,
     acordo: [
-      { id: 'nov-1', valor_base: 200000, valor_alcancado: 0, diferenca: 0, percentual: 0.005, comissao: 0 }
+      { id: 'nov-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 0, diferenca: 0, percentual: 0.005, comissao: 0 }
     ],
     redes_sociais: [
       { id: 'nov-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Novembro', acessoria: 0 },
@@ -209,7 +210,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
     mes_numero: 12,
     ano: 2026,
     acordo: [
-      { id: 'dez-1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
+      { id: 'dez-1', meta_nome: 'Meta 1', valor_base: 200000, valor_alcancado: 0, diferenca: -200000.00, percentual: 0.005, comissao: -1000.00 }
     ],
     redes_sociais: [
       { id: 'dez-rs-1', rede: 'Google', valor_nota: 0, numero_nf: '', mes: 'Dezembro', acessoria: 0 },
@@ -221,7 +222,7 @@ export const INITIAL_ADRIANO_COMMISSIONS: AdrianoMonthCommission[] = [
 ];
 
 export function recalculateMonth(month: AdrianoMonthCommission): AdrianoMonthCommission {
-  const updatedAcordo = month.acordo.map(row => {
+  const updatedAcordo = month.acordo.map((row, idx) => {
     // Se valor alcançado foi 0 e a diferença for negativa (penalidade/meta não batida)
     let dif = row.diferenca;
     if (row.valor_alcancado > 0) {
@@ -230,6 +231,7 @@ export function recalculateMonth(month: AdrianoMonthCommission): AdrianoMonthCom
     const com = Number((dif * row.percentual).toFixed(2));
     return {
       ...row,
+      meta_nome: row.meta_nome || (idx === 0 ? 'Meta 1' : idx === 1 ? 'Meta 2' : `Meta ${idx + 1}`),
       diferenca: dif,
       comissao: com
     };

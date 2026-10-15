@@ -38,14 +38,21 @@ interface AdrianoCommissionsManagerProps {
 const LOCAL_STORAGE_KEY = 'agentx_adriano_commissions_data';
 
 export default function AdrianoCommissionsManager({ isDarkMode = false }: AdrianoCommissionsManagerProps) {
-  // Inicialização com localStorage para garantir disponibilidade instantânea offline e persistência
   const [months, setMonths] = useState<AdrianoMonthCommission[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((m: AdrianoMonthCommission) => ({
+              ...m,
+              acordo: m.acordo.map((a, idx) => ({
+                ...a,
+                meta_nome: a.meta_nome || (idx === 0 ? 'Meta 1' : idx === 1 ? 'Meta 2' : `Meta ${idx + 1}`)
+              }))
+            }));
+          }
         }
       } catch {}
     }
@@ -78,7 +85,14 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
       const res = await fetch('/api/admin/commissions-adriano');
       const data = await res.json();
       if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        setMonths(data.data);
+        const normalized = data.data.map((m: AdrianoMonthCommission) => ({
+          ...m,
+          acordo: m.acordo.map((a, idx) => ({
+            ...a,
+            meta_nome: a.meta_nome || (idx === 0 ? 'Meta 1' : idx === 1 ? 'Meta 2' : `Meta ${idx + 1}`)
+          }))
+        }));
+        setMonths(normalized);
       }
     } catch (err) {
       console.warn('Usando dados em cache/locais:', err);
@@ -91,10 +105,12 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
     fetchServerData();
   }, []);
 
-  // Totais e Métricas Anuais
+  // Totais e Métricas Anuais (Metas 1 e 2 são separadas e independentes - NÃO SOMAM BASE)
   const metrics = useMemo(() => {
     let totalComissoes = 0;
     let totalAlcancado = 0;
+    let totalComissaoMeta1 = 0;
+    let totalComissaoMeta2 = 0;
     let totalAcessoriaRedes = 0;
     let mesesPositivosCount = 0;
     let mesesNegativosCount = 0;
@@ -109,9 +125,16 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
       if (m.pago) countPagas++;
       else countPendentes++;
 
-      m.acordo.forEach(a => {
-        totalAlcancado += Number(a.valor_alcancado) || 0;
-      });
+      // Faturamento alcançado no mês (sem duplicar entre Meta 1 e Meta 2)
+      const mesAlcancado = Math.max(...m.acordo.map(a => Number(a.valor_alcancado) || 0), 0);
+      totalAlcancado += mesAlcancado;
+
+      // Apuração separada de comissões por meta
+      const meta1 = m.acordo.find(a => (a.meta_nome || '').toLowerCase().includes('1')) || m.acordo[0];
+      const meta2 = m.acordo.find(a => (a.meta_nome || '').toLowerCase().includes('2')) || (m.acordo.length > 1 ? m.acordo[1] : null);
+
+      if (meta1) totalComissaoMeta1 += Number(meta1.comissao) || 0;
+      if (meta2) totalComissaoMeta2 += Number(meta2.comissao) || 0;
 
       m.redes_sociais.forEach(rs => {
         totalAcessoriaRedes += Number(rs.acessoria) || 0;
@@ -121,6 +144,8 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
     return {
       totalComissoes,
       totalAlcancado,
+      totalComissaoMeta1,
+      totalComissaoMeta2,
       totalAcessoriaRedes,
       mesesPositivosCount,
       mesesNegativosCount,
@@ -209,7 +234,7 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
   // Exportar para CSV
   const handleExportCSV = () => {
     const headers = [
-      'Mês', 'Item Acordo', 'Valor Base', 'Valor Alcançado', 'Diferença', '% Acordo', 'Comissão Acordo',
+      'Mês', 'Meta', 'Valor Base', 'Valor Alcançado', 'Diferença', '% Acordo', 'Comissão Acordo',
       'Rede Social', 'Valor Nota RS', 'Nº NF', 'Acessoria RS', 'Total Mês', 'Status'
     ];
 
@@ -223,7 +248,7 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
 
         rows.push([
           `"${m.mes}"`,
-          ac ? `"${i + 1}"` : '""',
+          ac ? `"${ac.meta_nome || (i === 0 ? 'Meta 1' : 'Meta 2')}"` : '""',
           ac ? `"${ac.valor_base.toFixed(2).replace('.', ',')}"` : '""',
           ac ? `"${ac.valor_alcancado.toFixed(2).replace('.', ',')}"` : '""',
           ac ? `"${ac.diferenca.toFixed(2).replace('.', ',')}"` : '""',
@@ -509,8 +534,9 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                 </div>
 
                 {/* Sub-header 1: Acordo de comissão */}
-                <div className="bg-[#d9ead3] dark:bg-[#1f3d1b] text-slate-800 dark:text-emerald-200 text-[11px] font-bold text-center py-1 border-b border-[#c2ddbb] dark:border-[#1a3317]">
-                  Acordo de comissão
+                <div className="bg-[#d9ead3] dark:bg-[#1f3d1b] text-slate-800 dark:text-emerald-200 text-[11px] font-bold px-3 py-1 border-b border-[#c2ddbb] dark:border-[#1a3317] flex items-center justify-between">
+                  <span>Acordo de comissão</span>
+                  <span className="text-[10px] font-semibold text-emerald-800/80 dark:text-emerald-300/80">Metas Separadas (Meta 1 / Meta 2 &bull; Não somam)</span>
                 </div>
 
                 {/* Table: Acordo de comissão */}
@@ -518,6 +544,7 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                   <table className="w-full text-xs text-left border-collapse">
                     <thead>
                       <tr className="bg-[#d9ead3]/60 dark:bg-[#1a3317]/60 text-slate-700 dark:text-emerald-300 text-[10px] font-bold border-b border-slate-200 dark:border-slate-800">
+                        <th className="py-1 px-2.5">Meta</th>
                         <th className="py-1 px-2.5">Valor Base</th>
                         <th className="py-1 px-2.5">Valor Alcançado</th>
                         <th className="py-1 px-2.5">Diferença</th>
@@ -526,12 +553,22 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-[11px]">
-                      {m.acordo.map((row) => {
+                      {m.acordo.map((row, idx) => {
                         const rowNegative = row.comissao < 0;
                         const rowDifNegative = row.diferenca < 0;
+                        const isMeta1 = (row.meta_nome || '').toLowerCase().includes('1') || idx === 0;
 
                         return (
                           <tr key={row.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
+                            <td className="py-1.5 px-2.5 whitespace-nowrap">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                isMeta1 
+                                  ? 'bg-emerald-600/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30' 
+                                  : 'bg-blue-600/15 text-blue-800 dark:text-blue-300 border border-blue-500/30'
+                              }`}>
+                                {row.meta_nome || (idx === 0 ? 'Meta 1' : 'Meta 2')}
+                              </span>
+                            </td>
                             <td className="py-1.5 px-2.5 whitespace-nowrap font-medium text-slate-800 dark:text-slate-200">
                               {formatCurrencyBRL(row.valor_base)}
                             </td>
@@ -639,22 +676,22 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                   isDarkMode ? 'bg-slate-800/60 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
                 }`}>
                   <th className="py-3 px-4">Mês</th>
-                  <th className="py-3 px-3">Meta Base (R$)</th>
+                  <th className="py-3 px-3">Meta 1 Base</th>
+                  <th className="py-3 px-3">Meta 2 Base</th>
                   <th className="py-3 px-3">Alcançado (R$)</th>
-                  <th className="py-3 px-3">Diferença (R$)</th>
-                  <th className="py-3 px-3">Comissão Acordo</th>
+                  <th className="py-3 px-3">Comissão Meta 1</th>
+                  <th className="py-3 px-3">Comissão Meta 2</th>
                   <th className="py-3 px-3">Acessoria Redes</th>
-                  <th className="py-3 px-4 text-right">Total Comissão</th>
+                  <th className="py-3 px-4 text-right">Total Líquido</th>
                   <th className="py-3 px-3 text-center">Status</th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
                 {filteredMonths.map(m => {
-                  const somaAcordo = m.acordo.reduce((acc, a) => acc + (Number(a.comissao) || 0), 0);
-                  const somaAlcancado = m.acordo.reduce((acc, a) => acc + (Number(a.valor_alcancado) || 0), 0);
-                  const somaBase = m.acordo.reduce((acc, a) => acc + (Number(a.valor_base) || 0), 0);
-                  const somaDif = m.acordo.reduce((acc, a) => acc + (Number(a.diferenca) || 0), 0);
+                  const meta1 = m.acordo.find(a => (a.meta_nome || '').toLowerCase().includes('1')) || m.acordo[0];
+                  const meta2 = m.acordo.find(a => (a.meta_nome || '').toLowerCase().includes('2')) || (m.acordo.length > 1 ? m.acordo[1] : null);
+                  const mesAlcancado = Math.max(...m.acordo.map(a => Number(a.valor_alcancado) || 0), 0);
                   const somaRedes = m.redes_sociais.reduce((acc, rs) => acc + (Number(rs.acessoria) || 0), 0);
                   const isNeg = m.total_comissao < 0;
 
@@ -668,21 +705,52 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                       <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
                         {m.mes}
                       </td>
-                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                        {formatCurrencyBRL(somaBase)}
+                      <td className="py-3.5 px-3 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25">
+                            Meta 1
+                          </span>
+                          <span className="font-semibold text-slate-900 dark:text-white">
+                            {meta1 ? formatCurrencyBRL(meta1.valor_base) : 'R$ 200.000,00'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-3 whitespace-nowrap">
+                        {meta2 ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/25">
+                              Meta 2
+                            </span>
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {formatCurrencyBRL(meta2.valor_base)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 font-mono text-xs pl-2">-</span>
+                        )}
                       </td>
                       <td className="py-3.5 px-3 font-semibold text-slate-900 dark:text-white whitespace-nowrap">
-                        {somaAlcancado > 0 ? formatCurrencyBRL(somaAlcancado) : 'R$ -'}
-                      </td>
-                      <td className={`py-3.5 px-3 whitespace-nowrap font-medium ${
-                        somaDif < 0 ? 'text-[#c00000] dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-300'
-                      }`}>
-                        {somaDif !== 0 ? formatCurrencyBRL(somaDif) : 'R$ -'}
+                        {mesAlcancado > 0 ? formatCurrencyBRL(mesAlcancado) : 'R$ -'}
                       </td>
                       <td className={`py-3.5 px-3 whitespace-nowrap font-bold ${
-                        somaAcordo < 0 ? 'text-[#c00000] dark:text-rose-400' : 'text-slate-900 dark:text-white'
+                        (meta1?.comissao || 0) < 0 
+                          ? 'text-[#c00000] dark:text-rose-400' 
+                          : (meta1?.comissao || 0) > 0 
+                            ? 'text-emerald-600 dark:text-emerald-400' 
+                            : 'text-slate-600 dark:text-slate-400'
                       }`}>
-                        {somaAcordo !== 0 ? formatCurrencyBRL(somaAcordo) : 'R$ -'}
+                        {meta1?.comissao !== 0 ? formatCurrencyBRL(meta1?.comissao || 0) : 'R$ -'}
+                      </td>
+                      <td className={`py-3.5 px-3 whitespace-nowrap font-bold ${
+                        !meta2 
+                          ? 'text-slate-400 font-mono' 
+                          : meta2.comissao < 0 
+                            ? 'text-[#c00000] dark:text-rose-400' 
+                            : meta2.comissao > 0 
+                              ? 'text-blue-600 dark:text-blue-400' 
+                              : 'text-slate-600 dark:text-slate-400'
+                      }`}>
+                        {meta2 ? (meta2.comissao !== 0 ? formatCurrencyBRL(meta2.comissao) : 'R$ -') : '-'}
                       </td>
                       <td className="py-3.5 px-3 whitespace-nowrap text-purple-600 dark:text-purple-400 font-semibold">
                         {somaRedes > 0 ? formatCurrencyBRL(somaRedes) : 'R$ -'}
@@ -727,10 +795,11 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                   isDarkMode ? 'bg-slate-800/80 text-white' : 'bg-slate-100 text-slate-900'
                 }`}>
                   <td className="py-3 px-4">TOTAIS ANUAIS</td>
-                  <td className="py-3 px-3">R$ 2.760.000,00</td>
+                  <td className="py-3 px-3 text-emerald-600 dark:text-emerald-400 font-bold">R$ 200k / mês (Meta 1)</td>
+                  <td className="py-3 px-3 text-blue-600 dark:text-blue-400 font-bold">R$ 320k / mês (Meta 2)</td>
                   <td className="py-3 px-3">{formatCurrencyBRL(metrics.totalAlcancado)}</td>
-                  <td className="py-3 px-3">-</td>
-                  <td className="py-3 px-3">-</td>
+                  <td className="py-3 px-3 text-emerald-600 dark:text-emerald-400">{formatCurrencyBRL(metrics.totalComissaoMeta1)}</td>
+                  <td className="py-3 px-3 text-blue-600 dark:text-blue-400">{formatCurrencyBRL(metrics.totalComissaoMeta2)}</td>
                   <td className="py-3 px-3 text-purple-600 dark:text-purple-400">{formatCurrencyBRL(metrics.totalAcessoriaRedes)}</td>
                   <td className={`py-3 px-4 text-right text-sm font-black ${
                     metrics.totalComissoes >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
@@ -750,19 +819,22 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
         <div className="space-y-6">
           <div className={`p-6 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
             <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">
-              Faturamento Alcançado vs Metas Base (R$ 200.000 / R$ 320.000)
+              Faturamento Alcançado vs Metas Separadas (Meta 1: R$ 200k &bull; Meta 2: R$ 320k)
             </h3>
-            <p className="text-xs text-slate-500 mb-6">Desempenho mensal em relação às faixas de acordo de comissão.</p>
+            <p className="text-xs text-slate-500 mb-6">
+              Desempenho mensal em relação às metas independentes. O valor base de cada meta não é somado.
+            </p>
 
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={months.map(m => {
-                    const alcancado = m.acordo.reduce((acc, a) => acc + (Number(a.valor_alcancado) || 0), 0);
+                    const alcancado = Math.max(...m.acordo.map(a => Number(a.valor_alcancado) || 0), 0);
                     return {
                       name: m.mes.substring(0, 3),
                       alcancado: alcancado,
-                      metaBase: 200000,
+                      meta1Base: 200000,
+                      meta2Base: 320000,
                       comissao: m.total_comissao
                     };
                   })}
@@ -784,8 +856,9 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                     }}
                   />
                   <Legend />
-                  <ReferenceLine y={200000} stroke="#f59e0b" strokeDasharray="4 4" label="Base R$ 200k" />
-                  <Bar dataKey="alcancado" name="Faturamento Alcançado" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                  <ReferenceLine y={200000} stroke="#10b981" strokeDasharray="4 4" label="Meta 1 (R$ 200k)" />
+                  <ReferenceLine y={320000} stroke="#3b82f6" strokeDasharray="4 4" label="Meta 2 (R$ 320k)" />
+                  <Bar dataKey="alcancado" name="Faturamento Alcançado" fill="#6366f1" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -795,7 +868,7 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
             <h3 className="text-base font-bold text-slate-900 dark:text-white mb-1">
               Curva de Comissões Líquidas (Positivas e Penalidades)
             </h3>
-            <p className="text-xs text-slate-500 mb-6">Valores líquidos de comissão ao longo do ano.</p>
+            <p className="text-xs text-slate-500 mb-6">Valores líquidos consolidados de comissão ao longo do ano.</p>
 
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -875,99 +948,159 @@ export default function AdrianoCommissionsManager({ isDarkMode = false }: Adrian
                 </button>
               </div>
 
+              {/* Informative Banner about Separate Goals */}
+              <div className="mt-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <strong className="block font-bold">Metas Separadas &bull; Valores base não somam:</strong>
+                  <span>A Meta 1 (base padrão R$ 200.000) e a Meta 2 (base padrão R$ 320.000) são metas independentes e não têm seus valores base somados.</span>
+                </div>
+              </div>
+
               <form onSubmit={handleSaveMonth} className="space-y-6 pt-5">
                 {/* 1. Acordo de Comissão Rows */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                      Acordo de Comissão ({editingMonth.acordo.length} faixas)
+                      Metas de Acordo ({editingMonth.acordo.length} {editingMonth.acordo.length === 1 ? 'meta ativa' : 'metas ativas'})
                     </h4>
+                    {editingMonth.acordo.length === 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newRow: AcordoComissaoRow = {
+                            id: `${editingMonth.id}-meta-2`,
+                            meta_nome: 'Meta 2',
+                            valor_base: 320000,
+                            valor_alcancado: editingMonth.acordo[0]?.valor_alcancado || 0,
+                            diferenca: 0,
+                            percentual: 0.006,
+                            comissao: 0
+                          };
+                          const updated = [...editingMonth.acordo, newRow];
+                          setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
+                        }}
+                        className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                      >
+                        <Plus size={13} />
+                        <span>Adicionar Meta 2 (R$ 320k)</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="space-y-3">
-                    {editingMonth.acordo.map((row, index) => (
-                      <div 
-                        key={row.id}
-                        className={`p-3.5 rounded-2xl border space-y-3 ${
-                          isDarkMode ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-50 border-slate-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                            Faixa #{index + 1}
-                          </span>
-                          <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                            Comissão calculada: {formatCurrencyBRL(row.comissao)}
-                          </span>
+                    {editingMonth.acordo.map((row, index) => {
+                      const isMeta1 = (row.meta_nome || '').toLowerCase().includes('1') || index === 0;
+
+                      return (
+                        <div 
+                          key={row.id}
+                          className={`p-3.5 rounded-2xl border space-y-3 ${
+                            isDarkMode ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                                isMeta1 
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' 
+                                  : 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30'
+                              }`}>
+                                {row.meta_nome || (index === 0 ? 'Meta 1' : 'Meta 2')}
+                              </span>
+                              <span className="text-[11px] text-slate-500 font-medium">
+                                {isMeta1 ? 'Meta 1 (Faixa Primária)' : 'Meta 2 (Faixa Secundária)'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                Comissão: {formatCurrencyBRL(row.comissao)}
+                              </span>
+                              {index > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = editingMonth.acordo.filter((_, i) => i !== index);
+                                    setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
+                                  }}
+                                  className="text-[10px] text-rose-500 hover:text-rose-700 hover:underline"
+                                >
+                                  Remover
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
+                                Valor Base {row.meta_nome || (index === 0 ? 'Meta 1' : 'Meta 2')} (R$)
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={row.valor_base}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  const updated = [...editingMonth.acordo];
+                                  updated[index] = { ...updated[index], valor_base: val };
+                                  setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
+                                }}
+                                className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Faturamento Alcançado (R$)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={row.valor_alcancado}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  const updated = [...editingMonth.acordo];
+                                  updated[index] = { ...updated[index], valor_alcancado: val };
+                                  setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
+                                }}
+                                className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Diferença (R$)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={row.diferenca}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  const updated = [...editingMonth.acordo];
+                                  updated[index] = { ...updated[index], diferenca: val };
+                                  setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
+                                }}
+                                className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Percentual (%)</label>
+                              <input
+                                type="number"
+                                step="0.001"
+                                value={row.percentual * 100}
+                                onChange={(e) => {
+                                  const perc = (parseFloat(e.target.value) || 0) / 100;
+                                  const updated = [...editingMonth.acordo];
+                                  updated[index] = { ...updated[index], percentual: perc };
+                                  setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
+                                }}
+                                className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
+                              />
+                            </div>
+                          </div>
                         </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Valor Base (R$)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.valor_base}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                const updated = [...editingMonth.acordo];
-                                updated[index] = { ...updated[index], valor_base: val };
-                                setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
-                              }}
-                              className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Valor Alcançado (R$)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.valor_alcancado}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                const updated = [...editingMonth.acordo];
-                                updated[index] = { ...updated[index], valor_alcancado: val };
-                                setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
-                              }}
-                              className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Diferença (R$)</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={row.diferenca}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value) || 0;
-                                const updated = [...editingMonth.acordo];
-                                updated[index] = { ...updated[index], diferenca: val };
-                                setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
-                              }}
-                              className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Percentual (%)</label>
-                            <input
-                              type="number"
-                              step="0.001"
-                              value={row.percentual * 100}
-                              onChange={(e) => {
-                                const perc = (parseFloat(e.target.value) || 0) / 100;
-                                const updated = [...editingMonth.acordo];
-                                updated[index] = { ...updated[index], percentual: perc };
-                                setEditingMonth(recalculateMonth({ ...editingMonth, acordo: updated }));
-                              }}
-                              className="w-full h-9 px-3 rounded-xl border bg-white dark:bg-slate-900 font-medium"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 

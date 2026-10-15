@@ -50,9 +50,11 @@ export async function GET() {
   try {
     const list = await getStoredCommissions();
 
-    // Calcular métricas anuais
+    // Calcular métricas anuais (Meta 1 e Meta 2 apuradas separadamente - bases não somam)
     let totalComissoes = 0;
     let totalAlcancado = 0;
+    let totalComissaoMeta1 = 0;
+    let totalComissaoMeta2 = 0;
     let totalAcessoriaRedes = 0;
     let mesesPositivosCount = 0;
     let mesesNegativosCount = 0;
@@ -62,9 +64,15 @@ export async function GET() {
       if (m.total_comissao > 0) mesesPositivosCount++;
       else if (m.total_comissao < 0) mesesNegativosCount++;
 
-      m.acordo.forEach(a => {
-        totalAlcancado += Number(a.valor_alcancado) || 0;
-      });
+      // Faturamento alcançado no mês (sem duplicar entre Meta 1 e Meta 2)
+      const mesAlcancado = Math.max(...m.acordo.map(a => Number(a.valor_alcancado) || 0), 0);
+      totalAlcancado += mesAlcancado;
+
+      const meta1 = m.acordo.find(a => (a.meta_nome || '').toLowerCase().includes('1')) || m.acordo[0];
+      const meta2 = m.acordo.find(a => (a.meta_nome || '').toLowerCase().includes('2')) || (m.acordo.length > 1 ? m.acordo[1] : null);
+
+      if (meta1) totalComissaoMeta1 += Number(meta1.comissao) || 0;
+      if (meta2) totalComissaoMeta2 += Number(meta2.comissao) || 0;
 
       m.redes_sociais.forEach(rs => {
         totalAcessoriaRedes += Number(rs.acessoria) || 0;
@@ -77,6 +85,8 @@ export async function GET() {
       metrics: {
         totalComissoes: Number(totalComissoes.toFixed(2)),
         totalAlcancado: Number(totalAlcancado.toFixed(2)),
+        totalComissaoMeta1: Number(totalComissaoMeta1.toFixed(2)),
+        totalComissaoMeta2: Number(totalComissaoMeta2.toFixed(2)),
         totalAcessoriaRedes: Number(totalAcessoriaRedes.toFixed(2)),
         mesesPositivosCount,
         mesesNegativosCount,
