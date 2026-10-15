@@ -546,20 +546,34 @@ export default function ReportsPage() {
 
       const plannedRaw = t.due_date || t.created_at;
       if (plannedRaw) {
-        const pKey = new Date(plannedRaw).toISOString().split('T')[0];
-        if (trendMap[pKey]) {
-          trendMap[pKey].planejado += 1;
-          totalPlannedInPeriod += 1;
+        try {
+          const d = new Date(plannedRaw);
+          if (!isNaN(d.getTime())) {
+            const pKey = d.toISOString().split('T')[0];
+            if (trendMap[pKey]) {
+              trendMap[pKey].planejado += 1;
+              totalPlannedInPeriod += 1;
+            }
+          }
+        } catch {
+          // ignore invalid dates
         }
       }
 
       if (isCompleted) {
         const actualRaw = t.updated_at || t.due_date || t.created_at;
         if (actualRaw) {
-          const aKey = new Date(actualRaw).toISOString().split('T')[0];
-          if (trendMap[aKey]) {
-            trendMap[aKey].realizado += 1;
-            totalCompletedInPeriod += 1;
+          try {
+            const d = new Date(actualRaw);
+            if (!isNaN(d.getTime())) {
+              const aKey = d.toISOString().split('T')[0];
+              if (trendMap[aKey]) {
+                trendMap[aKey].realizado += 1;
+                totalCompletedInPeriod += 1;
+              }
+            }
+          } catch {
+            // ignore invalid dates
           }
         }
       }
