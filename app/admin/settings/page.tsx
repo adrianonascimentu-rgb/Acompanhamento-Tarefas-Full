@@ -48,7 +48,8 @@ import {
   Radio,
   Plus,
   Trash2,
-  DollarSign
+  DollarSign,
+  X
 } from 'lucide-react';
 import CommissionsManager from '@/components/admin/CommissionsManager';
 import { motion, AnimatePresence } from 'motion/react';
@@ -84,8 +85,150 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [migrationSql, setMigrationSql] = useState<string | null>(null);
   const [activeSmtpTab, setActiveSmtpTab] = useState<'resend' | 'sendgrid' | 'brevo'>('resend');
-  const [activeTab, setActiveTab] = useState<'modules' | 'integrations' | 'saas' | 'logs' | 'warranties' | 'commissions'>('modules');
+  const [activeTab, setActiveTab] = useState<'modules' | 'integrations' | 'saas' | 'logs' | 'warranties' | 'commissions' | 'truck_replacement'>('modules');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Truck Replacement Configuration State
+  const [truckConfig, setTruckConfig] = useState({
+    default_driver: 'João Pereira',
+    license_plate: 'DFG-5544',
+    vehicle_model: 'Mercedes-Benz Atego 1719',
+    operational_status: 'Em Reposição' as 'Operacional' | 'Em Reposição' | 'Em Manutenção' | 'Inativo',
+    notes: 'Veículo de reposição principal em operação nas rotas da grande João Pessoa'
+  });
+
+  const [truckLogs, setTruckLogs] = useState<any[]>([
+    {
+      id: 'log-1',
+      swap_date: '2026-10-10 14:30',
+      driver_name: 'João Pereira',
+      old_plate: 'ABC-1234 (Volks 13.180)',
+      new_plate: 'DFG-5544 (Mercedes Atego)',
+      reason: 'Manutenção preventiva do motor e troca de óleo do veículo titular',
+      notes: 'Veículo DFG-5544 assumiu todas as entregas do turno da tarde com sucesso.',
+      created_by: 'Carlos Gerente',
+      created_at: '2026-10-10T14:30:00Z'
+    },
+    {
+      id: 'log-2',
+      swap_date: '2026-09-25 08:15',
+      driver_name: 'Marcos Souza',
+      old_plate: 'XYZ-9876 (Ford Cargo)',
+      new_plate: 'ABC-1234 (Volks 13.180)',
+      reason: 'Falha no sistema de freios pneumáticos durante rota matutina',
+      notes: 'Substituição emergencial realizada no centro de distribuição em 20 minutos.',
+      created_by: 'Ana Supervisor',
+      created_at: '2026-09-25T08:15:00Z'
+    }
+  ]);
+
+  const [isSavingTruckConfig, setIsSavingTruckConfig] = useState(false);
+  const [showTruckSuccess, setShowTruckSuccess] = useState(false);
+  const [showSwapModal, setShowSwapModal] = useState(false);
+  const [newSwapLog, setNewSwapLog] = useState({
+    driver_name: 'João Pereira',
+    old_plate: 'ABC-1234',
+    new_plate: 'DFG-5544',
+    reason: 'Manutenção preventiva e revisão periódica',
+    notes: ''
+  });
+
+  const fetchTruckConfigSettings = async () => {
+    try {
+      const { data } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'truck_replacement_settings')
+        .maybeSingle();
+
+      if (data?.value) {
+        if (data.value.config) setTruckConfig(data.value.config);
+        if (Array.isArray(data.value.logs) && data.value.logs.length > 0) setTruckLogs(data.value.logs);
+      } else {
+        const saved = localStorage.getItem('agentex_truck_replacement_settings');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.config) setTruckConfig(parsed.config);
+          if (Array.isArray(parsed.logs)) setTruckLogs(parsed.logs);
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar configurações do caminhão:', err);
+    }
+  };
+
+  const saveTruckConfigSettings = async (updatedConfig = truckConfig, updatedLogs = truckLogs) => {
+    setIsSavingTruckConfig(true);
+    try {
+      const payload = {
+        config: updatedConfig,
+        logs: updatedLogs,
+        updated_at: new Date().toISOString(),
+        updated_by: user?.name || 'Administrador'
+      };
+
+      localStorage.setItem('agentex_truck_replacement_settings', JSON.stringify(payload));
+
+      const { error } = await supabase
+        .from('system_settings')
+        .upsert({
+          key: 'truck_replacement_settings',
+          value: payload,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
+
+      if (error && error.code !== '42P01') console.warn('Aviso ao salvar no Supabase:', error.message);
+
+      setShowTruckSuccess(true);
+      setTimeout(() => setShowTruckSuccess(false), 3500);
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setIsSavingTruckConfig(false);
+    }
+  };
+
+  const handleAddSwapLog = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSwapLog.driver_name || !newSwapLog.new_plate || !newSwapLog.reason) {
+      alert('Preencha os campos obrigatórios para registrar a troca.');
+      return;
+    }
+
+    const createdLog = {
+      id: `log-${Date.now()}`,
+      swap_date: new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }),
+      driver_name: newSwapLog.driver_name,
+      old_plate: newSwapLog.old_plate,
+      new_plate: newSwapLog.new_plate,
+      reason: newSwapLog.reason,
+      notes: newSwapLog.notes,
+      created_at: new Date().toISOString(),
+      created_by: user?.name || 'Administrador'
+    };
+
+    const nextLogs = [createdLog, ...truckLogs];
+    setTruckLogs(nextLogs);
+
+    const nextConfig = {
+      ...truckConfig,
+      default_driver: newSwapLog.driver_name,
+      license_plate: newSwapLog.new_plate,
+      operational_status: 'Em Reposição' as const
+    };
+    setTruckConfig(nextConfig);
+
+    saveTruckConfigSettings(nextConfig, nextLogs);
+
+    setShowSwapModal(false);
+    setNewSwapLog({
+      driver_name: 'João Pereira',
+      old_plate: newSwapLog.new_plate,
+      new_plate: '',
+      reason: 'Manutenção preventiva',
+      notes: ''
+    });
+  };
 
   // Warranty Error Codes state
   const [warrantyErrorCodes, setWarrantyErrorCodes] = useState<{ id: string; label: string }[]>([]);
@@ -225,6 +368,12 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     fetchSettings();
     fetchCompanies();
+    fetchTruckConfigSettings();
+
+    if (typeof window !== 'undefined' && (window.location.hash === '#truck-replacement-config' || window.location.hash.includes('truck'))) {
+      setActiveTab('truck_replacement');
+    }
+
     if (activeTab === 'warranties') {
       fetchWarrantyErrorCodes();
     }
@@ -550,6 +699,7 @@ END $$;`;
           {[
             { id: 'modules', label: 'Módulos', icon: LayoutGrid },
             { id: 'commissions', label: 'Comissionados', icon: DollarSign },
+            { id: 'truck_replacement', label: 'Caminhão de Reposição', icon: Truck },
             { id: 'integrations', label: 'Integrações', icon: Webhook },
             { id: 'warranties', label: 'Garantias', icon: ShieldCheck },
             { id: 'saas', label: 'Multi-Tenant', icon: Server },
@@ -608,6 +758,374 @@ END $$;`;
               </button>
             )}
           </motion.div>
+        )}
+
+        {/* Truck Replacement Configuration Section */}
+        {activeTab === 'truck_replacement' && (
+          <div id="truck-replacement-config" className="space-y-8">
+            {/* Success Toast */}
+            {showTruckSuccess && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-3"
+              >
+                <CheckCircle2 size={18} />
+                <span>Configurações do Caminhão de Reposição salvas com sucesso!</span>
+              </motion.div>
+            )}
+
+            {/* Config Card */}
+            <div className={`rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl ${isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                    <Truck size={22} />
+                  </div>
+                  <div>
+                    <h2 className="font-extrabold text-base text-slate-900 dark:text-white">
+                      Gerenciamento do Caminhão de Reposição
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Defina o motorista padrão, a placa, o modelo e o status operacional do veículo de reposição.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowSwapModal(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Plus size={16} />
+                    <span>Registrar Troca de Caminhão</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    saveTruckConfigSettings();
+                  }}
+                  className="space-y-6"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Motorista Padrão */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                        Motorista Padrão *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={truckConfig.default_driver}
+                        onChange={(e) => setTruckConfig({ ...truckConfig, default_driver: e.target.value })}
+                        placeholder="Ex: João Pereira"
+                        className={`w-full h-11 px-4 rounded-xl border text-xs font-bold outline-none transition-all focus:ring-2 focus:ring-blue-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Placa do Caminhão */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                        Placa do Caminhão *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={truckConfig.license_plate}
+                        onChange={(e) => setTruckConfig({ ...truckConfig, license_plate: e.target.value.toUpperCase() })}
+                        placeholder="Ex: DFG-5544"
+                        className={`w-full h-11 px-4 rounded-xl border text-xs font-mono font-bold outline-none transition-all focus:ring-2 focus:ring-blue-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-blue-400' : 'bg-slate-50 border-slate-200 text-blue-600'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Status Operacional */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                        Status Operacional Atual *
+                      </label>
+                      <select
+                        value={truckConfig.operational_status}
+                        onChange={(e) => setTruckConfig({ ...truckConfig, operational_status: e.target.value as any })}
+                        className={`w-full h-11 px-4 rounded-xl border text-xs font-bold outline-none transition-all focus:ring-2 focus:ring-blue-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      >
+                        <option value="Operacional">Operacional (Disponível)</option>
+                        <option value="Em Reposição">Em Reposição (Em Rota)</option>
+                        <option value="Em Manutenção">Em Manutenção (Oficina)</option>
+                        <option value="Inativo">Inativo (Fora de Serviço)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Modelo do Veículo */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                        Modelo do Veículo / Descrição
+                      </label>
+                      <input
+                        type="text"
+                        value={truckConfig.vehicle_model}
+                        onChange={(e) => setTruckConfig({ ...truckConfig, vehicle_model: e.target.value })}
+                        placeholder="Ex: Mercedes-Benz Atego 1719"
+                        className={`w-full h-11 px-4 rounded-xl border text-xs font-semibold outline-none transition-all focus:ring-2 focus:ring-blue-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Observações de Operação */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block">
+                        Observações de Operação
+                      </label>
+                      <input
+                        type="text"
+                        value={truckConfig.notes}
+                        onChange={(e) => setTruckConfig({ ...truckConfig, notes: e.target.value })}
+                        placeholder="Ex: Veículo em operação nas rotas da grande João Pessoa"
+                        className={`w-full h-11 px-4 rounded-xl border text-xs font-medium outline-none transition-all focus:ring-2 focus:ring-blue-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      disabled={isSavingTruckConfig}
+                      className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/20 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSavingTruckConfig ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                      <span>Salvar Configuração do Caminhão</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* Replacement Logs Table Card */}
+            <div className={`rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+              <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-50 text-purple-600'}`}>
+                    <RefreshCcw size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                      Log de Trocas de Caminhão ({truckLogs.length})
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Rastreie quando e por que o caminhão foi substituído no histórico de operações.
+                    </p>
+                  </div>
+                </div>
+
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                  Histórico Auditável
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className={isDarkMode ? 'bg-slate-800/50 text-slate-400' : 'bg-slate-50 text-slate-500'}>
+                      <th className="p-4 font-black uppercase text-[10px] tracking-wider">Data & Hora</th>
+                      <th className="p-4 font-black uppercase text-[10px] tracking-wider">Motorista</th>
+                      <th className="p-4 font-black uppercase text-[10px] tracking-wider">Troca de Placa (De &rarr; Para)</th>
+                      <th className="p-4 font-black uppercase text-[10px] tracking-wider">Motivo da Substituição</th>
+                      <th className="p-4 font-black uppercase text-[10px] tracking-wider">Registrado Por</th>
+                      <th className="p-4 font-black uppercase text-[10px] tracking-wider text-center">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                    {truckLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-slate-400">
+                          Nenhum registro de troca encontrado.
+                        </td>
+                      </tr>
+                    ) : (
+                      truckLogs.map((log) => (
+                        <tr key={log.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50/80'}`}>
+                          <td className="p-4 whitespace-nowrap font-mono text-slate-500 dark:text-slate-400">
+                            {log.swap_date}
+                          </td>
+                          <td className="p-4 whitespace-nowrap font-bold text-slate-900 dark:text-white">
+                            {log.driver_name}
+                          </td>
+                          <td className="p-4 whitespace-nowrap font-mono">
+                            <span className="text-rose-500 font-semibold">{log.old_plate || '-'}</span>
+                            <span className="mx-1.5 text-slate-400">&rarr;</span>
+                            <span className="text-emerald-500 font-bold">{log.new_plate}</span>
+                          </td>
+                          <td className="p-4 max-w-xs">
+                            <p className="font-bold text-slate-800 dark:text-slate-200">{log.reason}</p>
+                            {log.notes && <p className="text-[11px] text-slate-400 mt-0.5">{log.notes}</p>}
+                          </td>
+                          <td className="p-4 whitespace-nowrap text-slate-500">
+                            {log.created_by || 'Administrador'}
+                          </td>
+                          <td className="p-4 whitespace-nowrap text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm('Excluir este registro do log de trocas?')) {
+                                  const updatedLogs = truckLogs.filter(l => l.id !== log.id);
+                                  setTruckLogs(updatedLogs);
+                                  saveTruckConfigSettings(truckConfig, updatedLogs);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                              title="Excluir Registro"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Swap Modal */}
+            <AnimatePresence>
+              {showSwapModal && (
+                <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setShowSwapModal(false)}
+                    className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+                  />
+                  <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    className={`relative w-full max-w-lg rounded-3xl p-6 shadow-2xl border ${
+                      isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                          <RefreshCcw size={20} />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-bold">Registrar Troca de Caminhão</h3>
+                          <p className="text-xs text-slate-500">Informe a data, motivo e nova placa do veículo para manter a auditoria.</p>
+                        </div>
+                      </div>
+                      <button onClick={() => setShowSwapModal(false)} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleAddSwapLog} className="space-y-4 pt-4">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                          Motorista *
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          value={newSwapLog.driver_name}
+                          onChange={(e) => setNewSwapLog({ ...newSwapLog, driver_name: e.target.value })}
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-bold outline-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                            Placa Anterior
+                          </label>
+                          <input
+                            type="text"
+                            value={newSwapLog.old_plate}
+                            onChange={(e) => setNewSwapLog({ ...newSwapLog, old_plate: e.target.value.toUpperCase() })}
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-mono font-bold outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                            Nova Placa (Substituta) *
+                          </label>
+                          <input
+                            required
+                            type="text"
+                            value={newSwapLog.new_plate}
+                            onChange={(e) => setNewSwapLog({ ...newSwapLog, new_plate: e.target.value.toUpperCase() })}
+                            placeholder="Ex: DFG-5544"
+                            className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-mono font-black text-emerald-600 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                          Motivo da Substituição * (Por que foi substituído)
+                        </label>
+                        <input
+                          required
+                          type="text"
+                          value={newSwapLog.reason}
+                          onChange={(e) => setNewSwapLog({ ...newSwapLog, reason: e.target.value })}
+                          placeholder="Ex: Manutenção preventiva do motor / Avaria técnica"
+                          className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                          Observações Adicionais
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={newSwapLog.notes}
+                          onChange={(e) => setNewSwapLog({ ...newSwapLog, notes: e.target.value })}
+                          placeholder="Ex: Substituição efetuada às 14h30 no Pátio Central..."
+                          className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-xs font-medium outline-none"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setShowSwapModal(false)}
+                          className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-bold"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md shadow-purple-600/20"
+                        >
+                          Registrar Troca no Log
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
         )}
 
         {/* Integrations Tab */}

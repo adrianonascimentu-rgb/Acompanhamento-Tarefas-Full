@@ -9,17 +9,17 @@ const DEFAULT_VAPID_PRIVATE_KEY = 'vRUi4aUaaPufyu8NB-VjIPkhfzLPamS3bqjPQ4WnPRQ';
 const DEFAULT_VAPID_SUBJECT = 'mailto:adrianonascimentu@gmail.com';
 
 function getVapidCredentials() {
-  let pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-  let priv = process.env.VAPID_PRIVATE_KEY;
-  let sub = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
+  const envPub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const envPriv = process.env.VAPID_PRIVATE_KEY;
+  const sub = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
 
-  if (!pub || pub.includes('seu_vapid') || pub.includes('placeholder') || pub.length < 80) {
-    pub = DEFAULT_VAPID_PUBLIC_KEY;
-  }
+  const pub = (!envPub || envPub.includes('seu_vapid') || envPub.includes('placeholder') || envPub.length < 80)
+    ? DEFAULT_VAPID_PUBLIC_KEY
+    : envPub;
 
-  if (!priv || priv.includes('seu_vapid') || priv.includes('placeholder') || priv.length < 40) {
-    priv = DEFAULT_VAPID_PRIVATE_KEY;
-  }
+  const priv = (!envPriv || envPriv.includes('seu_vapid') || envPriv.includes('placeholder') || envPriv.length < 40)
+    ? DEFAULT_VAPID_PRIVATE_KEY
+    : envPriv;
 
   return { pub, priv, sub };
 }

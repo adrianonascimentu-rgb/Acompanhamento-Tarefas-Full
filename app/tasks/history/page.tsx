@@ -58,7 +58,7 @@ export default function TaskHistoryPage() {
           }
         }
 
-        let { data, error } = await query;
+        const { data, error } = await query;
 
         if (error) {
           const isColumnMissing = error.message?.includes("column tasks.created_by does not exist") || 

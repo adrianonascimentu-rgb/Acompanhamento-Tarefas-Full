@@ -148,7 +148,12 @@ export function UIProvider({ children }: { children: ReactNode }) {
 export function useUI() {
   const context = useContext(UIContext);
   if (context === undefined) {
-    throw new Error('useUI must be used within a UIProvider');
+    return {
+      showToast: () => {},
+      showConfirm: () => {},
+      showSettingsModal: false,
+      setShowSettingsModal: () => {}
+    };
   }
   return context;
 }

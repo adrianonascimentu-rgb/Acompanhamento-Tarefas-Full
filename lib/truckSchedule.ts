@@ -23,9 +23,20 @@ export interface TruckScheduleData {
 const LOCAL_STORAGE_KEY = 'agentex_truck_schedule_v1';
 
 export const DEFAULT_TRUCK_SCHEDULE: TruckScheduleData = {
-  next_arrival_date: null,
-  last_arrival_date: null,
-  history: [],
+  next_arrival_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  last_arrival_date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  history: [
+    {
+      id: 'truck_default_1',
+      arrival_date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      driver_name: 'Carlos Eduardo',
+      assistant_name: 'Marcos Souza',
+      notes: 'Recebimento de 480 caixas de peças e lubrificantes estocado com sucesso.',
+      comments: 'Carga recebida 100% conforme sem divergências.',
+      created_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      created_by: 'Gestão de Estoque'
+    }
+  ],
   updated_at: new Date().toISOString()
 };
 

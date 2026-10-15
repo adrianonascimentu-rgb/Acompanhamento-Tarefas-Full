@@ -160,7 +160,7 @@ export default function SocialMediaPage() {
       console.log('Fetching social media tasks for user:', user?.id);
 
       // Try with joins first
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('social_media_tasks')
         .select(`
           *,

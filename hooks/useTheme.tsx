@@ -133,7 +133,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    return {
+      isDarkMode: false,
+      toggleDarkMode: () => {},
+      location: 'Escritório Central',
+      updateLocation: () => {},
+      mapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY',
+      updateMapsApiKey: () => {},
+      hasBillingError: false,
+      setHasBillingError: () => {}
+    };
   }
   return context;
 }

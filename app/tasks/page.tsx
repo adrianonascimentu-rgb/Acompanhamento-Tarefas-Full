@@ -880,7 +880,7 @@ function TasksContent() {
         }
       }
 
-      let { data, error, count } = await query
+      const { data, error, count } = await query
         .range(currentOffset, currentOffset + LIMIT - 1);
 
       if (error) {
@@ -1599,7 +1599,7 @@ function TasksContent() {
     }
     // Only trigger on initial load or filter changes, not on fetchTasks itself
     // to avoid dependency loops with offset
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAuthenticated, user?.id, activeTab, priorityFilter, statusFilter, dateFilter, selectedCollabId, searchQuery, taskToggleFilter, sortOrder, isAdmin]);
 
   if (roleLoading || (loading && isAuthenticated)) {
@@ -1665,7 +1665,7 @@ function TasksContent() {
     if (!movedTask) return;
 
     // 2. Preparar o novo array de tarefas
-    let newTasks = [...tasks];
+    const newTasks = [...tasks];
     
     // Remover a tarefa da sua posição atual no array principal
     const sourceIndexInTasks = newTasks.findIndex(t => t.id.toString() === taskId.toString());
