@@ -847,28 +847,28 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
   };
 
   return (
-    <div className="space-y-3">
-      <div className={`p-2.5 sm:p-3 rounded-2xl border shadow-sm relative overflow-hidden transition-all ${
+    <div className="space-y-2">
+      <div className={`p-1.5 sm:p-2 rounded-xl border shadow-2xs relative overflow-hidden transition-all ${
         isDarkMode 
           ? 'bg-gradient-to-br from-purple-950/70 via-slate-900 to-indigo-950/80 border-purple-800/60' 
           : 'bg-gradient-to-br from-purple-600 via-indigo-600 to-purple-700 text-white border-purple-500'
       }`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 relative z-10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0 shadow-xs">
-              <Pin size={16} className="rotate-12" />
+        <div className="flex flex-wrap items-center justify-between gap-1.5 relative z-10">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1 rounded-lg bg-white/20 text-white shrink-0 shadow-2xs">
+              <Pin size={13} className="rotate-12" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h2 className="text-[11px] sm:text-xs font-black tracking-tight text-white flex items-center gap-1">
                   Bloquinhos de Anotações — Tarefas Permanentes
                 </h2>
-                <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.2 rounded-full bg-white/20 text-white border border-white/30">
+                <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.1 rounded-full bg-white/20 text-white border border-white/30">
                   {totalCount} Bloquinhos
                 </span>
                 {activeNoticesCount > 0 && (
-                  <span className="animate-pulse text-[9px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-400 text-emerald-950 shadow-2xs flex items-center gap-1">
-                    <Sparkles size={10} className="animate-spin" />
+                  <span className="animate-pulse text-[8px] font-extrabold px-1.5 py-0.1 rounded-full bg-emerald-400 text-emerald-950 shadow-2xs flex items-center gap-0.5">
+                    <Sparkles size={8} className="animate-spin" />
                     {activeNoticesCount} Notificada
                   </span>
                 )}
@@ -876,22 +876,22 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap shrink-0 ml-auto sm:ml-0">
+          <div className="flex items-center gap-1 flex-wrap shrink-0 ml-auto sm:ml-0">
             <button
               onClick={() => setIsHistoryModalOpen(true)}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-[11px] font-bold text-white border border-white/20 transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 text-[10px] font-bold text-white border border-white/20 transition-all cursor-pointer shrink-0"
               title="Consultar Histórico de Execuções Diárias"
             >
-              <History size={13} />
+              <History size={11} />
               <span>Histórico (00:00)</span>
             </button>
 
             <button
               onClick={() => performDailyRenewal(false)}
-              className="inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-[11px] font-bold text-white border border-white/20 transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 text-[10px] font-bold text-white border border-white/20 transition-all cursor-pointer shrink-0"
               title="Simular Renovação Diária das 00:00"
             >
-              <RefreshCw size={13} />
+              <RefreshCw size={11} />
               <span className="hidden sm:inline">Renovar</span>
             </button>
 
@@ -900,9 +900,9 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                 loadCollaborators();
                 setIsModalOpen(true);
               }}
-              className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-xl bg-white text-purple-700 hover:bg-purple-50 active:scale-95 text-[11px] font-black shadow-xs transition-all cursor-pointer shrink-0"
+              className="inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded-lg bg-white text-purple-700 hover:bg-purple-50 active:scale-95 text-[10px] font-black shadow-2xs transition-all cursor-pointer shrink-0"
             >
-              <Plus size={14} className="text-purple-600" />
+              <Plus size={12} className="text-purple-600" />
               <span>+ Criar Bloquinho</span>
             </button>
           </div>
@@ -1021,7 +1021,7 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
           <AnimatePresence>
             {filteredTasks.map((task, idx) => {
               const style = getNoteStyles(task.color_theme, task.status);
@@ -1030,25 +1030,25 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                 <motion.div
                   key={task.id}
                   layout
-                  initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                  initial={{ opacity: 0, y: 6, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.15, delay: idx * 0.02 }}
-                  className={`group relative rounded-xl border p-3 flex flex-col justify-between shadow-xs transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md ${style.cardBg} ${
+                  transition={{ duration: 0.15, delay: idx * 0.01 }}
+                  className={`group relative rounded-lg border p-2 flex flex-col justify-between shadow-2xs transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xs ${style.cardBg} ${
                     task.has_execution_notice 
                       ? 'ring-2 ring-emerald-500/70 shadow-emerald-500/20' 
                       : ''
                   }`}
                 >
-                  <div className={`absolute -top-1.5 left-1/2 -translate-x-1/2 w-12 h-2 rounded-xs ${style.tapeColor} border border-white/20 backdrop-blur-xs`} />
+                  <div className={`absolute -top-1 left-1/2 -translate-x-1/2 w-8 h-1.5 rounded-xs ${style.tapeColor} border border-white/20 backdrop-blur-xs`} />
 
                   <div>
-                    <div className="flex items-start justify-between gap-1.5 mb-2">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <div className={`p-1 rounded-md shrink-0 ${style.pinBg} shadow-2xs`}>
-                          <Pin size={11} className="rotate-45" />
+                    <div className="flex items-start justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <div className={`p-0.5 rounded shrink-0 ${style.pinBg} shadow-2xs`}>
+                          <Pin size={9} className="rotate-45" />
                         </div>
-                        <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-slate-800 dark:text-slate-200 truncate">
+                        <span className="text-[8px] font-extrabold uppercase tracking-wider px-1 py-0.1 rounded bg-black/5 dark:bg-white/10 text-slate-800 dark:text-slate-200 truncate">
                           📌 {task.category || 'Rotina'}
                         </span>
                       </div>
@@ -1058,31 +1058,31 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
                         className="opacity-0 group-hover:opacity-100 p-0.5 text-rose-500 hover:text-rose-700 hover:bg-rose-500/10 rounded transition-all cursor-pointer shrink-0"
                         title="Excluir bloquinho"
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={11} />
                       </button>
                     </div>
 
                     {task.has_execution_notice && (
-                      <div className="mb-2">
+                      <div className="mb-1">
                         <button
                           onClick={() => handleAcknowledgeNotice(task.id)}
-                          className="w-full py-1 px-2 rounded-lg bg-emerald-500/20 dark:bg-emerald-950/80 border border-emerald-500/50 text-emerald-800 dark:text-emerald-300 text-[9px] font-extrabold flex items-center justify-between gap-1 animate-pulse shadow-2xs cursor-pointer hover:bg-emerald-500/30 transition-all"
+                          className="w-full py-0.5 px-1.5 rounded bg-emerald-500/20 dark:bg-emerald-950/80 border border-emerald-500/50 text-emerald-800 dark:text-emerald-300 text-[8px] font-extrabold flex items-center justify-between gap-1 animate-pulse shadow-2xs cursor-pointer hover:bg-emerald-500/30 transition-all"
                           title="Clique para registrar visto"
                         >
-                          <span className="flex items-center gap-1 truncate">
-                            <Sparkles size={11} className="text-emerald-500 animate-spin shrink-0" />
+                          <span className="flex items-center gap-0.5 truncate">
+                            <Sparkles size={9} className="text-emerald-500 animate-spin shrink-0" />
                             <span className="truncate">{task.collaborator_name}</span>
                           </span>
-                          <span className="underline shrink-0 text-[8px] uppercase font-black bg-emerald-600 text-white px-1 py-0.2 rounded">Visto</span>
+                          <span className="underline shrink-0 text-[7px] uppercase font-black bg-emerald-600 text-white px-1 py-0.1 rounded">Visto</span>
                         </button>
                       </div>
                     )}
 
-                    <h3 className="text-xs font-extrabold tracking-tight leading-tight mb-1 break-words">
+                    <h3 className="text-[11px] font-extrabold tracking-tight leading-tight mb-0.5 break-words">
                       {task.title}
                     </h3>
 
-                    <p className="text-[11px] opacity-80 leading-snug line-clamp-2 mb-2 font-sans">
+                    <p className="text-[10px] opacity-80 leading-snug line-clamp-2 mb-1 font-sans">
                       {task.description || 'Instruções da rotina permanente.'}
                     </p>
                   </div>

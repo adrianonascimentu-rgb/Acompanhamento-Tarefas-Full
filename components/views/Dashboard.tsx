@@ -851,7 +851,7 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-6 space-y-6 pb-28">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 space-y-4 pb-6">
         {/* Dashboard View Switcher: Permanent Notes vs Full Metrics */}
         <div className="flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-200/60 dark:bg-slate-900 border border-slate-300/60 dark:border-slate-800">
           <button

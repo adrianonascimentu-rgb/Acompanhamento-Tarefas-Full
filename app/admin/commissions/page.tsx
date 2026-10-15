@@ -97,7 +97,7 @@ export default function AdminCommissionsPage() {
         </header>
 
         {/* Content Body */}
-        <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
+        <div className="p-4 md:p-8 w-full">
           <CommissionsManager isDarkMode={isDarkMode} />
         </div>
       </main>

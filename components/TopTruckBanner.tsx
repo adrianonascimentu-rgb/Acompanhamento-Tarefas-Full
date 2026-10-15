@@ -192,27 +192,27 @@ export function TopTruckBanner() {
 
   return (
     <>
-      <div className="w-full px-2 sm:px-4 pt-1.5 pb-0.5">
+      <div className="w-full px-1.5 py-0.5">
         <motion.div
-          initial={{ opacity: 0, y: -4 }}
+          initial={{ opacity: 0, y: -2 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`relative overflow-hidden rounded-xl border shadow-xs transition-all duration-300 ${bannerBg}`}
+          className={`relative overflow-hidden rounded-lg border shadow-2xs transition-all duration-300 ${bannerBg}`}
         >
-          <div className="relative px-2.5 py-1 sm:py-1.5 flex flex-wrap items-center justify-between gap-1.5 text-xs">
+          <div className="relative px-2 py-0.5 flex flex-wrap items-center justify-between gap-1 text-[10px]">
             {/* Esquerda: Ícone + Badge + Próximo + Último */}
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap sm:flex-nowrap">
-              <div className="w-6 h-6 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-xs">
-                <Truck size={13} className="animate-pulse text-white" />
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap sm:flex-nowrap">
+              <div className="w-4 h-4 rounded-md bg-white/15 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-2xs">
+                <Truck size={10} className="animate-pulse text-white" />
               </div>
 
-              <span className={`px-2 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider ${badgeBg} shrink-0`}>
+              <span className={`px-1.5 py-0.1 rounded-full text-[8px] font-black uppercase tracking-wider ${badgeBg} shrink-0`}>
                 {badgeLabel}
               </span>
 
-              <div className="flex items-center gap-2 text-xs font-semibold text-white truncate">
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-white truncate">
                 <span className="truncate">Próximo: <strong className="font-black text-white">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
                 <span className="opacity-40 hidden sm:inline">|</span>
-                <span className="opacity-90 text-[11px] hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
+                <span className="opacity-90 text-[9px] hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
               </div>
             </div>
 
@@ -220,10 +220,10 @@ export function TopTruckBanner() {
             <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
               <Link
                 href="/deliveries?mode=tracking"
-                className="px-2 py-0.5 rounded-lg bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-[10px] font-bold flex items-center gap-1 border border-white/25 shadow-xs"
+                className="px-1.5 py-0.2 rounded bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-[9px] font-bold flex items-center gap-0.5 border border-white/25 shadow-2xs"
                 title="Rastrear no Mapa"
               >
-                <Navigation size={11} className="text-yellow-300 shrink-0" />
+                <Navigation size={9} className="text-yellow-300 shrink-0" />
                 <span className="hidden xs:inline">Mapa</span>
               </Link>
 
@@ -231,7 +231,7 @@ export function TopTruckBanner() {
                 <button
                   type="button"
                   onClick={() => setIsDetailsModalOpen(true)}
-                  className="px-2 py-0.5 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-[10px] font-bold cursor-pointer"
+                  className="px-1.5 py-0.2 rounded bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-[9px] font-bold cursor-pointer"
                   title="Ver detalhes da carga"
                 >
                   Info
@@ -240,19 +240,19 @@ export function TopTruckBanner() {
 
               <Link
                 href="/reports/truck-history"
-                className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-[10px] font-bold flex items-center gap-1"
+                className="px-1.5 py-0.2 rounded bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-[9px] font-bold flex items-center gap-0.5"
                 title="Histórico"
               >
-                <History size={11} className="shrink-0" />
+                <History size={9} className="shrink-0" />
                 <span className="hidden md:inline">Histórico</span>
               </Link>
 
               {canEdit && (
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className={`px-2 py-0.5 rounded-lg bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-[10px] font-black shadow-xs flex items-center gap-1 cursor-pointer`}
+                  className={`px-1.5 py-0.2 rounded bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-[9px] font-black shadow-2xs flex items-center gap-0.5 cursor-pointer`}
                 >
-                  <Edit3 size={11} className="shrink-0" />
+                  <Edit3 size={9} className="shrink-0" />
                   <span>Alterar</span>
                 </button>
               )}
