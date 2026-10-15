@@ -19,6 +19,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { GsapSalesProgressBar } from '@/components/dashboard/GsapSalesProgressBar';
 import { exportSalesDashboardToPDF } from '@/lib/exportPdf';
+import { NewCommissionModal } from '@/components/sales/NewCommissionModal';
 import Link from 'next/link';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
@@ -31,6 +32,7 @@ export default function SalesResultsPage() {
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [showCommissionModal, setShowCommissionModal] = useState(false);
 
   const fetchSalesData = useCallback(async () => {
     try {
@@ -203,6 +205,16 @@ export default function SalesResultsPage() {
         </div>
 
         <div className="actions-bar flex items-center gap-2">
+          {/* Atalho do botão de Nova Comissão para Vendedores */}
+          <button
+            onClick={() => setShowCommissionModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+            title="Atalho: Lançar nova comissão (sequência, valor, desconto, loja, parceiro)"
+          >
+            <DollarSign size={16} />
+            <span>Nova Comissão</span>
+          </button>
+
           <button
             onClick={handleExportPDF}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
@@ -221,9 +233,9 @@ export default function SalesResultsPage() {
       </header>
       
       <main className="flex-1 overflow-y-auto pb-32 p-4 space-y-6">
-        {/* Filters */}
-        <div className="flex gap-4 items-center">
-          <div className="flex-1 flex gap-2 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+        {/* Filters & Shortcut Bar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+          <div className="flex-1 flex gap-2 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-md">
             <select 
               value={selectedMonth} 
               onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
@@ -245,6 +257,17 @@ export default function SalesResultsPage() {
               ))}
             </select>
           </div>
+
+          {/* Banner de atalho rápido para vendedores */}
+          <button
+            onClick={() => setShowCommissionModal(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-black transition-all cursor-pointer shadow-xs"
+            title="Clique para abrir o formulário de lançamento de comissão"
+          >
+            <DollarSign size={16} className="stroke-[2.5]" />
+            <span>Lançar Comissão de Venda</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-600 text-white font-bold ml-1">Atalho Vendedor</span>
+          </button>
         </div>
 
         {loading ? (
@@ -546,6 +569,16 @@ export default function SalesResultsPage() {
           </div>
         )}
       </main>
+
+      {/* Modal de Lançamento de Nova Comissão para Vendedores */}
+      <NewCommissionModal 
+        isOpen={showCommissionModal} 
+        onClose={() => setShowCommissionModal(false)}
+        onSuccess={() => {
+          fetchSalesData();
+        }}
+      />
+
       <BottomNav />
     </div>
   );

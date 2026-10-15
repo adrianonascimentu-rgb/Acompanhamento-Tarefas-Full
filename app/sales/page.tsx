@@ -19,6 +19,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { GsapSalesProgressBar } from '@/components/dashboard/GsapSalesProgressBar';
 import { exportSalesDashboardToPDF } from '@/lib/exportPdf';
+import { NewCommissionModal } from '@/components/sales/NewCommissionModal';
 import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -35,6 +36,7 @@ export default function SalesModulePage() {
   const [salesResults, setSalesResults] = useState<any[]>([]);
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showCommissionModal, setShowCommissionModal] = useState(false);
   const [showSellerSettingsModal, setShowSellerSettingsModal] = useState(false);
   const [selectedSeller, setSelectedSeller] = useState<any>(null);
   const [sellerMonthlySettings, setSellerMonthlySettings] = useState<any[]>([]);
@@ -946,9 +948,19 @@ export default function SalesModulePage() {
             <span className="hidden sm:inline">Exportar PDF</span>
           </button>
 
+          {/* Atalho do botão de Nova Comissão para Vendedores */}
+          <button 
+            onClick={() => setShowCommissionModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
+            title="Atalho: Lançar nova comissão (sequência, valor, desconto, loja, parceiro)"
+          >
+            <DollarSign size={16} />
+            <span>Nova Comissão</span>
+          </button>
+
           <button 
             onClick={() => setShowSaleModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-600/20 cursor-pointer"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-lg shadow-blue-600/20 cursor-pointer"
           >
             <Plus size={16} />
             <span className="hidden sm:inline">Nova Venda</span>
@@ -1166,6 +1178,15 @@ export default function SalesModulePage() {
 
       {renderSellerSettingsModal()}
       
+      {/* Modal de Lançamento de Nova Comissão para Vendedores */}
+      <NewCommissionModal 
+        isOpen={showCommissionModal} 
+        onClose={() => setShowCommissionModal(false)}
+        onSuccess={() => {
+          fetchData();
+        }}
+      />
+
       <BottomNav />
     </div>
   );

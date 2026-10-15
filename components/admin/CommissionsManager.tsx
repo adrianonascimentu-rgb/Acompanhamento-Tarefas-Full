@@ -124,6 +124,15 @@ export default function CommissionsManager({ isDarkMode = false }: CommissionsMa
 
   useEffect(() => {
     fetchCommissions();
+
+    const handleCommissionsUpdated = () => {
+      fetchCommissions();
+    };
+
+    window.addEventListener('commissions-updated', handleCommissionsUpdated);
+    return () => {
+      window.removeEventListener('commissions-updated', handleCommissionsUpdated);
+    };
   }, []);
 
   const saveTiers = (tiers: CommissionTier[]) => {
