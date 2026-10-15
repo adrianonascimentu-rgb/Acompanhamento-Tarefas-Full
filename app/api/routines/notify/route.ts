@@ -11,7 +11,7 @@ const DEFAULT_VAPID_SUBJECT = 'mailto:adrianonascimentu@gmail.com';
 function getVapidCredentials() {
   let pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   let priv = process.env.VAPID_PRIVATE_KEY;
-  let sub = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
+  const sub = process.env.VAPID_SUBJECT || DEFAULT_VAPID_SUBJECT;
 
   if (!pub || pub.includes('seu_vapid') || pub.includes('placeholder') || pub.length < 80) {
     pub = DEFAULT_VAPID_PUBLIC_KEY;

@@ -90,21 +90,21 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
 
   return (
     <>
-      <div className={`p-3 sm:p-3.5 rounded-2xl border shadow-xs ${
+      <div className={`p-3 sm:p-4 rounded-2xl border-2 shadow-md ${
         isDarkMode 
           ? 'bg-gradient-to-r from-slate-900 via-indigo-950/70 to-blue-950/70 border-indigo-500/30 text-white' 
           : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 border-blue-500/40 text-white'
       }`}>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
-            <div className="w-7 h-7 rounded-lg bg-white/15 border border-white/20 flex items-center justify-center text-white shrink-0 shadow-xs">
-              <Truck size={14} className="animate-pulse" />
+        <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs sm:text-sm">
+          <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
+            <div className="w-8 h-8 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shrink-0 shadow-xs">
+              <Truck size={18} className="animate-pulse" />
             </div>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-xs flex items-center gap-1 shrink-0">
-              <Sparkles size={10} className="fill-current" /> Caminhão de Reposição
+            <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-xs flex items-center gap-1 shrink-0">
+              <Sparkles size={12} className="fill-current" /> Reposição
             </span>
-            <div className="flex items-center gap-2 text-xs font-semibold text-white truncate">
-              <span>Próximo: <strong className="font-black text-white">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white truncate">
+              <span>Próximo: <strong className="font-black text-white text-sm sm:text-base">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
               <span className="opacity-40 hidden sm:inline">|</span>
               <span className="opacity-90 text-xs hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
             </div>
@@ -112,29 +112,27 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
 
           <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
             <button
-              type="button"
               onClick={() => setIsDetailsModalOpen(true)}
-              className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
-              title="Ver detalhes da última carga"
+              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
+              title="Info Carga"
             >
               Info Carga
             </button>
 
             <Link
               href="/reports/truck-history"
-              className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1"
+              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
             >
-              <History size={12} />
+              <History size={14} />
               <span className="hidden md:inline">Histórico</span>
             </Link>
 
             {canEdit && (
               <button
-                type="button"
                 onClick={() => setIsModalOpen(true)}
-                className="px-3 py-1 rounded-lg bg-white text-blue-700 hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-xs flex items-center gap-1 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-white text-blue-700 hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-xs flex items-center gap-1 cursor-pointer"
               >
-                <Edit3 size={12} />
+                <Edit3 size={14} />
                 <span>Alterar</span>
               </button>
             )}

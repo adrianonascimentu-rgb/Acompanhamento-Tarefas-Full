@@ -177,7 +177,7 @@ class DataPrefetchCache {
         }
 
         // Buscar atribuições em paralelo para complementar
-        let assigneesByTaskId: Record<string, any[]> = {};
+        const assigneesByTaskId: Record<string, any[]> = {};
         try {
           const { data: assignees } = await supabase
             .from('task_assignees')

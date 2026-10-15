@@ -348,7 +348,7 @@ export function useNotifications() {
         } catch {}
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isAuthenticated, user?.id]);
 
   return {

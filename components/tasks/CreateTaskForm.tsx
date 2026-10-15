@@ -87,7 +87,7 @@ export default function CreateTaskForm() {
   useEffect(() => {
     async function fetchCollaborators() {
       try {
-        let { data, error } = await supabase
+        const { data, error } = await supabase
           .from('profiles')
           .select('id, name, location')
           .order('name');
@@ -135,7 +135,7 @@ export default function CreateTaskForm() {
     if (preSelectedId && !selectedCollaborators.includes(preSelectedId)) {
       setSelectedCollaborators(prev => [...prev, preSelectedId]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [preSelectedId]);
 
   const toggleCollaborator = (id: string) => {

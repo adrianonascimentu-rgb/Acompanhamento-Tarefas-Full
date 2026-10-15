@@ -201,7 +201,7 @@ export function parseIdealSoftPdfText(fullText: string): ParsedProduct[] {
 
   let i = 0;
   while (i < lines.length) {
-    let line = lines[i].trim();
+    const line = lines[i].trim();
     i++;
 
     if (isHeaderOrFooter(line)) continue;

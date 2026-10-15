@@ -44,6 +44,7 @@ export function BottomNav() {
     user, 
     role, 
     isAdmin, 
+    isAdriano,
     canAccessLeads, 
     canAccessDeliveries, 
     canAccessTransfers, 
@@ -136,6 +137,7 @@ export function BottomNav() {
     { href: '/collaborators', label: 'Equipe', icon: Users, show: isAdmin },
     { href: '/painel-ao-vivo', label: 'Painel Ao Vivo', icon: Radio, show: isAdmin },
     { href: '/admin/commissions', label: 'Comissionados', icon: DollarSign, show: isAdmin },
+    { href: '/admin/comissoes-adriano', label: 'Comissões Adriano', icon: DollarSign, show: isAdriano },
   ].filter(item => item.show);
 
   return (

@@ -178,7 +178,7 @@ export async function POST(req: Request) {
       can_access_whatsapp: type === 'admin' ? true : !!can_access_whatsapp,
     };
 
-    let { error: profileError } = await client
+    const { error: profileError } = await client
       .from('profiles')
       .upsert(profilePayload, { onConflict: 'id' });
 
@@ -395,7 +395,7 @@ export async function PUT(req: Request) {
       profilePayload.image_url = image_url;
     }
 
-    let { data: updatedProfile, error: profileError } = await client
+    const { data: updatedProfile, error: profileError } = await client
       .from('profiles')
       .update(profilePayload)
       .eq('id', id)

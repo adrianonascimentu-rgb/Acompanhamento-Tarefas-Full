@@ -710,7 +710,7 @@ function DeliveriesContent() {
       const isConfigured = isSupabaseConfigured && !isMockMode;
 
       const delivery = deliveries.find(d => d.id === id);
-      let updateData: any = { 
+      const updateData: any = { 
         status: newStatus,
         updated_at: new Date().toISOString()
       };
@@ -724,7 +724,7 @@ function DeliveriesContent() {
       }
 
       if (isConfigured) {
-        let currentPayload = { ...updateData };
+        const currentPayload = { ...updateData };
         let success = false;
         let retryCount = 0;
         let lastError = null;
@@ -820,7 +820,7 @@ function DeliveriesContent() {
       const isConfigured = isSupabaseConfigured && !isMockMode;
 
       if (isConfigured) {
-        let currentPayload = { ...updateData };
+        const currentPayload = { ...updateData };
         let success = false;
         let retryCount = 0;
         let lastError = null;
@@ -1099,7 +1099,7 @@ function DeliveriesContent() {
       supabasePayload = { ...deliveryData };
 
       if (isConfigured) {
-        let currentPayload = { ...supabasePayload };
+        const currentPayload = { ...supabasePayload };
         let success = false;
         let retryCount = 0;
         let lastError = null;
@@ -1519,7 +1519,7 @@ function DeliveriesContent() {
                 <div className={`mt-2 p-2 rounded-lg font-mono text-[9px] max-h-32 overflow-y-auto ${isDarkMode ? 'bg-slate-950 text-rose-400' : 'bg-white text-rose-600'}`}>
                   {missingTables.includes('drivers') && (
                     <div className="mb-2">
-CREATE TABLE IF NOT EXISTS drivers (
+                      {`CREATE TABLE IF NOT EXISTS drivers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   phone TEXT,
@@ -1527,7 +1527,7 @@ CREATE TABLE IF NOT EXISTS drivers (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK (true);`}
                     </div>
                   )}
                   {missingColumns.map(col => {

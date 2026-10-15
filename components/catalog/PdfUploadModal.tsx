@@ -474,7 +474,7 @@ export default function PdfUploadModal({
                   <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400 list-disc list-inside">
                     <li><strong className="text-slate-700 dark:text-slate-300">Atualização Automática:</strong> Produtos já existentes terão preço, estoque e referência atualizados.</li>
                     <li><strong className="text-slate-700 dark:text-slate-300">Cadastro de Novos:</strong> Itens inéditos no PDF serão cadastrados automaticamente com todas as informações.</li>
-                    <li><strong className="text-slate-700 dark:text-slate-300">Formatação Limpa:</strong> O sistema remove prefixos como "#" dos códigos automaticamente.</li>
+                    <li><strong className="text-slate-700 dark:text-slate-300">Formatação Limpa:</strong> O sistema remove prefixos como &quot;#&quot; dos códigos automaticamente.</li>
                     <li><strong className="text-slate-700 dark:text-slate-300">Visualização Prévia:</strong> Você poderá revisar todas as alterações antes de confirmar a gravação.</li>
                   </ul>
                 </div>

@@ -387,7 +387,7 @@ export default function EditCollaboratorPage() {
           clientPayload.password = cleanPassword;
         }
 
-        let { error: directError } = await supabase
+        const { error: directError } = await supabase
           .from('profiles')
           .update(clientPayload)
           .eq('id', id);

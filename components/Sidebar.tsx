@@ -56,6 +56,7 @@ export function Sidebar() {
   const { 
     role, 
     isAdmin, 
+    isAdriano,
     user, 
     canAccessLeads, 
     canAccessDeliveries, 
@@ -125,6 +126,9 @@ export function Sidebar() {
           { href: '/collaborators', icon: Users, label: 'Equipe', active: pathname?.startsWith('/collaborators') },
           { href: '/admin/commissions', icon: DollarSign, label: 'Comissionados', active: pathname?.startsWith('/admin/commissions') },
           { href: '/admin/settings', icon: Settings, label: 'Configurações', active: pathname?.startsWith('/admin/settings') },
+        ] : []),
+        ...(isAdriano ? [
+          { href: '/admin/comissoes-adriano', icon: TrendingUp, label: 'Comissões Adriano', active: pathname?.startsWith('/admin/comissoes-adriano') },
         ] : []),
       ]
     }

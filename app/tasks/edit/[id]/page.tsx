@@ -84,7 +84,7 @@ export default function EditTaskPage() {
     async function fetchCollaborators() {
       setCollabsLoading(true);
       try {
-        let { data, error } = await supabase
+        const { data, error } = await supabase
           .from('profiles')
           .select('id, name, location')
           .order('name');

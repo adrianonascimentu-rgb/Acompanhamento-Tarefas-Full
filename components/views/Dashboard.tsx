@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight } from 'lucide-react';
+import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -54,12 +54,30 @@ export default function Dashboard() {
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [activeFilter, setActiveFilter] = useState('total');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const { role, user, isAdmin, canAccessLeads, canAccessDeliveries, canAccessTransfers, canAccessWarranties, canAccessSales, canAccessSocialMedia, isAuthenticated, isLoading: roleLoading, login, logout } = useRole();
+  const { 
+    role, 
+    user, 
+    isAdmin, 
+    isAdriano, 
+    canAccessLeads, 
+    canAccessDeliveries, 
+    canAccessTransfers, 
+    canAccessWarranties, 
+    canAccessSales, 
+    canAccessSocialMedia, 
+    canAccessWhatsapp,
+    canAccessReports,
+    canAccessDemands,
+    isAuthenticated, 
+    isLoading: roleLoading, 
+    login, 
+    logout 
+  } = useRole();
   const { notifications, unreadCount, markAsRead, clearAll, createNotification } = useNotifications();
   const { showToast, showConfirm, showSettingsModal } = useUI();
   const [isDemandModalOpen, setIsDemandModalOpen] = useState(false);
   const [currentDateString, setCurrentDateString] = useState<string>('');
-  const [dashboardMode, setDashboardMode] = useState<'permanent_notes' | 'full'>('permanent_notes');
+  const [dashboardMode, setDashboardMode] = useState<'permanent_notes' | 'full'>('full');
 
   useEffect(() => {
     try {
@@ -604,6 +622,33 @@ export default function Dashboard() {
     };
   }, [isAuthenticated, fetchDashboardData]);
 
+  const resolvedUserName = (() => {
+    if (!user) return 'Usuário';
+    if (user.name && typeof user.name === 'string' && user.name.trim()) return user.name.trim();
+    if (user.full_name && typeof user.full_name === 'string' && user.full_name.trim()) return user.full_name.trim();
+    if (user.user_metadata?.name && typeof user.user_metadata.name === 'string' && user.user_metadata.name.trim()) return user.user_metadata.name.trim();
+    if (user.user_metadata?.full_name && typeof user.user_metadata.full_name === 'string' && user.user_metadata.full_name.trim()) return user.user_metadata.full_name.trim();
+    if (user.email && typeof user.email === 'string') {
+      const p = user.email.split('@')[0];
+      return p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Usuário';
+    }
+    return 'Usuário';
+  })();
+
+  const isAdriana = Boolean(
+    isAdmin ||
+    (resolvedUserName && (resolvedUserName.toLowerCase().includes('adriana') || resolvedUserName.toLowerCase().includes('adriano'))) ||
+    (user?.email && (user.email.toLowerCase().includes('adriana') || user.email.toLowerCase().includes('adriano'))) ||
+    (user?.name && typeof user.name === 'string' && (user.name.toLowerCase().includes('adriana') || user.name.toLowerCase().includes('adriano'))) ||
+    (user?.full_name && typeof user.full_name === 'string' && (user.full_name.toLowerCase().includes('adriana') || user.full_name.toLowerCase().includes('adriano')))
+  );
+
+  useEffect(() => {
+    if ((isAdriana || isAdmin) && dashboardMode !== 'full') {
+      setDashboardMode('full');
+    }
+  }, [isAdriana, isAdmin, dashboardMode]);
+
   if (roleLoading && !user) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${isDarkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
@@ -642,34 +687,6 @@ export default function Dashboard() {
     const completed = parseInt(statsToUse.find(s => s.id === 'completed' || s.id === 'my-completed')?.value || '0');
     return total > 0 ? Math.round((completed / total) * 100) : 0;
   })();
-
-  const resolvedUserName = (() => {
-    if (!user) return 'Usuário';
-    if (user.name && typeof user.name === 'string' && user.name.trim()) return user.name.trim();
-    if (user.full_name && typeof user.full_name === 'string' && user.full_name.trim()) return user.full_name.trim();
-    if (user.user_metadata?.name && typeof user.user_metadata.name === 'string' && user.user_metadata.name.trim()) return user.user_metadata.name.trim();
-    if (user.user_metadata?.full_name && typeof user.user_metadata.full_name === 'string' && user.user_metadata.full_name.trim()) return user.user_metadata.full_name.trim();
-    if (user.email && typeof user.email === 'string') {
-      const p = user.email.split('@')[0];
-      return p ? p.charAt(0).toUpperCase() + p.slice(1) : 'Usuário';
-    }
-    return 'Usuário';
-  })();
-
-  const isAdriana = Boolean(
-    (resolvedUserName && resolvedUserName.toLowerCase().includes('adriana')) ||
-    (user?.email && user.email.toLowerCase().includes('adriana')) ||
-    (user?.name && typeof user.name === 'string' && user.name.toLowerCase().includes('adriana')) ||
-    (user?.full_name && typeof user.full_name === 'string' && user.full_name.toLowerCase().includes('adriana')) ||
-    (user?.user_metadata?.name && String(user.user_metadata.name).toLowerCase().includes('adriana')) ||
-    (user?.user_metadata?.full_name && String(user.user_metadata.full_name).toLowerCase().includes('adriana'))
-  );
-
-  useEffect(() => {
-    if (isAdriana && dashboardMode !== 'full') {
-      setDashboardMode('full');
-    }
-  }, [isAdriana, dashboardMode]);
 
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-200 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50/70 text-slate-900'}`}>
@@ -866,7 +883,7 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 space-y-4 pb-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 space-y-5 pb-8">
         {/* Dashboard View Switcher: Permanent Notes vs Full Metrics (Oculto para a usuária Adriana) */}
         {!isAdriana && (
           <div className="flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-200/60 dark:bg-slate-900 border border-slate-300/60 dark:border-slate-800">
@@ -1484,6 +1501,258 @@ export default function Dashboard() {
         )}
         </>
         )}
+
+        {/* Central de Módulos & Administração - Exibida no Fim da Página */}
+        <section className={`p-5 rounded-3xl border shadow-sm transition-all mt-6 ${
+          isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400">
+                  <LayoutGrid size={18} />
+                </span>
+                <h2 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
+                  Central de Módulos & Administração
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Acesse diretamente todas as ferramentas, controles administrativos e operações do sistema.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                {isAdmin ? '100% Liberado • Administrador' : 'Acesso Rápido'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            {/* Card Destaque: Comissões Adriano (Exclusivo para adrianonascimentu@gmail.com) */}
+            {isAdriano && (
+              <Link
+                href="/admin/comissoes-adriano"
+                className="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md shadow-emerald-600/20 hover:scale-[1.02] transition-all flex flex-col justify-between group cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="p-2 rounded-xl bg-white/20 text-white">
+                    <DollarSign size={20} />
+                  </div>
+                  <span className="text-[9px] font-black uppercase tracking-wider bg-white/30 px-2 py-0.5 rounded-full">
+                    Exclusivo
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <p className="font-black text-sm leading-tight text-white group-hover:underline">
+                    Comissões (Adriano)
+                  </p>
+                  <p className="text-[10px] text-emerald-100 mt-0.5">
+                    Acordo mensal & Redes Sociais
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Comissionados Geral */}
+            {(isAdmin || isAdriano) && (
+              <Link
+                href="/admin/commissions"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                  <DollarSign size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Comissionados Geral
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Planilha de comissões
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Equipe / Colaboradores */}
+            {isAdmin && (
+              <Link
+                href="/collaborators"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <Users size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Equipe & Cargos
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Gerenciar colaboradores
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Painel Ao Vivo (GPS) */}
+            {(isAdmin || role === 'gerente' || role === 'supervisor') && (
+              <Link
+                href="/painel-ao-vivo"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                  <Radio size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Painel Ao Vivo (GPS)
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Rastreamento em tempo real
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Configurações do Sistema */}
+            {isAdmin && (
+              <Link
+                href="/admin/settings"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-400">
+                  <Settings size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Configurações
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Módulos, permissões & APIs
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* WhatsApp */}
+            {canAccessWhatsapp && (
+              <Link
+                href="/whatsapp"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <MessageSquare size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    WhatsApp CRM
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Conversas & atendimento
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Leads */}
+            {canAccessLeads && (
+              <Link
+                href="/leads"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                  <Target size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Leads (CRM)
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Funil de prospecção
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Redes Sociais */}
+            {canAccessSocialMedia && (
+              <Link
+                href="/social-media"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400">
+                  <Share2 size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Redes Sociais
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Publicações & anúncios
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Entregas */}
+            {canAccessDeliveries && (
+              <Link
+                href="/deliveries"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Truck size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Entregas & Rotas
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Logística e despacho
+                  </p>
+                </div>
+              </Link>
+            )}
+
+            {/* Vendas & Metas */}
+            {canAccessSales && (
+              <Link
+                href="/sales-results"
+                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
+                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
+                }`}
+              >
+                <div className="p-2 w-fit rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <TrendingUp size={18} />
+                </div>
+                <div className="mt-2.5">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Vendas & Metas
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Faturamento e rankings
+                  </p>
+                </div>
+              </Link>
+            )}
+          </div>
+        </section>
       </main>
 
       {/* Demand Modal */}

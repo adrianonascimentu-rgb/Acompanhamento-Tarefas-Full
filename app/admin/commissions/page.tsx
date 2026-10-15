@@ -52,11 +52,8 @@ export default function AdminCommissionsPage() {
   }
 
   return (
-    <div className={`min-h-screen flex ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
-      <Sidebar />
-
-      <main className="flex-1 md:pl-64 flex flex-col min-h-screen pb-24 md:pb-12">
-        {/* Header Bar */}
+    <div className="flex-1 flex flex-col min-h-screen">
+      {/* Header Bar */}
         <header className={`h-16 px-4 md:px-8 border-b flex items-center justify-between sticky top-0 z-30 backdrop-blur-md transition-colors ${
           isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200/80'
         }`}>
@@ -100,9 +97,6 @@ export default function AdminCommissionsPage() {
         <div className="p-4 md:p-8 w-full">
           <CommissionsManager isDarkMode={isDarkMode} />
         </div>
-      </main>
-
-      <BottomNav />
     </div>
   );
 }

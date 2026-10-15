@@ -192,47 +192,47 @@ export function TopTruckBanner() {
 
   return (
     <>
-      <div className="w-full px-2 sm:px-4 pt-2 pb-1">
+      <div className="w-full px-3 py-2 sm:px-4 sm:py-2.5">
         <motion.div
           initial={{ opacity: 0, y: -2 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`relative overflow-hidden rounded-xl border shadow-xs transition-all duration-300 ${bannerBg}`}
+          className={`relative overflow-hidden rounded-2xl border-2 shadow-md transition-all duration-300 ${bannerBg}`}
         >
-          <div className="relative px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="relative px-3.5 py-2.5 sm:px-5 sm:py-3 flex flex-wrap items-center justify-between gap-2.5 text-xs sm:text-sm">
             {/* Esquerda: Ícone + Badge + Próximo + Último */}
-            <div className="flex items-center gap-2 min-w-0 flex-wrap sm:flex-nowrap">
-              <div className="w-7 h-7 rounded-lg bg-white/20 border border-white/30 flex items-center justify-center text-white shrink-0 shadow-xs">
-                <Truck size={14} className="animate-pulse text-white" />
+            <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shrink-0 shadow-xs">
+                <Truck size={18} className="animate-pulse text-white" />
               </div>
 
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${badgeBg} shrink-0 shadow-xs`}>
+              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow-xs shrink-0 ${badgeBg}`}>
                 {badgeLabel}
               </span>
 
-              <div className="flex items-center gap-2 text-xs font-semibold text-white truncate">
-                <span className="truncate">Próximo Carro: <strong className="font-black text-white">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white truncate">
+                <span className="truncate">Próximo: <strong className="font-black text-white text-sm sm:text-base">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
                 <span className="opacity-40 hidden sm:inline">|</span>
-                <span className="opacity-95 text-xs hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
+                <span className="opacity-95 text-xs sm:text-sm hidden sm:inline">Último: <strong className="font-black text-white/95">{lastDateDisplay}</strong></span>
               </div>
             </div>
 
-            {/* Direita: Ações compactas e acessíveis */}
+            {/* Direita: Ações expandidas com toque ergonômico */}
             <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
               <Link
                 href="/deliveries?mode=tracking"
-                className="px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 border border-white/25 shadow-xs"
-                title="Rastrear Caminhão no Mapa"
+                className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 border border-white/30 shadow-xs cursor-pointer"
+                title="Rastrear no Mapa"
               >
-                <Navigation size={12} className="text-yellow-300 shrink-0" />
-                <span className="hidden xs:inline">Mapa GPS</span>
+                <Navigation size={14} className="text-yellow-300 shrink-0" />
+                <span className="hidden xs:inline">Mapa</span>
               </Link>
 
               {latest && (
                 <button
                   type="button"
                   onClick={() => setIsDetailsModalOpen(true)}
-                  className="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
-                  title="Ver detalhes da última carga"
+                  className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
+                  title="Ver detalhes da carga"
                 >
                   Info Carga
                 </button>
@@ -240,19 +240,19 @@ export function TopTruckBanner() {
 
               <Link
                 href="/reports/truck-history"
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1"
-                title="Histórico de Recebimentos"
+                className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+                title="Histórico"
               >
-                <History size={12} className="shrink-0" />
+                <History size={14} className="shrink-0" />
                 <span className="hidden md:inline">Histórico</span>
               </Link>
 
               {canEdit && (
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className={`px-3 py-1 rounded-lg bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-xs flex items-center gap-1 cursor-pointer`}
+                  className={`px-3.5 py-1.5 rounded-xl bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-sm flex items-center gap-1 cursor-pointer`}
                 >
-                  <Edit3 size={12} className="shrink-0" />
+                  <Edit3 size={14} className="shrink-0" />
                   <span>Alterar</span>
                 </button>
               )}

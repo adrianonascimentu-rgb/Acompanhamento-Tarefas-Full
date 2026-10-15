@@ -56,6 +56,7 @@ interface RoleContextType {
   role: Role;
   user: any | null;
   isAdmin: boolean;
+  isAdriano: boolean;
   isCaixa: boolean;
   isEntregador: boolean;
   isEstoque: boolean;
@@ -308,6 +309,12 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     user?.type?.toLowerCase() === 'admin' ||
     (!!ownerEmail && userEmail === ownerEmail);
 
+  const isAdriano = Boolean(
+    userEmail === 'adrianonascimentu@gmail.com' ||
+    user?.username?.toLowerCase().trim() === 'adrianonascimentu@gmail.com' ||
+    (user?.name && user.name.toLowerCase().includes('adriano nascimento'))
+  );
+
   const isCaixa = 
     normalizedRole === 'caixa' || 
     rawRole.includes('caixa') || 
@@ -413,6 +420,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     role: normalizedRole,
     user,
     isAdmin,
+    isAdriano,
     isCaixa,
     isEntregador,
     isEstoque,
@@ -443,33 +451,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 export function useRole() {
   const context = useContext(RoleContext);
   if (context === undefined) {
-    return {
-      role: 'admin',
-      user: DEFAULT_ADMIN_USER,
-      isAdmin: true,
-      isCaixa: false,
-      isEntregador: false,
-      isEstoque: false,
-      isVendedor: false,
-      isGerente: false,
-      isSupervisor: false,
-      canUploadCatalog: true,
-      canAccessLeads: true,
-      canAccessSocialMedia: true,
-      canAccessWhatsapp: true,
-      canAccessDeliveries: true,
-      canUpdateDeliveryStatus: true,
-      canAccessTransfers: true,
-      canAccessWarranties: true,
-      canAccessReports: true,
-      canAccessSales: true,
-      canAccessDemands: true,
-      isAuthenticated: true,
-      isLoading: false,
-      login: async () => {},
-      logout: async () => {},
-      refreshUser: async () => {}
-    };
+    throw new Error('useRole must be used within a RoleProvider');
   }
   return context;
 }

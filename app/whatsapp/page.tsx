@@ -680,7 +680,7 @@ export default function WhatsAppPage() {
                         Meta para Desenvolvedores
                       </h4>
                       <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Crie uma conta em <span className="font-bold">developers.facebook.com</span>, crie um novo App "Business" e adicione o produto "WhatsApp".
+                        Crie uma conta em <span className="font-bold">developers.facebook.com</span>, crie um novo App &quot;Business&quot; e adicione o produto &quot;WhatsApp&quot;.
                       </p>
                       <a 
                         href="https://developers.facebook.com" 

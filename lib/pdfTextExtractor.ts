@@ -26,7 +26,7 @@ export async function extractTextFromPdfBuffer(buffer: Buffer): Promise<Extracte
 
           for (const page of pages) {
             let lastY = -1;
-            let pageLines: string[] = [];
+            const pageLines: string[] = [];
             let currentLine = '';
 
             const texts = page.Texts || [];
