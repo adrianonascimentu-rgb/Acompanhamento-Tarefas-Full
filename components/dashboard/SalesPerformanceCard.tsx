@@ -1,18 +1,24 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { TrendingUp, ArrowUpRight, Target, CheckCircle2, Award, Zap, Users, AlertTriangle, Sparkles, Clock, BarChart2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  TrendingUp, ArrowUpRight, Target, CheckCircle2, Award, Zap, Users, 
+  AlertTriangle, Sparkles, Clock, BarChart2, CalendarPlus, Calendar, PlusCircle
+} from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { gsap } from 'gsap';
 import { useRole } from '@/hooks/useRole';
+import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
 
 interface SalesPerformanceCardProps {
   isDarkMode?: boolean;
 }
 
 export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) {
-  const { role, user, isAdmin } = useRole();
+  const { role, user, isAdmin, isGerente, isSupervisor } = useRole();
+  const [showDailySalesModal, setShowDailySalesModal] = useState(false);
+  const [todaySummary, setTodaySummary] = useState<{ total: number; sellersCount: number } | null>(null);
   const [performance, setPerformance] = useState<{
     totalGoal: number;
     totalResult: number;
@@ -40,7 +46,34 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
   const daysRemaining = Math.max(0, daysInMonth - currentDay);
 
-  const isManagerial = isAdmin || role === 'gerente' || role === 'supervisor';
+  const isManagerial = isAdmin || isGerente || isSupervisor || role === 'gerente' || role === 'supervisor' || role === 'admin';
+
+  const fetchTodayDailySales = useCallback(async () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await fetch(`/api/sales/daily?date=${todayStr}`);
+      if (res.ok) {
+        const json = await res.json();
+        setTodaySummary({
+          total: json.summary?.total_sales || 0,
+          sellersCount: json.summary?.sellers_with_sales || 0
+        });
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar resumo de hoje:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTodayDailySales();
+    const handleDailyUpdate = () => {
+      fetchTodayDailySales();
+    };
+    window.addEventListener('daily_sales_updated', handleDailyUpdate);
+    return () => {
+      window.removeEventListener('daily_sales_updated', handleDailyUpdate);
+    };
+  }, [fetchTodayDailySales]);
 
   useEffect(() => {
     async function fetchSalesResults() {
@@ -279,14 +312,29 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           </div>
         </div>
 
-        <Link 
-          href="/sales-results" 
-          className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 hover:bg-emerald-100/80 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800/80 transition-all shrink-0 active:scale-95 shadow-2xs"
-          title="Ver Módulo de Vendas Completo"
-        >
-          <span>Painel Detalhado</span>
-          <ArrowUpRight size={14} className="stroke-[2.5]" />
-        </Link>
+        <div className="flex items-center gap-2">
+          {isManagerial && (
+            <button 
+              type="button"
+              onClick={() => setShowDailySalesModal(true)}
+              className="flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-xl text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-sm shadow-emerald-600/20 transition-all shrink-0 active:scale-95 cursor-pointer"
+              title="Lançamento diário do resultado de vendas de cada vendedor"
+            >
+              <CalendarPlus size={14} className="stroke-[2.5]" />
+              <span className="hidden sm:inline">Lançar Vendas do Dia</span>
+              <span className="sm:hidden">Lançar Dia</span>
+            </button>
+          )}
+
+          <Link 
+            href="/sales-results" 
+            className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 hover:bg-emerald-100/80 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800/80 transition-all shrink-0 active:scale-95 shadow-2xs"
+            title="Ver Módulo de Vendas Completo"
+          >
+            <span>Painel Detalhado</span>
+            <ArrowUpRight size={14} className="stroke-[2.5]" />
+          </Link>
+        </div>
       </div>
 
       {/* Main Stats Showcase & Circular Gauge Grid */}
@@ -434,6 +482,37 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
         </div>
       </div>
 
+      {/* Daily Sales Quick Notice for Managers */}
+      {isManagerial && (
+        <div className="p-3 rounded-2xl bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/20 flex items-center justify-between gap-3 text-xs relative z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Calendar size={15} />
+            </div>
+            <div className="min-w-0">
+              <span className="font-extrabold text-slate-800 dark:text-slate-200 block truncate">
+                {todaySummary && todaySummary.total > 0
+                  ? `Vendas de Hoje: R$ ${todaySummary.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${todaySummary.sellersCount} com venda)`
+                  : 'Lançamento Diário de Vendas'}
+              </span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
+                {todaySummary && todaySummary.total > 0
+                  ? 'Resultado do dia registrado • Clique para revisar ou atualizar'
+                  : 'Informe as vendas realizadas hoje por cada vendedor da equipe'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowDailySalesModal(true)}
+            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5"
+          >
+            <CalendarPlus size={13} />
+            <span>{todaySummary && todaySummary.total > 0 ? 'Editar Vendas' : 'Informar Hoje'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Footer Quick Summary Tags & Days Remaining */}
       <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between flex-wrap gap-3 text-xs relative z-10">
         <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 font-medium">
@@ -462,6 +541,15 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           <ArrowUpRight size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
         </Link>
       </div>
+
+      {/* Daily Sales Modal */}
+      <DailySalesInputModal
+        isOpen={showDailySalesModal}
+        onClose={() => setShowDailySalesModal(false)}
+        onSaved={() => {
+          fetchTodayDailySales();
+        }}
+      />
     </div>
   );
 }

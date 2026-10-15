@@ -20,19 +20,25 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { GsapSalesProgressBar } from '@/components/dashboard/GsapSalesProgressBar';
 import { exportSalesDashboardToPDF } from '@/lib/exportPdf';
 import { NewCommissionModal } from '@/components/sales/NewCommissionModal';
+import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
+import { CalendarPlus, CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
 export default function SalesResultsPage() {
   const { isDarkMode } = useTheme();
-  const { role, user, isAdmin, canAccessSales, isAuthenticated, login } = useRole();
+  const { role, user, isAdmin, isGerente, isSupervisor, canAccessSales, isAuthenticated, login } = useRole();
   const [loading, setLoading] = useState(true);
   const [salesData, setSalesData] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [showCommissionModal, setShowCommissionModal] = useState(false);
+  const [showDailySalesModal, setShowDailySalesModal] = useState(false);
+  const [todayDailySales, setTodayDailySales] = useState<{ total: number; sellersCount: number } | null>(null);
+
+  const isManagerial = isAdmin || isGerente || isSupervisor || role === 'gerente' || role === 'supervisor' || role === 'admin';
 
   const fetchSalesData = useCallback(async () => {
     try {
@@ -123,11 +129,41 @@ export default function SalesResultsPage() {
     }
   }, [role, isAdmin, user?.id, selectedMonth, selectedYear]);
 
+  const fetchTodaySales = useCallback(async () => {
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await fetch(`/api/sales/daily?date=${todayStr}`);
+      if (res.ok) {
+        const json = await res.json();
+        setTodayDailySales({
+          total: json.summary?.total_sales || 0,
+          sellersCount: json.summary?.sellers_with_sales || 0
+        });
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar vendas de hoje:', e);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAuthenticated && canAccessSales) {
       fetchSalesData();
+      fetchTodaySales();
     }
-  }, [isAuthenticated, canAccessSales, fetchSalesData]);
+
+    const handleUpdate = () => {
+      fetchSalesData();
+      fetchTodaySales();
+    };
+
+    window.addEventListener('daily_sales_updated', handleUpdate);
+    window.addEventListener('sales_results_updated', handleUpdate);
+
+    return () => {
+      window.removeEventListener('daily_sales_updated', handleUpdate);
+      window.removeEventListener('sales_results_updated', handleUpdate);
+    };
+  }, [isAuthenticated, canAccessSales, fetchSalesData, fetchTodaySales]);
 
   if (!isAuthenticated) return <LoginForm onLogin={login} />;
   if (!canAccessSales) return <div className="p-4">Acesso negado. Você não tem permissão para visualizar este módulo.</div>;
@@ -205,6 +241,19 @@ export default function SalesResultsPage() {
         </div>
 
         <div className="actions-bar flex items-center gap-2">
+          {/* Lançamento Diário para Administrador, Gerente ou Supervisor */}
+          {isManagerial && (
+            <button
+              type="button"
+              onClick={() => setShowDailySalesModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black transition-all shadow-md shadow-blue-600/20 cursor-pointer"
+              title="Informar diariamente o resultado das vendas de cada vendedor"
+            >
+              <CalendarPlus size={16} />
+              <span>Informar Vendas do Dia</span>
+            </button>
+          )}
+
           {/* Atalho do botão de Nova Comissão para Vendedores */}
           <button
             onClick={() => setShowCommissionModal(true)}
@@ -269,6 +318,43 @@ export default function SalesResultsPage() {
             <span className="px-1.5 py-0.5 rounded text-[9px] bg-emerald-600 text-white font-bold ml-1">Atalho Vendedor</span>
           </button>
         </div>
+
+        {/* Daily Sales Quick Widget for Managers */}
+        {isManagerial && (
+          <div className={`p-4 rounded-3xl border transition-all ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-white border-blue-200/60 shadow-xs'}`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+                  <CalendarCheck size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-extrabold tracking-tight">
+                      Lançamento Diário de Vendas por Vendedor
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                      Gestão Comercial
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {todayDailySales && todayDailySales.total > 0
+                      ? `Resultado de hoje registrado: R$ ${todayDailySales.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} • ${todayDailySales.sellersCount} vendedores com venda informada`
+                      : 'Administrador, gerente ou supervisor: informe o resultado das vendas do dia de cada vendedor para consolidar as metas.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDailySalesModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold shadow-sm shadow-blue-600/20 transition-all cursor-pointer active:scale-95 shrink-0"
+              >
+                <CalendarPlus size={15} />
+                <span>{todayDailySales && todayDailySales.total > 0 ? 'Editar Vendas de Hoje' : 'Informar Vendas de Hoje'}</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
@@ -576,6 +662,16 @@ export default function SalesResultsPage() {
         onClose={() => setShowCommissionModal(false)}
         onSuccess={() => {
           fetchSalesData();
+        }}
+      />
+
+      {/* Modal de Lançamento Diário de Vendas por Vendedor (Admin, Gerente, Supervisor) */}
+      <DailySalesInputModal
+        isOpen={showDailySalesModal}
+        onClose={() => setShowDailySalesModal(false)}
+        onSaved={() => {
+          fetchSalesData();
+          fetchTodaySales();
         }}
       />
 

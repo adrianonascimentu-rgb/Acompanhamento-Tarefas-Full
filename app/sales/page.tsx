@@ -20,6 +20,8 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { GsapSalesProgressBar } from '@/components/dashboard/GsapSalesProgressBar';
 import { exportSalesDashboardToPDF } from '@/lib/exportPdf';
 import { NewCommissionModal } from '@/components/sales/NewCommissionModal';
+import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
+import { CalendarPlus } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -27,7 +29,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'
 
 export default function SalesModulePage() {
   const { isDarkMode } = useTheme();
-  const { role, user, isAdmin, canAccessSales, isAuthenticated, login } = useRole();
+  const { role, user, isAdmin, isGerente, isSupervisor, canAccessSales, isAuthenticated, login } = useRole();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'transactions' | 'products' | 'sellers'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [sales, setSales] = useState<any[]>([]);
@@ -37,10 +39,13 @@ export default function SalesModulePage() {
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showProductModal, setShowProductModal] = useState(false);
   const [showCommissionModal, setShowCommissionModal] = useState(false);
+  const [showDailySalesModal, setShowDailySalesModal] = useState(false);
   const [showSellerSettingsModal, setShowSellerSettingsModal] = useState(false);
   const [selectedSeller, setSelectedSeller] = useState<any>(null);
   const [sellerMonthlySettings, setSellerMonthlySettings] = useState<any[]>([]);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  const isManagerial = isAdmin || isGerente || isSupervisor || role === 'gerente' || role === 'supervisor' || role === 'admin';
 
   // Form states
   const [newSale, setNewSale] = useState({
@@ -939,6 +944,19 @@ export default function SalesModulePage() {
         </div>
 
         <div className="actions-bar flex items-center gap-2">
+          {/* Lançamento Diário para Administrador, Gerente ou Supervisor */}
+          {isManagerial && (
+            <button 
+              type="button"
+              onClick={() => setShowDailySalesModal(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black transition-all shadow-md shadow-blue-600/20 cursor-pointer"
+              title="Informar diariamente o resultado das vendas do dia de cada vendedor"
+            >
+              <CalendarPlus size={16} />
+              <span>Informar Vendas do Dia</span>
+            </button>
+          )}
+
           <button
             onClick={handleTriggerPDFExport}
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
@@ -1183,6 +1201,15 @@ export default function SalesModulePage() {
         isOpen={showCommissionModal} 
         onClose={() => setShowCommissionModal(false)}
         onSuccess={() => {
+          fetchData();
+        }}
+      />
+
+      {/* Modal de Lançamento Diário de Vendas por Vendedor */}
+      <DailySalesInputModal
+        isOpen={showDailySalesModal}
+        onClose={() => setShowDailySalesModal(false)}
+        onSaved={() => {
           fetchData();
         }}
       />
