@@ -15,7 +15,9 @@ import {
   Flag,
   Calendar,
   Check,
-  Eye
+  Eye,
+  AlertTriangle,
+  ExternalLink
 } from 'lucide-react';
 import { renderToString } from 'react-dom/server';
 import { useTheme } from '@/hooks/useTheme';
@@ -356,7 +358,7 @@ export function TasksMapView({
       <div className="relative w-full h-[540px] flex">
         {/* Interactive Map */}
         <div className="flex-1 h-full z-0 relative">
-          {effectiveApiKey && (
+            {effectiveApiKey && (
             <div className="absolute top-4 right-4 z-[1000] flex items-center bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-1 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 text-xs font-bold gap-1">
               <button
                 type="button"
@@ -520,7 +522,7 @@ export function TasksMapView({
               );
             })}
           </MapContainer>
-          )}
+        )}
         </div>
 
         {/* Task List Floating Drawer / Sidebar */}

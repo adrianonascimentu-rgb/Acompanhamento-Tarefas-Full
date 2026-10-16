@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ArrowLeft, Users, Calendar, Layout, List, TrendingUp, Search, Plus, Filter, MessageSquare, Share2, Camera, Briefcase, Send, ClipboardList, Clock, CheckCircle2, AlertCircle, ExternalLink, FileText, MoreHorizontal, Trash2, Pencil, Database } from 'lucide-react';
+import { ArrowLeft, Users, Calendar, Layout, List, TrendingUp, Search, Plus, Filter, MessageSquare, Share2, Camera, Briefcase, Send, ClipboardList, Clock, CheckCircle2, AlertCircle, ExternalLink, FileText, MoreHorizontal, Trash2, Pencil, Database, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
@@ -147,6 +147,31 @@ export default function SocialMediaPage() {
   const [isLoadingTeam, setIsLoadingTeam] = useState(false);
   const [isTableMissing, setIsTableMissing] = useState(false);
   const [isCommentsColumnMissing, setIsCommentsColumnMissing] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+  const [dailyEcommerceChecklistState, setDailyEcommerceChecklistState] = useState<Record<string, boolean>>({
+    orders: false,
+    stock: false,
+    prices: false,
+    banners: false,
+    logistics: false
+  });
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from('products').select('*').order('name');
+      if (!error && data) {
+        setProducts(data);
+      }
+    } catch {
+      // fallback
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && canAccessSocialMedia) {
+      fetchProducts();
+    }
+  }, [isAuthenticated, canAccessSocialMedia, fetchProducts]);
 
   const fetchTasks = useCallback(async () => {
     if (!isAuthenticated || !user?.id) {
@@ -286,6 +311,7 @@ export default function SocialMediaPage() {
     { id: 'overview', label: 'Painel Gestor', icon: Layout },
     { id: 'tasks', label: 'Tarefas', icon: ClipboardList },
     { id: 'calendar', label: 'Editorial', icon: Calendar },
+    { id: 'ecommerce', label: 'E-commerce & Rotinas', icon: Share2 },
     { id: 'analytics', label: 'Métricas', icon: TrendingUp },
   ];
 
@@ -1246,6 +1272,247 @@ ALTER PUBLICATION supabase_realtime ADD TABLE social_media_tasks;`);
                   );
                 })}
               </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'ecommerce' && (
+            <motion.div
+              key="ecommerce-tab"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-8"
+            >
+              {/* Header / Banner */}
+              <div className={`p-6 rounded-3xl border shadow-sm ${isDarkMode ? 'bg-gradient-to-r from-blue-950/60 to-indigo-950/60 border-blue-900/50' : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100'}`}>
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <span className="px-3 py-1 rounded-full bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest">Gestão de E-commerce & Rotinas</span>
+                    <h3 className="text-2xl font-black mt-2">Central de Operações de E-commerce & Campanhas</h3>
+                    <p className={`text-sm mt-1 ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                      Organize suas tarefas diárias, verifique o checklist operacional e vincule posts de redes sociais diretamente aos produtos do catálogo.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setNewTask({
+                        status: 'Ideia',
+                        channels: ['E-commerce', 'Instagram'],
+                        formats: ['Post / Vitrine'],
+                        links: { canva: '', drive: '', caption: '' },
+                        checklist: { hashtags: true, localKeywords: true, taggedAccounts: true, qualityChecked: false }
+                      });
+                      setIsEditing(false);
+                      setIsTaskModalOpen(true);
+                    }}
+                    className="px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/30 transition-all"
+                  >
+                    <Plus size={16} /> Nova Campanha de E-commerce
+                  </button>
+                </div>
+              </div>
+
+              {/* Grid: Daily Ops Checklist & Products / Quick Actions */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Left 1 Col: Daily E-commerce Operations Checklist */}
+                <div className={`p-6 rounded-3xl border shadow-sm space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-extrabold text-sm flex items-center gap-2">
+                      <ClipboardList size={18} className="text-blue-600" /> Rotina Diária do E-commerce
+                    </h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                      {Object.values(dailyEcommerceChecklistState).filter(Boolean).length}/5 Concluídos
+                    </span>
+                  </div>
+                  <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Verifique estas rotinas todos os dias para garantir vendas sem atritos e estoque sincronizado.
+                  </p>
+
+                  <div className="space-y-2.5 pt-2">
+                    {[
+                      { key: 'orders', label: 'Conferir pedidos novos e pagamentos confirmados' },
+                      { key: 'stock', label: 'Verificar alertas de estoque crítico e reposição' },
+                      { key: 'prices', label: 'Atualizar preços, descontos e banners de ofertas' },
+                      { key: 'banners', label: 'Publicar destaque do dia no Instagram e Vitrine' },
+                      { key: 'logistics', label: 'Validar despacho das entregas e códigos de rastreio' },
+                    ].map(item => {
+                      const isChecked = dailyEcommerceChecklistState[item.key];
+                      return (
+                        <div
+                          key={item.key}
+                          onClick={() => setDailyEcommerceChecklistState(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${
+                            isChecked 
+                              ? (isDarkMode ? 'bg-emerald-950/30 border-emerald-800/80 text-emerald-300' : 'bg-emerald-50 border-emerald-200 text-emerald-900')
+                              : (isDarkMode ? 'bg-slate-800/50 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300')
+                          }`}
+                        >
+                          <div className={`size-5 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
+                            isChecked ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 dark:border-slate-700'
+                          }`}>
+                            {isChecked && <CheckCircle2 size={14} />}
+                          </div>
+                          <span className={`text-xs font-semibold ${isChecked ? 'line-through opacity-80' : ''}`}>
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Right 2 Cols: E-commerce Products & Quick Promotion */}
+                <div className={`lg:col-span-2 p-6 rounded-3xl border shadow-sm space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-extrabold text-sm flex items-center gap-2">
+                        <TrendingUp size={18} className="text-emerald-600" /> Produtos do Catálogo para Divulgação
+                      </h4>
+                      <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Selecione um produto do seu e-commerce para gerar instantaneamente uma tarefa de postagem ou campanha.
+                      </p>
+                    </div>
+                    <Link
+                      href="/products"
+                      className="px-3 py-1.5 rounded-xl border text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all flex items-center gap-1.5"
+                    >
+                      <ExternalLink size={13} /> Ver Catálogo Completo
+                    </Link>
+                  </div>
+
+                  {products.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 space-y-3">
+                      <Database size={32} className="mx-auto opacity-40" />
+                      <p className="text-xs font-medium">Nenhum produto cadastrado no catálogo do e-commerce.</p>
+                      <Link href="/products" className="inline-block px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">
+                        Cadastrar Produtos
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[380px] overflow-y-auto pr-1">
+                      {products.slice(0, 8).map((prod: any) => (
+                        <div key={prod.id} className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${isDarkMode ? 'bg-slate-800/60 border-slate-700/80' : 'bg-slate-50 border-slate-200'}`}>
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400 tracking-wider">
+                              {prod.category || 'Geral'}
+                            </span>
+                            <h5 className="font-bold text-xs truncate mt-0.5">{prod.name}</h5>
+                            <p className="text-xs font-extrabold text-emerald-600 mt-0.5">
+                              R$ {Number(prod.price || prod.sale_price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setNewTask({
+                                title: `Divulgar ${prod.name} (R$ ${Number(prod.price || 0).toFixed(2)})`,
+                                status: 'Ideia',
+                                channels: ['E-commerce', 'Instagram'],
+                                formats: ['Post / Vitrine', 'Reels'],
+                                links: { canva: '', drive: '', caption: `Confira a super oferta de ${prod.name}! Garanta já o seu no link da bio.` },
+                                checklist: { hashtags: true, localKeywords: true, taggedAccounts: true, qualityChecked: false }
+                              });
+                              setIsEditing(false);
+                              setIsTaskModalOpen(true);
+                            }}
+                            className="px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shrink-0 shadow-sm transition-all flex items-center gap-1"
+                          >
+                            <Plus size={13} /> Divulgar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Promo Templates for E-commerce */}
+              <div className={`p-6 rounded-3xl border shadow-sm space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <div>
+                  <h4 className="font-extrabold text-sm flex items-center gap-2">
+                    <Sparkles size={18} className="text-amber-500" /> Templates Prontos para Acelerar Vendas
+                  </h4>
+                  <p className={`text-xs mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Escolha um modelo de campanha pronto para estruturar a estratégia do dia no e-commerce com 1 clique.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {[
+                    { title: '🔥 Liquidação Relâmpago', caption: 'Corre que é só hoje! Descontos imperdíveis em produtos selecionados no e-commerce. Garanta já o seu!' },
+                    { title: '🚚 Frete Grátis Hoje', caption: 'Aproveite frete grátis em todo o site nas compras acima do valor promocional. Compre sem sair de casa!' },
+                    { title: '⭐ Lançamento na Vitrine', caption: 'Novidade fresquinha chegando no e-commerce! Seja o primeiro a garantir o produto que todo mundo está querendo.' },
+                    { title: '⏰ Oferta da Manhã', caption: 'Comece o dia economizando! Oferta relâmpago matinal disponível no e-commerce por tempo limitado.' },
+                  ].map((tpl, i) => (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setNewTask({
+                          title: tpl.title,
+                          status: 'Ideia',
+                          channels: ['E-commerce', 'Instagram'],
+                          formats: ['Post / Vitrine', 'Story'],
+                          links: { canva: '', drive: '', caption: tpl.caption },
+                          checklist: { hashtags: true, localKeywords: true, taggedAccounts: true, qualityChecked: false }
+                        });
+                        setIsEditing(false);
+                        setIsTaskModalOpen(true);
+                      }}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer hover:shadow-md group ${isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-blue-500' : 'bg-slate-50 border-slate-200 hover:border-blue-300'}`}
+                    >
+                      <h5 className="font-bold text-xs group-hover:text-blue-600 transition-colors">{tpl.title}</h5>
+                      <p className={`text-[11px] line-clamp-2 mt-1.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{tpl.caption}</p>
+                      <span className="inline-block mt-3 text-[10px] font-bold text-blue-600 dark:text-blue-400">Usar Template →</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Active E-commerce Social Tasks */}
+              <div className={`p-6 rounded-3xl border shadow-sm space-y-4 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-extrabold text-sm flex items-center gap-2">
+                    <Share2 size={18} className="text-indigo-600" /> Campanhas e Posts de E-commerce Ativos
+                  </h4>
+                  <span className="text-xs font-bold text-slate-500">
+                    {tasks.filter(t => t.channels?.includes('E-commerce')).length} Tarefas
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {tasks.filter(t => t.channels?.includes('E-commerce')).length === 0 ? (
+                    <p className="col-span-full py-8 text-center text-xs text-slate-400">
+                      Nenhuma tarefa de redes sociais vinculada ao canal E-commerce no momento. Crie uma nova campanha acima!
+                    </p>
+                  ) : (
+                    tasks.filter(t => t.channels?.includes('E-commerce')).map(task => (
+                      <div key={task.id} className={`p-4 rounded-2xl border space-y-2 ${isDarkMode ? 'bg-slate-800/40 border-slate-700/80' : 'bg-slate-50 border-slate-200'}`}>
+                        <div className="flex items-center justify-between">
+                          <StatusBadge status={task.status} isDarkMode={isDarkMode} />
+                          <span className="text-[10px] text-slate-400 font-medium">Prazo: {task.publicationDate || '-'}</span>
+                        </div>
+                        <h5 className="font-bold text-xs">{task.title}</h5>
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
+                          <span className="font-medium text-slate-500">Resp: {task.responsibleName}</span>
+                          <button
+                            onClick={() => {
+                              setNewTask(task);
+                              setEditingTaskId(task.id);
+                              setIsEditing(true);
+                              setIsTaskModalOpen(true);
+                            }}
+                            className="text-blue-600 hover:underline font-bold"
+                          >
+                            Editar
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
             </motion.div>
           )}
 

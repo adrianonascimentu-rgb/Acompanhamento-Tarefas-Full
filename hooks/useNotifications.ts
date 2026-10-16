@@ -228,11 +228,13 @@ export function useNotifications() {
       const { error } = await supabase.from('notifications').insert(payload);
       
       if (error) {
+        await handleSupabaseAuthError(error);
         if (error.code === 'PGRST204' || error.message?.includes('column')) {
           delete payload.task_id;
           delete payload.event_key;
           const { error: retryError } = await supabase.from('notifications').insert(payload);
           if (retryError && retryError.code !== '42P01' && retryError.code !== 'PGRST205') {
+            await handleSupabaseAuthError(retryError);
             throw retryError;
           }
         } else if (error.code !== '42P01' && error.code !== 'PGRST205') {
@@ -260,10 +262,11 @@ export function useNotifications() {
         } catch (e) {}
       }
     } catch (error: any) {
-      if (error?.message === 'Failed to fetch' || error?.message?.includes('Failed to fetch') || error instanceof TypeError) {
+      await handleSupabaseAuthError(error);
+      if (error?.message === 'Failed to fetch' || error?.message?.includes('Failed to fetch' ) || error instanceof TypeError || error?.message?.includes('JWT expired')) {
         return;
       }
-      console.error('Error creating notification:', error?.message || JSON.stringify(error) || error);
+      console.warn('Notification suppressed:', error?.message || error);
     }
   };
 

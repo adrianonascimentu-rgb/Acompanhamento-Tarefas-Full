@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio } from 'lucide-react';
+import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -76,6 +76,7 @@ export default function Dashboard() {
   const { notifications, unreadCount, markAsRead, clearAll, createNotification } = useNotifications();
   const { showToast, showConfirm, showSettingsModal } = useUI();
   const [isDemandModalOpen, setIsDemandModalOpen] = useState(false);
+  const [isPermanentModalOpen, setIsPermanentModalOpen] = useState(false);
   const [currentDateString, setCurrentDateString] = useState<string>('');
   const [dashboardMode, setDashboardMode] = useState<'permanent_notes' | 'full'>('full');
 
@@ -643,11 +644,7 @@ export default function Dashboard() {
     (user?.full_name && typeof user.full_name === 'string' && (user.full_name.toLowerCase().includes('adriana') || user.full_name.toLowerCase().includes('adriano')))
   );
 
-  useEffect(() => {
-    if ((isAdriana || isAdmin) && dashboardMode !== 'full') {
-      setDashboardMode('full');
-    }
-  }, [isAdriana, isAdmin, dashboardMode]);
+
 
   if (roleLoading && !user) {
     return (
@@ -884,110 +881,74 @@ export default function Dashboard() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 space-y-5 pb-8">
-        {/* Dashboard View Switcher: Permanent Notes vs Full Metrics (Oculto para a usuária Adriana) */}
-        {!isAdriana && (
-          <div className="flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-200/60 dark:bg-slate-900 border border-slate-300/60 dark:border-slate-800">
-            <button
-              onClick={() => setDashboardMode('permanent_notes')}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                dashboardMode === 'permanent_notes'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <Pin size={15} className="rotate-12" />
-              <span>📌 Bloquinhos de Anotações (Tarefas Permanentes)</span>
-            </button>
-            <button
-              onClick={() => setDashboardMode('full')}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                dashboardMode === 'full'
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <LayoutGrid size={15} />
-              <span>📊 Painel Geral de Métricas</span>
-            </button>
-          </div>
-        )}
-
-        {!isAdriana && dashboardMode === 'permanent_notes' ? (
-          <div className='mb-4'>
-            <PermanentTasksNotepadGrid 
-              isDarkMode={isDarkMode} 
-              userId={user?.id} 
-              isAdmin={isAdmin} 
-              role={role}
-            />
-          </div>
-        ) : (
-          <>
-        {!isSupabaseConfigured && (
-          <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl text-amber-800 dark:text-amber-300 text-xs">
-            <p className="font-semibold mb-0.5">Atenção: Supabase não configurado</p>
-            <p>Configure a URL e a Anon Key do Supabase nas configurações de ambiente para sincronização em tempo real.</p>
-          </div>
-        )}
-
-        {/* Missing Table Warning */}
-        {tableMissing && isAdmin && (
-          <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <h4 className="text-xs font-semibold text-amber-800 dark:text-amber-300">Tabela de Leads pendente</h4>
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                A tabela <code className="px-1 py-0.5 bg-amber-100/60 dark:bg-amber-900/40 rounded text-amber-900 dark:text-amber-200">leads</code> não foi encontrada no Supabase.
-              </p>
-              <button 
-                onClick={() => {
-                  const sql = `-- 1. Create the leads table\nCREATE TABLE IF NOT EXISTS leads (\n  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),\n  name TEXT NOT NULL,\n  company TEXT NOT NULL,\n  email TEXT,\n  phone TEXT,\n  segment TEXT DEFAULT 'Geral',\n  status TEXT DEFAULT 'Novo',\n  assigned_to UUID REFERENCES profiles(id) ON DELETE SET NULL,\n  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL\n);\n\n-- 2. Enable Row Level Security\nALTER TABLE leads ENABLE ROW LEVEL SECURITY;\n\n-- 3. Create a permissive policy for the demo\nCREATE POLICY "Allow all on leads" ON leads FOR ALL USING (true) WITH CHECK (true);`;
-                  navigator.clipboard.writeText(sql);
-                  showToast('SQL copiado para a área de transferência! Cole no SQL Editor do Supabase.', 'success');
-                }}
-                className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:underline inline-block mt-1"
-              >
-                Copiar SQL para criar tabela
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Catálogo de Peças & Consulta Rápida Hero Banner */}
-        <div className={`p-4 sm:p-5 rounded-3xl border transition-all ${
-          isDarkMode
-            ? 'bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/50 border-blue-900/60 shadow-lg'
-            : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
-        }`}>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-3.5">
+        {/* Catálogo de Peças & Botão de Tarefas Permanentes na Mesma Linha */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 1. Catálogo de Peças Card */}
+          <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
+            isDarkMode
+              ? 'bg-gradient-to-r from-blue-950/70 to-indigo-950/60 border-blue-900/60 shadow-lg'
+              : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
+          }`}>
+            <div className="flex items-start gap-3.5 mb-4">
               <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                <Package size={28} />
+                <Package size={24} />
               </div>
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-base sm:text-lg font-black tracking-tight text-white">
-                    Catálogo de Peças & Tabela de Preços
-                  </h3>
-                </div>
-                <p className="text-xs text-blue-100 opacity-90 mt-0.5">
-                  Consulte nome do produto, preços em 10x e à vista, referências de fábrica, estoque sem grade e envie cotações via WhatsApp.
+                <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                  Catálogo de Peças & Preços
+                </h3>
+                <p className="text-[11px] text-blue-100 opacity-90 mt-0.5 leading-relaxed">
+                  Consulte produtos, preços em 10x e à vista, referências de fábrica e cotações.
                 </p>
               </div>
             </div>
 
             <Link
               href="/products"
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-black shadow-md transition-all active:scale-95 shrink-0"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-black shadow-md transition-all active:scale-95 w-full"
             >
-              <Search size={16} className="text-blue-600" />
+              <Search size={15} className="text-blue-600" />
               <span>Abrir Catálogo de Peças</span>
-              <ChevronRight size={16} />
+              <ChevronRight size={15} />
             </Link>
+          </div>
+
+          {/* 2. Tarefas Permanentes Card / Button */}
+          <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
+            dashboardMode === 'permanent_notes'
+              ? (isDarkMode ? 'bg-gradient-to-r from-purple-950/70 to-indigo-950/60 border-purple-800 shadow-lg' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/20')
+              : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
+          }`}>
+            <div className="flex items-start gap-3.5 mb-4">
+              <div className={`p-3 rounded-2xl shrink-0 ${
+                dashboardMode === 'permanent_notes' ? 'bg-white/20 text-white' : (isDarkMode ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600')
+              }`}>
+                <Pin size={24} className="rotate-12" />
+              </div>
+              <div>
+                <h3 className={`text-sm sm:text-base font-black tracking-tight ${dashboardMode === 'permanent_notes' ? 'text-white' : (isDarkMode ? 'text-slate-100' : 'text-slate-900')}`}>
+                  Tarefas Permanentes & Notas
+                </h3>
+                <p className={`text-[11px] mt-0.5 leading-relaxed ${dashboardMode === 'permanent_notes' ? 'text-purple-100 opacity-90' : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>
+                  Acesse seus bloquinhos de anotações e lembretes fixos diários.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setDashboardMode('permanent_notes');
+                setIsPermanentModalOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer bg-purple-600 text-white hover:bg-purple-700"
+            >
+              <Pin size={15} className="rotate-12" />
+              <span>Abrir Tarefas Permanentes</span>
+              <ChevronRight size={15} />
+            </button>
           </div>
         </div>
 
-        {/* Top KPIs / Stats Grid */}
         <section className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
             <div>
@@ -1499,8 +1460,6 @@ export default function Dashboard() {
             )}
           </section>
         )}
-        </>
-        )}
 
         {/* Central de Módulos & Administração - Exibida no Fim da Página */}
         <section className={`p-5 rounded-3xl border shadow-sm transition-all mt-6 ${
@@ -1761,6 +1720,56 @@ export default function Dashboard() {
         onClose={() => setIsDemandModalOpen(false)} 
         user={user} 
       />
+
+      {/* Permanent Tasks Modal */}
+      <AnimatePresence>
+        {isPermanentModalOpen && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className={`w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl border ${
+                isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
+              } p-6`}
+            >
+              <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-purple-500/15 text-purple-600 dark:text-purple-400">
+                    <Pin size={24} className="rotate-12" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-black tracking-tight">Gerenciador de Tarefas Permanentes & Notas</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Controle diário, fixas e rotinas recorrentes da equipe</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsPermanentModalOpen(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <PermanentTasksNotepadGrid 
+                isDarkMode={isDarkMode} 
+                userId={user?.id} 
+                isAdmin={isAdmin} 
+                role={role}
+              />
+
+              <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+                <button
+                  onClick={() => setIsPermanentModalOpen(false)}
+                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition-all"
+                >
+                  Fechar Janela
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Special Delivery Alert Balloon */}
       <SpecialDeliveryAlertBalloon isDarkMode={isDarkMode} />
