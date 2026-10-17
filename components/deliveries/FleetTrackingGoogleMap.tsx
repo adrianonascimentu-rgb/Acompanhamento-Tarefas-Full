@@ -245,6 +245,7 @@ export function FleetTrackingGoogleMap({
   const isManagerOrAdmin = isAdmin || (role as string) === 'gerente' || (role as string) === 'supervisor' || (role as string) === 'administrador';
 
   const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+  const [hasBillingError, setHasBillingError] = useState(false);
 
   // Frota ativa
   const [vehicles, setVehicles] = useState<TruckVehicle[]>([]);
@@ -686,9 +687,18 @@ export function FleetTrackingGoogleMap({
 
       {/* Área do Mapa Google Maps */}
       <div className="relative w-full h-[520px] md:h-[600px]">
+        {hasBillingError && (
+          <div className="absolute top-4 left-4 right-4 z-[1000] p-4 bg-amber-500/90 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 text-xs font-bold">
+            <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError).</span>
+            <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white text-amber-700 rounded-xl hover:bg-amber-50 transition-all shrink-0">
+              Ativar Faturamento
+            </a>
+          </div>
+        )}
         <APIProvider 
           apiKey={effectiveApiKey}
           solutionChannel="gmp_mcp_codeassist_v1_aistudio"
+          onError={() => setHasBillingError(true)}
         >
           <GoogleMap
             defaultCenter={selectedTruck ? { lat: selectedTruck.lat, lng: selectedTruck.lng } : DEFAULT_CENTER}

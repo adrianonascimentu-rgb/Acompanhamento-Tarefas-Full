@@ -133,6 +133,7 @@ export function GoogleMapsFleetTracker({
   const [optimizationApplied, setOptimizationApplied] = useState(false);
 
   const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+  const [hasBillingError, setHasBillingError] = useState(false);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || null;
 
@@ -319,9 +320,18 @@ export function GoogleMapsFleetTracker({
 
       {/* Painel do Mapa Google Maps */}
       <div style={{ height }} className="relative w-full">
+        {hasBillingError && (
+          <div className="absolute top-4 left-4 right-4 z-[1000] p-4 bg-amber-500/90 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 text-xs font-bold">
+            <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError).</span>
+            <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white text-amber-700 rounded-xl hover:bg-amber-50 transition-all shrink-0">
+              Ativar Faturamento
+            </a>
+          </div>
+        )}
         <APIProvider 
           apiKey={effectiveApiKey}
           solutionChannel="gmp_mcp_codeassist_v1_aistudio"
+          onError={() => setHasBillingError(true)}
         >
           <Map
             defaultCenter={{ lat: -7.1197, lng: -34.8550 }}
