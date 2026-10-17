@@ -485,17 +485,6 @@ export default function WarrantiesPage() {
               <p className="text-sm text-slate-400 font-medium">Gestão de coberturas</p>
             </div>
           </div>
-          <motion.button 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => router.push('/warranties/assistances')}
-            className={`flex items-center gap-2 px-4 py-3 rounded-2xl border transition-all ${
-              isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-slate-100 text-slate-600 shadow-sm'
-            }`}
-          >
-            <Wrench size={20} />
-            <span className="text-sm font-bold">Assistências</span>
-          </motion.button>
         </div>
 
         {/* Search */}

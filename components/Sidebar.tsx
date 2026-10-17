@@ -24,7 +24,10 @@ import {
   Radio,
   Tag,
   Package,
-  DollarSign
+  DollarSign,
+  Wrench,
+  ShoppingBag,
+  Globe
 } from 'lucide-react';
 import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
@@ -96,7 +99,7 @@ export function Sidebar() {
       items: [
         ...(canAccessWhatsapp ? [{ href: '/whatsapp', icon: MessageCircle, label: 'WhatsApp', active: pathname?.startsWith('/whatsapp') }] : []),
         ...(canAccessLeads ? [{ href: '/leads', icon: Target, label: 'Leads', active: pathname?.startsWith('/leads') }] : []),
-        ...(canAccessSocialMedia ? [{ href: '/social-media', icon: Share2, label: 'Redes Sociais', active: pathname?.startsWith('/social-media') }] : []),
+        ...(canAccessSocialMedia ? [{ href: '/social-media', icon: ShoppingBag, label: 'Site', active: pathname?.startsWith('/social-media') }] : []),
       ]
     },
     {
@@ -105,7 +108,10 @@ export function Sidebar() {
         ...(canAccessDeliveries ? [{ href: '/deliveries', icon: Truck, label: 'Entregas', active: pathname?.startsWith('/deliveries') }] : []),
         { href: '/reports/truck-history', icon: Truck, label: 'Caminhão Reposição', active: pathname?.startsWith('/reports/truck-history') },
         ...(canAccessTransfers ? [{ href: '/transfers', icon: ArrowRightLeft, label: 'Transferências', active: pathname?.startsWith('/transfers') }] : []),
-        ...(canAccessWarranties ? [{ href: '/warranties', icon: ShieldCheck, label: 'Garantias', active: pathname?.startsWith('/warranties') }] : []),
+        ...(canAccessWarranties ? [
+          { href: '/warranties', icon: ShieldCheck, label: 'Garantias', active: pathname?.startsWith('/warranties') && !pathname?.startsWith('/warranties/assistances') },
+          { href: '/warranties/assistances', icon: Wrench, label: 'Assistência Técnica', active: pathname?.startsWith('/warranties/assistances') }
+        ] : []),
         { href: '/price-research', icon: Tag, label: 'Pesquisa de Preço', active: pathname?.startsWith('/price-research') },
       ]
     },

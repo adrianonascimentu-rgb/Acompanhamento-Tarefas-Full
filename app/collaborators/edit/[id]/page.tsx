@@ -1,13 +1,13 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Trash2 } from 'lucide-react';
+import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Trash2, DollarSign } from 'lucide-react';
 import { SkillSelector } from '@/components/SkillSelector';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRouter, useParams } from 'next/navigation';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured, handleSupabaseAuthError } from '@/lib/supabase';
 import { getInactiveCollaboratorIds, saveCollaboratorStatusLocal } from '@/lib/collaboratorStatus';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
@@ -101,7 +101,11 @@ export default function EditCollaboratorPage() {
         setPhoto(profile.image_url);
         setInitialPhoto(profile.image_url);
         setSelectedSkills(skills?.map(s => s.skill) || []);
-      } catch (error) {
+      } catch (error: any) {
+        if (error?.code === 'PGRST303' || error?.message?.includes('JWT expired') || error?.message?.includes('jwt expired')) {
+          await handleSupabaseAuthError(error);
+          return;
+        }
         console.error('Error fetching collaborator:', error);
         alert('Erro ao carregar dados do colaborador.');
         router.push('/collaborators');

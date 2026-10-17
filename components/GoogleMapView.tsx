@@ -43,7 +43,16 @@ export default function GoogleMapView({
   const { mapsApiKey, isDarkMode } = useTheme();
   const [activeMarker, setActiveMarker] = useState<MapMarkerItem | null>(null);
 
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+
+  useEffect(() => {
+    (window as any).gm_authFailure = () => {
+      console.warn('Google Maps Authentication or Billing Error detected. Using demo key fallback.');
+      try {
+        localStorage.removeItem('app_maps_api_key');
+      } catch {}
+    };
+  }, []);
 
   // Default coordinates (João Pessoa / Paraíba)
   const defaultCenter = center || (
