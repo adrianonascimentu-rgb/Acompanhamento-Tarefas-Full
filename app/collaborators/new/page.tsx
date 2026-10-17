@@ -959,9 +959,8 @@ export default function NewCollaboratorPage() {
                   </div>
                 ))}
               </div>
-            </div>
 
-            {/* Receives Leads Toggle */}
+              {/* Receives Leads Toggle */}
             <button
               type="button"
               onClick={() => setReceivesLeads(!receivesLeads)}
