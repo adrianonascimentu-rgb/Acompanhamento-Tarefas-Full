@@ -33,15 +33,36 @@ export function normalizeRole(r: string | null | undefined): Role {
 }
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
-  leads: ['admin', 'vendedor', 'gerente', 'supervisor'],
+  // Principal
+  home: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'],
+  products: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'],
+  tasks: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'user'],
+  demands: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque'],
+  routes: ['admin', 'gerente', 'supervisor', 'entregador'],
+
+  // Comunicação & CRM
+  whatsapp: ['admin', 'gerente', 'vendedor'],
+  leads: ['admin', 'gerente', 'supervisor', 'vendedor'],
   social_media: ['admin', 'gerente'],
-  whatsapp: ['admin', 'vendedor', 'gerente'],
+
+  // Operações
   deliveries: ['admin', 'entregador', 'motorista', 'vendedor', 'estoque', 'gerente', 'supervisor', 'caixa'],
+  truck_history: ['admin', 'gerente', 'supervisor', 'estoque', 'entregador'],
   transfers: ['admin', 'estoque', 'gerente', 'caixa'],
   warranties: ['admin', 'vendedor', 'estoque', 'gerente', 'caixa'],
+  assistances: ['admin', 'gerente', 'estoque', 'vendedor'],
+  price_research: ['admin', 'gerente', 'vendedor', 'estoque'],
+
+  // Resultados
   sales: ['admin', 'vendedor', 'gerente', 'caixa'],
   reports: ['admin', 'gerente', 'supervisor', 'caixa'],
-  demands: ['admin', 'vendedor', 'gerente', 'estoque', 'caixa'],
+
+  // Administração
+  live_panel: ['admin', 'gerente', 'supervisor'],
+  collaborators: ['admin'],
+  commissions: ['admin', 'gerente'],
+  settings: ['admin'],
+  adriano_commissions: ['admin'],
   permanent_tasks: ['admin', 'gerente', 'supervisor']
 };
 

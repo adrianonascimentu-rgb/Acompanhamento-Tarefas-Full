@@ -20,6 +20,17 @@ import {
   MessageCircle,
   TrendingUp,
   Share2,
+  ShoppingBag,
+  Home,
+  Package,
+  ClipboardList,
+  ListTodo,
+  Wrench,
+  Tag,
+  Radio,
+  Users,
+  DollarSign,
+  Settings,
   Mail,
   Server,
   Key,
@@ -45,10 +56,8 @@ import {
   Download,
   Webhook,
   Globe,
-  Radio,
   Plus,
-  Trash2,
-  DollarSign
+  Trash2
 } from 'lucide-react';
 import CommissionsManager from '@/components/admin/CommissionsManager';
 import AdrianoCommissionsManager from '@/components/admin/AdrianoCommissionsManager';
@@ -1011,47 +1020,95 @@ END $$;`;
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {[
-                  { id: 'leads', label: 'Leads', icon: Target, desc: 'Gestão de leads e funil de vendas' },
-                  { id: 'social_media', label: 'Redes Sociais', icon: Share2, label2: 'Redes Sociais', desc: 'Gestão de posts e tráfego pago' },
-                  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, desc: 'Central de atendimento e mensagens' },
-                  { id: 'deliveries', label: 'Entregas', icon: Truck, desc: 'Logística e rastreamento de entregas' },
-                  { id: 'transfers', label: 'Transferências', icon: ArrowRightLeft, desc: 'Movimentação de estoque entre lojas' },
-                  { id: 'warranties', label: 'Garantias', icon: ShieldCheck, desc: 'Pós-venda e suporte técnico' },
-                  { id: 'sales', label: 'Vendas', icon: TrendingUp, desc: 'Resultados e ranking de vendedores' },
-                  { id: 'reports', label: 'Relatórios', icon: BarChart3, desc: 'Análise de dados e indicadores' }
-                ].map(mod => (
-                  <tr key={mod.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50/50'}`}>
-                    <td className="p-6">
-                      <div className="flex items-center gap-4">
-                        <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                          <mod.icon size={20} />
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm">{mod.label}</p>
-                          <p className="text-[10px] text-slate-500">{mod.desc}</p>
-                        </div>
-                      </div>
-                    </td>
-                    {['admin', 'gerente', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'].map(role => (
-                      <td key={role} className="p-6 text-center">
-                        <button
-                          onClick={() => handleTogglePermission(mod.id, role)}
-                          disabled={role === 'admin'}
-                          className={`size-10 rounded-xl flex items-center justify-center transition-all mx-auto ${
-                            permissions[mod.id]?.includes(role)
-                              ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
-                              : isDarkMode ? 'bg-slate-800 text-slate-600' : 'bg-slate-100 text-slate-300'
-                          } ${role === 'admin' ? 'opacity-50 cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
-                        >
-                          {permissions[mod.id]?.includes(role) ? (
-                            <Check size={20} />
-                          ) : (
-                            <div className="size-2 rounded-full bg-current opacity-20" />
-                          )}
-                        </button>
+                  {
+                    category: 'Principal',
+                    items: [
+                      { id: 'home', label: 'Início', icon: Home, desc: 'Página inicial e painel principal' },
+                      { id: 'products', label: 'Catálogo de Peças', icon: Package, desc: 'Gestão e consulta de peças' },
+                      { id: 'tasks', label: 'Tarefas', icon: ClipboardList, desc: 'Gerenciamento de tarefas da equipe' },
+                      { id: 'demands', label: 'Demandas', icon: ListTodo, desc: 'Gestão de chamados e solicitações' },
+                      { id: 'routes', label: 'Rotas & GPS', icon: Truck, desc: 'Roteirização e rastreamento' },
+                    ]
+                  },
+                  {
+                    category: 'Comunicação & CRM',
+                    items: [
+                      { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, desc: 'Central de atendimento e mensagens' },
+                      { id: 'leads', label: 'Leads', icon: Target, desc: 'Funil de vendas e potenciais clientes' },
+                      { id: 'social_media', label: 'Site / E-commerce', icon: ShoppingBag, desc: 'Gestão de site e Mercado Livre' },
+                    ]
+                  },
+                  {
+                    category: 'Operações',
+                    items: [
+                      { id: 'deliveries', label: 'Entregas', icon: Truck, desc: 'Logística e rastreamento de entregas' },
+                      { id: 'truck_history', label: 'Caminhão Reposição', icon: Truck, desc: 'Histórico e rotas de reposição' },
+                      { id: 'transfers', label: 'Transferências', icon: ArrowRightLeft, desc: 'Movimentação de estoque entre filiais' },
+                      { id: 'warranties', label: 'Garantias', icon: ShieldCheck, desc: 'Pós-venda e registro de garantias' },
+                      { id: 'assistances', label: 'Assistência Técnica', icon: Wrench, desc: 'Reparos e suporte técnico' },
+                      { id: 'price_research', label: 'Pesquisa de Preço', icon: Tag, desc: 'Comparativo de mercado' },
+                    ]
+                  },
+                  {
+                    category: 'Resultados',
+                    items: [
+                      { id: 'sales', label: 'Vendas', icon: TrendingUp, desc: 'Lançamentos e ranking de vendas' },
+                      { id: 'reports', label: 'Relatórios', icon: BarChart3, desc: 'Indicadores e análises de desempenho' },
+                    ]
+                  },
+                  {
+                    category: 'Administração',
+                    items: [
+                      { id: 'live_panel', label: 'Painel Ao Vivo (GPS)', icon: Radio, desc: 'Monitoramento em tempo real' },
+                      { id: 'collaborators', label: 'Equipe', icon: Users, desc: 'Gestão de colaboradores e cargos' },
+                      { id: 'commissions', label: 'Comissionados', icon: DollarSign, desc: 'Cálculo e pagamento de comissões' },
+                      { id: 'settings', label: 'Configurações', icon: Settings, desc: 'Ajustes gerais do sistema' },
+                      { id: 'adriano_commissions', label: 'Comissões Adriano', icon: TrendingUp, desc: 'Módulo financeiro específico' },
+                      { id: 'permanent_tasks', label: 'Tarefas Permanentes & Notas', icon: ClipboardList, desc: 'Notas e tarefas fixas' },
+                    ]
+                  }
+                ].map(group => (
+                  <React.Fragment key={group.category}>
+                    <tr className={isDarkMode ? 'bg-slate-900/85' : 'bg-slate-100/80'}>
+                      <td colSpan={8} className="px-6 py-3 text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                        {group.category}
                       </td>
+                    </tr>
+                    {group.items.map(mod => (
+                      <tr key={mod.id} className={`transition-colors ${isDarkMode ? 'hover:bg-slate-800/30' : 'hover:bg-slate-50/50'}`}>
+                        <td className="p-6 pl-10">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                              <mod.icon size={20} />
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm">{mod.label}</p>
+                              <p className="text-[10px] text-slate-500">{mod.desc}</p>
+                            </div>
+                          </div>
+                        </td>
+                        {['admin', 'gerente', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'].map(role => (
+                          <td key={role} className="p-6 text-center">
+                            <button
+                              onClick={() => handleTogglePermission(mod.id, role)}
+                              disabled={role === 'admin'}
+                              className={`size-10 rounded-xl flex items-center justify-center transition-all mx-auto ${
+                                (permissions[mod.id]?.includes(role) || role === 'admin')
+                                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20'
+                                  : isDarkMode ? 'bg-slate-800 text-slate-600' : 'bg-slate-100 text-slate-300'
+                              } ${role === 'admin' ? 'opacity-90 cursor-not-allowed' : 'hover:scale-110 active:scale-95'}`}
+                            >
+                              {(permissions[mod.id]?.includes(role) || role === 'admin') ? (
+                                <Check size={20} />
+                              ) : (
+                                <div className="size-2 rounded-full bg-current opacity-20" />
+                              )}
+                            </button>
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

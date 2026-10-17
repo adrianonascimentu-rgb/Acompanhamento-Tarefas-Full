@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Copy, AlertTriangle, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Copy, AlertTriangle, ExternalLink, Home, ClipboardList, ListTodo, ArrowRightLeft, Wrench, Tag, TrendingUp, Radio, DollarSign, Settings, ShoppingBag } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
 import { SkillSelector } from '@/components/SkillSelector';
@@ -150,20 +150,53 @@ export default function NewCollaboratorPage() {
     fetchSystemPermissions();
   }, []);
 
+  const [submodules, setSubmodules] = useState<Record<string, boolean>>({
+    home: true,
+    products: true,
+    tasks: true,
+    demands: true,
+    routes: true,
+    whatsapp: false,
+    leads: false,
+    social_media: false,
+    deliveries: false,
+    truck_history: false,
+    transfers: false,
+    warranties: false,
+    price_research: false,
+    sales: false,
+    reports: false,
+    live_panel: false,
+    team: false,
+    commissions: false,
+    settings: false,
+  });
+
   const handleRoleChange = (role: typeof userRole) => {
     setUserRole(role);
+    let defaults: Record<string, boolean> = {};
     if (role === 'admin') {
-      setCanAccessLeads(true);
-      setCanAccessDeliveries(true);
-      setCanAccessTransfers(true);
-      setCanAccessWarranties(true);
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, price_research: true, sales: true, reports: true, live_panel: true, team: true, commissions: true, settings: true };
+    } else if (role === 'gerente' || role === 'supervisor') {
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, price_research: true, sales: true, reports: true, live_panel: true, team: true, commissions: false, settings: false };
+    } else if (role === 'vendedor') {
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: false, transfers: false, warranties: true, price_research: true, sales: true, reports: true, live_panel: false, team: false, commissions: false, settings: false };
+    } else if (role === 'entregador') {
+      defaults = { home: true, products: true, tasks: true, demands: false, routes: true, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: false, warranties: false, price_research: false, sales: false, reports: false, live_panel: false, team: false, commissions: false, settings: false };
+    } else if (role === 'estoque') {
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: true, warranties: true, price_research: true, sales: false, reports: false, live_panel: false, team: false, commissions: false, settings: false };
+    } else if (role === 'caixa') {
+      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: false, transfers: true, warranties: true, price_research: false, sales: true, reports: true, live_panel: false, team: false, commissions: false, settings: false };
     } else {
-      // Set defaults from system permissions
-      setCanAccessLeads(systemPermissions.leads?.includes(role) || false);
-      setCanAccessDeliveries(systemPermissions.deliveries?.includes(role) || false);
-      setCanAccessTransfers(systemPermissions.transfers?.includes(role) || false);
-      setCanAccessWarranties(systemPermissions.warranties?.includes(role) || false);
+      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: false, truck_history: false, transfers: false, warranties: false, price_research: false, sales: false, reports: false, live_panel: false, team: false, commissions: false, settings: false };
     }
+    setSubmodules(defaults);
+    setCanAccessLeads(defaults.leads);
+    setCanAccessDeliveries(defaults.deliveries);
+    setCanAccessTransfers(defaults.transfers);
+    setCanAccessWarranties(defaults.warranties);
+    setCanAccessReports(defaults.reports);
+    setCanAccessWhatsapp(defaults.whatsapp);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -344,12 +377,28 @@ export default function NewCollaboratorPage() {
           password: cleanPassword,
           image_url: avatarUrl,
           skills: selectedSkills,
-          can_access_leads: userRole === 'admin' ? true : canAccessLeads,
-          can_access_deliveries: userRole === 'admin' ? true : canAccessDeliveries,
-          can_access_transfers: userRole === 'admin' ? true : canAccessTransfers,
-          can_access_warranties: userRole === 'admin' ? true : canAccessWarranties,
-          can_access_reports: userRole === 'admin' ? true : canAccessReports,
-          can_access_whatsapp: userRole === 'admin' ? true : canAccessWhatsapp,
+          can_access_home: userRole === 'admin' ? true : !!submodules.home,
+          can_access_products: userRole === 'admin' ? true : !!submodules.products,
+          can_access_tasks: userRole === 'admin' ? true : !!submodules.tasks,
+          can_access_demands: userRole === 'admin' ? true : !!submodules.demands,
+          can_access_routes: userRole === 'admin' ? true : !!submodules.routes,
+          can_access_whatsapp: userRole === 'admin' ? true : !!submodules.whatsapp,
+          can_access_leads: userRole === 'admin' ? true : !!submodules.leads,
+          can_access_social_media: userRole === 'admin' ? true : !!submodules.social_media,
+          can_access_deliveries: userRole === 'admin' ? true : !!submodules.deliveries,
+          can_access_truck_history: userRole === 'admin' ? true : !!submodules.truck_history,
+          can_access_transfers: userRole === 'admin' ? true : !!submodules.transfers,
+          can_access_warranties: userRole === 'admin' ? true : !!submodules.warranties,
+          can_access_assistances: userRole === 'admin' ? true : !!submodules.assistances,
+          can_access_price_research: userRole === 'admin' ? true : !!submodules.price_research,
+          can_access_sales: userRole === 'admin' ? true : !!submodules.sales,
+          can_access_reports: userRole === 'admin' ? true : !!submodules.reports,
+          can_access_live_panel: userRole === 'admin' ? true : !!submodules.live_panel,
+          can_access_collaborators: userRole === 'admin' ? true : !!submodules.collaborators,
+          can_access_commissions: userRole === 'admin' ? true : !!submodules.commissions,
+          can_access_settings: userRole === 'admin' ? true : !!submodules.settings,
+          can_access_adriano_commissions: userRole === 'admin' ? true : !!submodules.adriano_commissions,
+          can_access_permanent_tasks: userRole === 'admin' ? true : !!submodules.permanent_tasks,
           receives_leads: receivesLeads
         })
       });
@@ -798,61 +847,118 @@ export default function NewCollaboratorPage() {
           {/* Module Permissions */}
           {isSystemAdmin && (
             <div className="space-y-4 pt-4 border-t border-slate-200">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
-                <ShieldCheck size={14} />
-                Acesso a Módulos
-              </label>
-              <span className="text-[10px] font-medium text-slate-400 px-2 py-1 rounded bg-slate-100">
-                {userRole === 'admin' ? 'Acesso Total' : 'Acesso Personalizado'}
-              </span>
-            </div>
-            
-            <div className="space-y-2">
-              {[
-                { id: 'leads', label: 'Módulo de Leads', desc: 'Acesso ao gerenciamento de clientes em prospecção', icon: Target, state: canAccessLeads, setter: setCanAccessLeads },
-                { id: 'whatsapp', label: 'WhatsApp', desc: 'Acesso às funcionalidades de comunicação direta', icon: MessageCircle, state: canAccessWhatsapp, setter: setCanAccessWhatsapp },
-                { id: 'deliveries', label: 'Entregas', desc: 'Acesso ao controle de logística e saídas', icon: Truck, state: canAccessDeliveries, setter: setCanAccessDeliveries },
-                { id: 'transfers', label: 'Transferências', desc: 'Acesso ao controle de estoque entre lojas', icon: Package, state: canAccessTransfers, setter: setCanAccessTransfers },
-                { id: 'warranties', label: 'Garantias', desc: 'Acesso ao módulo de assistência técnica', icon: ShieldCheck, state: canAccessWarranties, setter: setCanAccessWarranties },
-                { id: 'reports', label: 'Relatórios', desc: 'Visualização de métricas e resultados', icon: BarChart3, state: canAccessReports, setter: setCanAccessReports }
-              ].map((module) => (
-                <button
-                  key={module.id}
-                  type="button"
-                  onClick={() => module.setter(!module.state)}
-                  disabled={userRole === 'admin'}
-                  className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
-                    module.state || userRole === 'admin'
-                      ? (isDarkMode ? 'bg-blue-600/10 border-blue-600/50' : 'bg-blue-50 border-blue-200')
-                      : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100')
-                  } ${userRole === 'admin' ? 'opacity-70 cursor-not-allowed' : 'hover:border-blue-400'}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`size-10 rounded-xl flex items-center justify-center ${
-                      module.state || userRole === 'admin'
-                        ? (isDarkMode ? 'bg-blue-600/30 text-blue-400' : 'bg-blue-600 text-white')
-                        : (isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400')
-                    }`}>
-                      <module.icon size={20} />
-                    </div>
-                    <div className="text-left">
-                      <span className={`text-sm font-bold block ${module.state || userRole === 'admin' ? (isDarkMode ? 'text-blue-400' : 'text-blue-700') : (isDarkMode ? 'text-slate-400' : 'text-slate-700')}`}>
-                        {module.label}
-                      </span>
-                      <span className="text-[10px] text-slate-500 uppercase font-black">{module.desc}</span>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                  <ShieldCheck size={14} />
+                  Acesso a Módulos e Submódulos
+                </label>
+                <span className="text-[10px] font-medium text-slate-400 px-2 py-1 rounded bg-slate-100">
+                  {userRole === 'admin' ? 'Acesso Total' : 'Acesso Personalizado'}
+                </span>
+              </div>
+              
+              <div className="space-y-6 pt-2">
+                {[
+                  {
+                    category: 'Principal',
+                    items: [
+                      { id: 'home', label: 'Início', desc: 'Página inicial e painel principal', icon: Home },
+                      { id: 'products', label: 'Catálogo de Peças', desc: 'Gestão e consulta de peças', icon: Package },
+                      { id: 'tasks', label: 'Tarefas', desc: 'Gerenciamento de tarefas da equipe', icon: ClipboardList },
+                      { id: 'demands', label: 'Demandas', desc: 'Gestão de chamados e solicitações', icon: ListTodo },
+                      { id: 'routes', label: 'Rotas & GPS', desc: 'Roteirização e rastreamento', icon: Truck },
+                    ]
+                  },
+                  {
+                    category: 'Comunicação & CRM',
+                    items: [
+                      { id: 'whatsapp', label: 'WhatsApp', desc: 'Central de atendimento e mensagens', icon: MessageCircle },
+                      { id: 'leads', label: 'Leads', desc: 'Funil de vendas e potenciais clientes', icon: Target },
+                      { id: 'social_media', label: 'Site / E-commerce', desc: 'Gestão de site e Mercado Livre', icon: ShoppingBag },
+                    ]
+                  },
+                  {
+                    category: 'Operações',
+                    items: [
+                      { id: 'deliveries', label: 'Entregas', desc: 'Logística e rastreamento de entregas', icon: Truck },
+                      { id: 'truck_history', label: 'Caminhão Reposição', desc: 'Histórico e rotas de reposição', icon: Truck },
+                      { id: 'transfers', label: 'Transferências', desc: 'Movimentação de estoque entre filiais', icon: ArrowRightLeft },
+                      { id: 'warranties', label: 'Garantias', desc: 'Pós-venda e registro de garantias', icon: ShieldCheck },
+                      { id: 'assistances', label: 'Assistência Técnica', desc: 'Reparos e suporte técnico', icon: Wrench },
+                      { id: 'price_research', label: 'Pesquisa de Preço', desc: 'Comparativo de mercado', icon: Tag },
+                    ]
+                  },
+                  {
+                    category: 'Resultados',
+                    items: [
+                      { id: 'sales', label: 'Vendas', desc: 'Lançamentos e ranking de vendas', icon: TrendingUp },
+                      { id: 'reports', label: 'Relatórios', desc: 'Indicadores e análises de desempenho', icon: BarChart3 },
+                    ]
+                  },
+                  {
+                    category: 'Administração',
+                    items: [
+                      { id: 'live_panel', label: 'Painel Ao Vivo (GPS)', desc: 'Monitoramento em tempo real', icon: Radio },
+                      { id: 'collaborators', label: 'Equipe', desc: 'Gestão de colaboradores e cargos', icon: Users },
+                      { id: 'commissions', label: 'Comissionados', desc: 'Cálculo e pagamento de comissões', icon: DollarSign },
+                      { id: 'settings', label: 'Configurações', desc: 'Ajustes gerais do sistema', icon: Settings },
+                      { id: 'adriano_commissions', label: 'Comissões Adriano', desc: 'Módulo financeiro específico', icon: TrendingUp },
+                      { id: 'permanent_tasks', label: 'Tarefas Permanentes & Notas', desc: 'Notas e tarefas fixas', icon: ClipboardList },
+                    ]
+                  }
+                ].map(group => (
+                  <div key={group.category} className="space-y-2">
+                    <p className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 pt-1">
+                      {group.category}
+                    </p>
+                    <div className="space-y-2">
+                      {group.items.map(module => {
+                        const isActive = userRole === 'admin' || !!submodules[module.id];
+                        return (
+                          <button
+                            key={module.id}
+                            type="button"
+                            onClick={() => {
+                              if (userRole === 'admin') return;
+                              setSubmodules(prev => ({ ...prev, [module.id]: !prev[module.id] }));
+                            }}
+                            disabled={userRole === 'admin'}
+                            className={`w-full flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${
+                              isActive
+                                ? (isDarkMode ? 'bg-blue-600/10 border-blue-600/50' : 'bg-blue-50 border-blue-200')
+                                : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100')
+                            } ${userRole === 'admin' ? 'opacity-85 cursor-not-allowed' : 'hover:border-blue-400'}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`size-9 rounded-xl flex items-center justify-center ${
+                                isActive
+                                  ? (isDarkMode ? 'bg-blue-600/30 text-blue-400' : 'bg-blue-600 text-white')
+                                  : (isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400')
+                              }`}>
+                                <module.icon size={18} />
+                              </div>
+                              <div className="text-left">
+                                <span className={`text-xs font-bold block ${isActive ? (isDarkMode ? 'text-blue-400' : 'text-blue-700') : (isDarkMode ? 'text-slate-400' : 'text-slate-700')}`}>
+                                  {module.label}
+                                </span>
+                                <span className="text-[9px] text-slate-500 uppercase font-medium">{module.desc}</span>
+                              </div>
+                            </div>
+                            
+                            <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${
+                              isActive ? 'bg-blue-600' : (isDarkMode ? 'bg-slate-800' : 'bg-slate-200')
+                            }`}>
+                              <div className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition-all duration-300 ${
+                                isActive ? 'left-5.5' : 'left-0.5'
+                              }`} />
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                  
-                  <div className={`w-12 h-6 rounded-full relative transition-all duration-300 ${
-                    module.state || userRole === 'admin' ? 'bg-blue-600' : (isDarkMode ? 'bg-slate-800' : 'bg-slate-200')
-                  }`}>
-                    <div className={`absolute top-1 size-4 rounded-full bg-white shadow-sm transition-all duration-300 ${
-                      module.state || userRole === 'admin' ? 'left-7' : 'left-1'
-                    }`} />
-                  </div>
-                </button>
-              ))}
+                ))}
+              </div>
             </div>
 
             {/* Receives Leads Toggle */}
