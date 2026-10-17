@@ -107,7 +107,7 @@ export default function NewCollaboratorPage() {
   const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const { isDarkMode } = useTheme();
   const { isAdmin: isSystemAdmin } = useRole();
-  const [userRole, setUserRole] = useState<'user' | 'admin' | 'vendedor' | 'estoque'>('user');
+  const [userRole, setUserRole] = useState<'user' | 'admin' | 'vendedor' | 'estoque' | 'gerente' | 'supervisor' | 'entregador' | 'caixa'>('user');
   const [canAccessLeads, setCanAccessLeads] = useState(false);
   const [canAccessDeliveries, setCanAccessDeliveries] = useState(false);
   const [canAccessTransfers, setCanAccessTransfers] = useState(false);
@@ -688,7 +688,7 @@ export default function NewCollaboratorPage() {
               <ShieldCheck size={14} />
               Nível de Acesso / Tipo de Usuário
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 type="button"
                 onClick={() => handleRoleChange('user')}
@@ -699,7 +699,43 @@ export default function NewCollaboratorPage() {
                 }`}
               >
                 <Users size={20} />
-                <span className="text-[10px] font-bold">Colaborador</span>
+                <span className="text-[10px] font-bold">Usuário</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRoleChange('gerente')}
+                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${
+                  userRole === 'gerente' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-600' 
+                    : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
+                }`}
+              >
+                <Briefcase size={20} />
+                <span className="text-[10px] font-bold">Gerente</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRoleChange('supervisor')}
+                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${
+                  userRole === 'supervisor' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-600' 
+                    : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
+                }`}
+              >
+                <CheckSquare size={20} />
+                <span className="text-[10px] font-bold">Supervisor</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRoleChange('caixa')}
+                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${
+                  userRole === 'caixa' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-600' 
+                    : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
+                }`}
+              >
+                <DollarSign size={20} />
+                <span className="text-[10px] font-bold">Caixa</span>
               </button>
               <button
                 type="button"
@@ -715,6 +751,18 @@ export default function NewCollaboratorPage() {
               </button>
               <button
                 type="button"
+                onClick={() => handleRoleChange('entregador')}
+                className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${
+                  userRole === 'entregador' 
+                    ? 'border-blue-600 bg-blue-50 text-blue-600' 
+                    : 'border-slate-100 bg-white text-slate-400 hover:border-slate-200'
+                }`}
+              >
+                <Truck size={20} />
+                <span className="text-[10px] font-bold">Entrega</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleRoleChange('estoque')}
                 className={`flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all ${
                   userRole === 'estoque' 
@@ -723,7 +771,7 @@ export default function NewCollaboratorPage() {
                 }`}
               >
                 <Package size={20} />
-                <span className="text-[10px] font-bold">Estoque</span>
+                <span className="text-[10px] font-bold">Estoquista</span>
               </button>
               <button
                 type="button"
@@ -735,7 +783,7 @@ export default function NewCollaboratorPage() {
                 }`}
               >
                 <ShieldCheck size={20} />
-                <span className="text-[10px] font-bold">Admin</span>
+                <span className="text-[10px] font-bold">Administrador</span>
               </button>
             </div>
             <p className="text-[10px] text-slate-400 italic">

@@ -182,7 +182,12 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
     role === 'gerente' || 
     role === 'supervisor' || 
     role === 'admin' ||
-    role === 'diretoria'
+    role === 'diretoria' ||
+    role?.toLowerCase().includes('admin') ||
+    role?.toLowerCase().includes('gerente') ||
+    role?.toLowerCase().includes('supervisor') ||
+    role?.toLowerCase().includes('coordenador') ||
+    role?.toLowerCase().includes('gestor')
   );
 
   // Auto-save all tasks to localStorage on any change
@@ -845,6 +850,20 @@ export function PermanentTasksNotepadGrid({ isDarkMode, userId, isAdmin, role }:
       tapeColor: 'bg-sky-400/30'
     };
   };
+
+  if (!isManagerOrSupervisor) {
+    return (
+      <div className={`p-8 text-center rounded-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+        <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-3">
+          <Pin size={24} className="rotate-12" />
+        </div>
+        <h3 className="text-base font-bold text-slate-900 dark:text-white">Acesso Restrito</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+          Somente Administrador, Gerente e Supervisor possuem permissão para acessar Tarefas Permanentes & Notas.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

@@ -41,7 +41,8 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   warranties: ['admin', 'vendedor', 'estoque', 'gerente', 'caixa'],
   sales: ['admin', 'vendedor', 'gerente', 'caixa'],
   reports: ['admin', 'gerente', 'supervisor', 'caixa'],
-  demands: ['admin', 'vendedor', 'gerente', 'estoque', 'caixa']
+  demands: ['admin', 'vendedor', 'gerente', 'estoque', 'caixa'],
+  permanent_tasks: ['admin', 'gerente', 'supervisor']
 };
 
 export const DEFAULT_ADMIN_USER = {
@@ -74,6 +75,7 @@ interface RoleContextType {
   canAccessReports: boolean;
   canAccessSales: boolean;
   canAccessDemands: boolean;
+  canAccessPermanentTasks: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (roleOrUserData: any, userData?: any) => void;
@@ -416,6 +418,22 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     rawRole.includes('secretaria')
   );
 
+  // Regra de Negócio: Somente Administrador, Gerente e Supervisor têm acesso a Tarefas Permanentes & Notas
+  const canAccessPermanentTasks = Boolean(
+    isAdmin || 
+    isGerente || 
+    isSupervisor ||
+    normalizedRole === 'admin' ||
+    normalizedRole === 'gerente' ||
+    normalizedRole === 'supervisor' ||
+    rawRole.includes('admin') ||
+    rawRole.includes('gerente') ||
+    rawRole.includes('supervisor') ||
+    rawRole.includes('coordenador') ||
+    rawRole.includes('gestor') ||
+    hasPermission('permanent_tasks')
+  );
+
   const value = {
     role: normalizedRole,
     user,
@@ -438,6 +456,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     canAccessReports: hasPermission('reports'),
     canAccessSales: hasPermission('sales'),
     canAccessDemands: hasPermission('demands'),
+    canAccessPermanentTasks,
     isAuthenticated: !!user,
     isLoading,
     login,

@@ -9,7 +9,8 @@ import {
   TruckScheduleData, 
   fetchTruckSchedule, 
   updateTruckSchedule, 
-  DEFAULT_TRUCK_SCHEDULE 
+  DEFAULT_TRUCK_SCHEDULE,
+  subscribeTruckSchedule
 } from '@/lib/truckSchedule';
 import { TruckScheduleModal } from '@/components/TruckScheduleModal';
 import { LastTruckDetailsModal } from '@/components/LastTruckDetailsModal';
@@ -41,6 +42,20 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
 
   useEffect(() => {
     loadData();
+
+    const unsubscribe = subscribeTruckSchedule((newData) => {
+      setScheduleData(newData);
+    });
+
+    const handleFocus = () => {
+      loadData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [loadData]);
 
   const getDaysUntilArrival = (dateStr: string | null): number | null => {

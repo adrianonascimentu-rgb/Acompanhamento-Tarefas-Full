@@ -17,7 +17,8 @@ import {
   TruckScheduleData, 
   fetchTruckSchedule, 
   updateTruckSchedule, 
-  DEFAULT_TRUCK_SCHEDULE 
+  DEFAULT_TRUCK_SCHEDULE,
+  subscribeTruckSchedule
 } from '@/lib/truckSchedule';
 import { TruckScheduleModal } from '@/components/TruckScheduleModal';
 import { LastTruckDetailsModal } from '@/components/LastTruckDetailsModal';
@@ -52,19 +53,32 @@ export function TopTruckBanner() {
   useEffect(() => {
     loadData();
 
-    // Ouvir alterações em tempo real na tabela system_settings
-    const isConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+    // 1. Escutar eventos locais/cross-tab via BroadcastChannel e CustomEvent
+    const unsubscribe = subscribeTruckSchedule((newData) => {
+      setScheduleData(newData);
+    });
 
-    if (isConfigured) {
-      const channel = supabase
+    // 2. Atualizar ao focar na janela
+    const handleFocus = () => {
+      loadData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // 3. Polling suave a cada 20 segundos para sincronia passiva entre máquinas
+    const interval = setInterval(() => {
+      loadData();
+    }, 20000);
+
+    // 4. Ouvir alterações em tempo real no Supabase
+    let channel: any = null;
+    try {
+      channel = supabase
         .channel('public:truck-schedule-banner')
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'system_settings', filter: 'key=eq.truck_replenishment_schedule' },
+          { event: '*', schema: 'public', table: 'system_settings' },
           (payload: any) => {
-            if (payload?.new?.value) {
+            if (payload?.new?.key === 'truck_replenishment_schedule' && payload.new.value) {
               setScheduleData(payload.new.value);
             } else {
               loadData();
@@ -72,11 +86,18 @@ export function TopTruckBanner() {
           }
         )
         .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
+    } catch (e) {
+      // ignore
     }
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
   }, [loadData]);
 
   const handleSaveData = async (newData: any) => {
@@ -136,10 +157,6 @@ export function TopTruckBanner() {
     }
   };
 
-  // Se o usuário não estiver autenticado, não renderiza o balão
-  if (!isAuthenticated && !user) {
-    return null;
-  }
 
   const daysUntilArrival = getDaysUntilArrival(scheduleData.next_arrival_date);
   const latest = scheduleData.history && scheduleData.history.length > 0 ? scheduleData.history[0] : null;

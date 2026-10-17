@@ -334,8 +334,7 @@ function TasksContent() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const LIMIT = 30;
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const { isAdmin, user, role, isAuthenticated, isLoading: roleLoading, login } = useRole();
+  const { isAdmin, user, role, canAccessPermanentTasks, isAuthenticated, isLoading: roleLoading, login } = useRole();
   const { isDarkMode, toggleDarkMode } = useTheme();
   const { getCachedTasks, getCachedCollaborators } = useDataPrefetch();
   const { notifications, unreadCount, markAsRead, clearAll, createNotification } = useNotifications();
@@ -361,9 +360,11 @@ function TasksContent() {
         setActiveTab('all');
       } else if (!isAdmin && activeTab === 'all') {
         setActiveTab('mine');
+      } else if (!canAccessPermanentTasks && activeTab === 'permanent') {
+        setActiveTab('mine');
       }
     }
-  }, [isAdmin, roleLoading]);
+  }, [isAdmin, roleLoading, canAccessPermanentTasks, activeTab]);
   const [demands, setDemands] = useState<any[]>([]);
   const [isDemandModalOpen, setIsDemandModalOpen] = useState(false);
   const [loadingDemands, setLoadingDemands] = useState(false);
@@ -1620,7 +1621,11 @@ function TasksContent() {
     if (showNearby) {
       return t.status !== 'Concluída';
     }
+    if (!canAccessPermanentTasks && t.task_type === 'Permanente') {
+      return false;
+    }
     if (activeTab === 'permanent') {
+      if (!canAccessPermanentTasks) return false;
       return t.task_type === 'Permanente';
     } else if (activeTab === 'mine' || activeTab === 'all' || activeTab === 'assigned') {
       return t.task_type !== 'Permanente';
@@ -2680,25 +2685,27 @@ function TasksContent() {
                   Todas as Tarefas
                 </button>
               )}
-              <button
-                onClick={() => setActiveTab('permanent')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
-                  activeTab === 'permanent' 
-                    ? (isDarkMode ? 'bg-purple-950/90 text-purple-300 ring-1 ring-purple-500/50 shadow-xs' : 'bg-white text-purple-700 ring-1 ring-purple-400/50 shadow-xs') 
-                    : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
-                }`}
-              >
-                <Pin size={13} className="text-purple-500 shrink-0" />
-                Tarefas Permanentes
-                {(() => {
-                  const pCount = tasks.filter(t => t.task_type === 'Permanente').length;
-                  return pCount > 0 ? (
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
-                      {pCount}
-                    </span>
-                  ) : null;
-                })()}
-              </button>
+              {canAccessPermanentTasks && (
+                <button
+                  onClick={() => setActiveTab('permanent')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
+                    activeTab === 'permanent' 
+                      ? (isDarkMode ? 'bg-purple-950/90 text-purple-300 ring-1 ring-purple-500/50 shadow-xs' : 'bg-white text-purple-700 ring-1 ring-purple-400/50 shadow-xs') 
+                      : (isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900')
+                  }`}
+                >
+                  <Pin size={13} className="text-purple-500 shrink-0" />
+                  Tarefas Permanentes
+                  {(() => {
+                    const pCount = tasks.filter(t => t.task_type === 'Permanente').length;
+                    return pCount > 0 ? (
+                      <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                        {pCount}
+                      </span>
+                    ) : null;
+                  })()}
+                </button>
+              )}
               <button
                 onClick={() => setActiveTab('history')}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-3.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap ${
@@ -3057,7 +3064,7 @@ function TasksContent() {
             {/* Seção de Tarefas Permanentes / Fixas com Cores Distintas por Status */}
             {(() => {
               const permanentTasks = tasks.filter(t => t.task_type === 'Permanente');
-              if (activeTab !== 'permanent') return null;
+              if (activeTab !== 'permanent' || !canAccessPermanentTasks) return null;
 
               // Stat Counts
               const pendingCount = permanentTasks.filter(t => {

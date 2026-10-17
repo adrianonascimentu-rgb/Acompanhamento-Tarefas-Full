@@ -30,6 +30,7 @@ import {
   fetchTruckSchedule, 
   updateTruckSchedule, 
   DEFAULT_TRUCK_SCHEDULE,
+  subscribeTruckSchedule,
   TruckArrivalRecord 
 } from '@/lib/truckSchedule';
 import { TruckScheduleModal } from '@/components/TruckScheduleModal';
@@ -62,10 +63,22 @@ export default function TruckHistoryReportPage() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    loadData();
+
+    const unsubscribe = subscribeTruckSchedule((newData) => {
+      setScheduleData(newData);
+    });
+
+    const handleFocus = () => {
       loadData();
-    }
-  }, [isAuthenticated, loadData]);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [loadData]);
 
   const handleSaveData = async (newData: any) => {
     const res = await updateTruckSchedule({

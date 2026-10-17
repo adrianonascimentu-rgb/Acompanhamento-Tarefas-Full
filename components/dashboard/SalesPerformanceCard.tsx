@@ -312,23 +312,22 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-end gap-2">
           {isManagerial && (
             <button 
               type="button"
               onClick={() => setShowDailySalesModal(true)}
-              className="flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-xl text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-sm shadow-emerald-600/20 transition-all shrink-0 active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 text-xs font-black px-3.5 py-2 rounded-xl text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 shadow-sm shadow-emerald-600/20 transition-all shrink-0 active:scale-95 cursor-pointer whitespace-nowrap"
               title="Lançamento diário do resultado de vendas de cada vendedor"
             >
               <CalendarPlus size={14} className="stroke-[2.5]" />
-              <span className="hidden sm:inline">Lançar Vendas do Dia</span>
-              <span className="sm:hidden">Lançar Dia</span>
+              <span>Lançar Vendas do Dia</span>
             </button>
           )}
 
           <Link 
             href="/sales-results" 
-            className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 hover:bg-emerald-100/80 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800/80 transition-all shrink-0 active:scale-95 shadow-2xs"
+            className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 hover:bg-emerald-100/80 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800/80 transition-all shrink-0 active:scale-95 shadow-2xs whitespace-nowrap"
             title="Ver Módulo de Vendas Completo"
           >
             <span>Painel Detalhado</span>
@@ -338,16 +337,16 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
       </div>
 
       {/* Main Stats Showcase & Circular Gauge Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-50/80 dark:bg-slate-800/50 p-4 sm:p-5 rounded-2xl border border-slate-200/60 dark:border-slate-800/80 relative z-10 shadow-inner">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-50/90 dark:bg-slate-800/60 p-4 sm:p-5 rounded-2xl border border-slate-200/70 dark:border-slate-800/80 relative z-10 shadow-inner">
         
         {/* Left Stats Column */}
         <div className="md:col-span-8 space-y-4">
           <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                <Zap size={13} className="stroke-[2.5]" />
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <Zap size={14} className="stroke-[2.5]" />
               </div>
-              <span className="text-[11px] uppercase font-extrabold tracking-wider text-slate-500 dark:text-slate-400">
+              <span className="text-[11px] uppercase font-black tracking-wider text-slate-500 dark:text-slate-400">
                 Faturamento Realizado vs Meta
               </span>
             </div>
@@ -355,7 +354,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
             <div className="flex items-baseline gap-3 flex-wrap">
               <p 
                 ref={resultNumRef}
-                className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight"
+                className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight break-all sm:break-normal"
               >
                 {loading ? (
                   <span className="inline-block w-44 h-9 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg" />
@@ -367,16 +366,16 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           </div>
 
           {/* Target & Gap Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             {/* Target Box */}
-            <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 shadow-2xs">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                  <Target size={15} />
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-white/95 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+                  <Target size={16} />
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block">Meta do Período</span>
-                  <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 tabular-nums">
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block truncate">Meta do Período</span>
+                  <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums truncate block">
                     {loading ? '...' : `R$ ${performance.totalGoal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
                   </span>
                 </div>
@@ -384,16 +383,16 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
             </div>
 
             {/* Gap or Celebration Box */}
-            <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/70 border border-slate-200/70 dark:border-slate-800 shadow-2xs">
-              <div className="flex items-center gap-2">
-                <div className={`p-1.5 rounded-lg ${isGoalReached ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
-                  {isGoalReached ? <CheckCircle2 size={15} /> : <Award size={15} />}
+            <div className="flex items-center justify-between p-3 rounded-2xl bg-white/95 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`p-2 rounded-xl shrink-0 ${isGoalReached ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                  {isGoalReached ? <CheckCircle2 size={16} /> : <Award size={16} />}
                 </div>
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block">
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block truncate">
                     {isGoalReached ? 'Superávit' : 'Falta para a Meta'}
                   </span>
-                  <span className={`text-xs sm:text-sm font-bold tabular-nums ${isGoalReached ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                  <span className={`text-xs sm:text-sm font-black tabular-nums truncate block ${isGoalReached ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                     {loading ? '...' : `R$ ${Math.abs(gapValue).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
                   </span>
                 </div>
@@ -403,7 +402,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
         </div>
 
         {/* Right Circular Gauge Column */}
-        <div className="md:col-span-4 flex flex-col items-center justify-center pt-2 md:pt-0 border-t md:border-t-0 md:border-l border-slate-200/60 dark:border-slate-800/80 md:pl-4">
+        <div className="md:col-span-4 flex flex-col items-center justify-center pt-3 md:pt-0 border-t md:border-t-0 md:border-l border-slate-200/70 dark:border-slate-800/80 md:pl-4">
           <div className="relative flex items-center justify-center">
             <svg className="w-28 h-28 transform -rotate-90">
               {/* Track */}
@@ -444,7 +443,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           </div>
 
           {/* Status Badge */}
-          <div className={`mt-3 flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-full border shadow-2xs ${status.badgeColor}`}>
+          <div className={`mt-3 flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-full border shadow-2xs ${status.badgeColor}`}>
             <StatusIcon size={13} className="shrink-0" />
             <span>{status.label}</span>
           </div>

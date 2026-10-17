@@ -26,6 +26,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase, handleSupabaseAuthError, isSupabaseConfigured } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import { PermanentTasksNotepadGrid } from '@/components/dashboard/PermanentTasksNotepadGrid';
+import { ReplenishmentTruckCard } from '@/components/dashboard/ReplenishmentTruckCard';
 
 const stats = [
   { id: 'total', label: 'Total', value: '48', change: '+5%', icon: ClipboardList, color: 'text-blue-600', trend: 'up' },
@@ -68,6 +69,7 @@ export default function Dashboard() {
     canAccessWhatsapp,
     canAccessReports,
     canAccessDemands,
+    canAccessPermanentTasks,
     isAuthenticated, 
     isLoading: roleLoading, 
     login, 
@@ -882,7 +884,7 @@ export default function Dashboard() {
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 space-y-5 pb-8">
         {/* Catálogo de Peças & Botão de Tarefas Permanentes na Mesma Linha */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={`grid grid-cols-1 ${canAccessPermanentTasks ? 'md:grid-cols-2' : ''} gap-4`}>
           {/* 1. Catálogo de Peças Card */}
           <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
             isDarkMode
@@ -913,41 +915,46 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {/* 2. Tarefas Permanentes Card / Button */}
-          <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
-            dashboardMode === 'permanent_notes'
-              ? (isDarkMode ? 'bg-gradient-to-r from-purple-950/70 to-indigo-950/60 border-purple-800 shadow-lg' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/20')
-              : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
-          }`}>
-            <div className="flex items-start gap-3.5 mb-4">
-              <div className={`p-3 rounded-2xl shrink-0 ${
-                dashboardMode === 'permanent_notes' ? 'bg-white/20 text-white' : (isDarkMode ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600')
-              }`}>
-                <Pin size={24} className="rotate-12" />
+          {/* 2. Tarefas Permanentes Card / Button - Exclusivo para Administrador, Gerente e Supervisor */}
+          {canAccessPermanentTasks && (
+            <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
+              dashboardMode === 'permanent_notes'
+                ? (isDarkMode ? 'bg-gradient-to-r from-purple-950/70 to-indigo-950/60 border-purple-800 shadow-lg' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/20')
+                : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
+            }`}>
+              <div className="flex items-start gap-3.5 mb-4">
+                <div className={`p-3 rounded-2xl shrink-0 ${
+                  dashboardMode === 'permanent_notes' ? 'bg-white/20 text-white' : (isDarkMode ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600')
+                }`}>
+                  <Pin size={24} className="rotate-12" />
+                </div>
+                <div>
+                  <h3 className={`text-sm sm:text-base font-black tracking-tight ${dashboardMode === 'permanent_notes' ? 'text-white' : (isDarkMode ? 'text-slate-100' : 'text-slate-900')}`}>
+                    Tarefas Permanentes & Notas
+                  </h3>
+                  <p className={`text-[11px] mt-0.5 leading-relaxed ${dashboardMode === 'permanent_notes' ? 'text-purple-100 opacity-90' : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>
+                    Acesse seus bloquinhos de anotações e lembretes fixos diários.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className={`text-sm sm:text-base font-black tracking-tight ${dashboardMode === 'permanent_notes' ? 'text-white' : (isDarkMode ? 'text-slate-100' : 'text-slate-900')}`}>
-                  Tarefas Permanentes & Notas
-                </h3>
-                <p className={`text-[11px] mt-0.5 leading-relaxed ${dashboardMode === 'permanent_notes' ? 'text-purple-100 opacity-90' : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>
-                  Acesse seus bloquinhos de anotações e lembretes fixos diários.
-                </p>
-              </div>
-            </div>
 
-            <button
-              onClick={() => {
-                setDashboardMode('permanent_notes');
-                setIsPermanentModalOpen(true);
-              }}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer bg-purple-600 text-white hover:bg-purple-700"
-            >
-              <Pin size={15} className="rotate-12" />
-              <span>Abrir Tarefas Permanentes</span>
-              <ChevronRight size={15} />
-            </button>
-          </div>
+              <button
+                onClick={() => {
+                  setDashboardMode('permanent_notes');
+                  setIsPermanentModalOpen(true);
+                }}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer bg-purple-600 text-white hover:bg-purple-700"
+              >
+                <Pin size={15} className="rotate-12" />
+                <span>Abrir Tarefas Permanentes</span>
+                <ChevronRight size={15} />
+              </button>
+            </div>
+          )}
         </div>
+
+        {/* Card em Destaque da Reposição de Caminhão para Todos os Usuários */}
+        <ReplenishmentTruckCard isDarkMode={isDarkMode} />
 
         <section className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
@@ -1723,7 +1730,7 @@ export default function Dashboard() {
 
       {/* Permanent Tasks Modal */}
       <AnimatePresence>
-        {isPermanentModalOpen && (
+        {isPermanentModalOpen && canAccessPermanentTasks && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95, y: 20 }}

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 export interface TruckArrivalRecord {
   id: string;
@@ -21,14 +21,15 @@ export interface TruckScheduleData {
 }
 
 const LOCAL_STORAGE_KEY = 'agentex_truck_schedule_v1';
+export const TRUCK_SCHEDULE_EVENT = 'agentex:truck_schedule_updated';
 
 export const DEFAULT_TRUCK_SCHEDULE: TruckScheduleData = {
-  next_arrival_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-  last_arrival_date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  next_arrival_date: '2026-10-21',
+  last_arrival_date: '2026-10-08',
   history: [
     {
       id: 'truck_default_1',
-      arrival_date: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      arrival_date: '2026-10-08',
       driver_name: 'Carlos Eduardo',
       assistant_name: 'Marcos Souza',
       notes: 'Recebimento de 480 caixas de peças e lubrificantes estocado com sucesso.',
@@ -37,7 +38,8 @@ export const DEFAULT_TRUCK_SCHEDULE: TruckScheduleData = {
       created_by: 'Gestão de Estoque'
     }
   ],
-  updated_at: new Date().toISOString()
+  updated_at: new Date().toISOString(),
+  updated_by_name: 'Adriano Nascimento'
 };
 
 export function getLocalTruckSchedule(): TruckScheduleData {
@@ -68,50 +70,73 @@ export function saveLocalTruckSchedule(data: TruckScheduleData) {
   }
 }
 
+/**
+ * Busca a agenda do caminhão de reposição de forma garantida para todos os usuários:
+ * 1. Tenta o endpoint seguro de API (/api/truck-schedule) do servidor
+ * 2. Em caso de falha de rede/offline, consulta o Supabase client
+ * 3. Fallback resiliente para o cache local sincronizado
+ */
 export async function fetchTruckSchedule(): Promise<TruckScheduleData> {
   const localData = getLocalTruckSchedule();
 
-  const isConfigured =
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
-
-  if (!isConfigured) {
-    return localData;
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'truck_replenishment_schedule')
-      .maybeSingle();
-
-    if (error) {
-      if (error.code !== 'PGRST116' && error.code !== '42P01') {
-        console.warn('Aviso ao buscar agenda do caminhão no Supabase:', error.message);
+  // 1. Tentar via API route (sempre disponível, resolve conflitos entre clientes e adblockers)
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/truck-schedule', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        cache: 'no-store'
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && (json.next_arrival_date !== undefined || json.last_arrival_date !== undefined || Array.isArray(json.history))) {
+          const schedule: TruckScheduleData = {
+            next_arrival_date: json.next_arrival_date || null,
+            last_arrival_date: json.last_arrival_date || null,
+            history: Array.isArray(json.history) ? json.history : [],
+            updated_at: json.updated_at,
+            updated_by_name: json.updated_by_name
+          };
+          saveLocalTruckSchedule(schedule);
+          return schedule;
+        }
       }
-      return localData;
+    } catch (apiErr) {
+      // Fallback para Supabase direto
     }
-
-    if (data?.value) {
-      const merged: TruckScheduleData = {
-        next_arrival_date: data.value.next_arrival_date || null,
-        last_arrival_date: data.value.last_arrival_date || null,
-        history: Array.isArray(data.value.history) ? data.value.history : [],
-        updated_at: data.value.updated_at,
-        updated_by_name: data.value.updated_by_name
-      };
-      saveLocalTruckSchedule(merged);
-      return merged;
-    }
-
-    return localData;
-  } catch (err) {
-    console.warn('Falha na requisição de agenda do caminhão:', err);
-    return localData;
   }
+
+  // 2. Consulta direta via Supabase Client
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'truck_replenishment_schedule')
+        .maybeSingle();
+
+      if (!error && data?.value) {
+        const merged: TruckScheduleData = {
+          next_arrival_date: data.value.next_arrival_date || null,
+          last_arrival_date: data.value.last_arrival_date || null,
+          history: Array.isArray(data.value.history) ? data.value.history : [],
+          updated_at: data.value.updated_at,
+          updated_by_name: data.value.updated_by_name
+        };
+        saveLocalTruckSchedule(merged);
+        return merged;
+      }
+    } catch (err) {
+      console.warn('Falha na requisição direta Supabase de caminhão:', err);
+    }
+  }
+
+  return localData;
 }
 
+/**
+ * Atualiza a agenda e propaga imediatamente para todos os clientes e componentes
+ */
 export async function updateTruckSchedule(newData: {
   next_arrival_date?: string | null;
   last_arrival_date?: string | null;
@@ -133,7 +158,32 @@ export async function updateTruckSchedule(newData: {
   updated_by_name?: string;
 }): Promise<{ success: boolean; data: TruckScheduleData; message?: string }> {
   try {
-    // 1. Obter estado atual
+    // 1. Tentar salvar via API route centralizada
+    let savedData: TruckScheduleData | null = null;
+    try {
+      const res = await fetch('/api/truck-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newData)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          savedData = json.data;
+        }
+      }
+    } catch (e) {
+      console.warn('Aviso: POST /api/truck-schedule indisponível, usando fallback direto:', e);
+    }
+
+    // Se a API route salvou, salva localmente e dispara os eventos
+    if (savedData) {
+      saveLocalTruckSchedule(savedData);
+      notifyScheduleChanged(savedData);
+      return { success: true, data: savedData };
+    }
+
+    // 2. Fallback local e direto no Supabase caso a API falhe
     const current = await fetchTruckSchedule();
     let updatedHistory = [...(current.history || [])];
 
@@ -168,7 +218,6 @@ export async function updateTruckSchedule(newData: {
         created_by: newData.updated_by_name || 'Usuário'
       };
 
-      // Inserir ordenado por data decrescente
       updatedHistory = [newEntry, ...updatedHistory].sort((a, b) => 
         new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime()
       );
@@ -177,7 +226,6 @@ export async function updateTruckSchedule(newData: {
     const nextDate = newData.next_arrival_date !== undefined ? newData.next_arrival_date : current.next_arrival_date;
     let lastDate = newData.last_arrival_date !== undefined ? newData.last_arrival_date : current.last_arrival_date;
 
-    // Se inseriu um histórico novo e não especificou o lastDate manualmente, atualiza com a data mais recente do histórico
     if (newData.newRecord && (!lastDate || new Date(newData.newRecord.arrival_date).getTime() >= new Date(lastDate).getTime())) {
       lastDate = newData.newRecord.arrival_date;
     }
@@ -192,12 +240,7 @@ export async function updateTruckSchedule(newData: {
 
     saveLocalTruckSchedule(payload);
 
-    // 2. Salvar no Supabase
-    const isConfigured =
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
-
-    if (isConfigured) {
+    if (isSupabaseConfigured) {
       await supabase
         .from('system_settings')
         .upsert(
@@ -210,9 +253,73 @@ export async function updateTruckSchedule(newData: {
         );
     }
 
+    notifyScheduleChanged(payload);
     return { success: true, data: payload };
   } catch (error: any) {
     console.error('Erro ao atualizar agenda de caminhão:', error);
     return { success: false, data: getLocalTruckSchedule(), message: error.message };
   }
+}
+
+/**
+ * Notifica todas as abas e componentes da tela sobre alterações na agenda
+ */
+function notifyScheduleChanged(data: TruckScheduleData) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent(TRUCK_SCHEDULE_EVENT, { detail: data }));
+    if ('BroadcastChannel' in window) {
+      const channel = new BroadcastChannel('agentex_truck_channel');
+      channel.postMessage({ type: 'UPDATE', data });
+      channel.close();
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+/**
+ * Registra listener para manter componentes sincronizados em tempo real
+ */
+export function subscribeTruckSchedule(callback: (data: TruckScheduleData) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+
+  const handleCustomEvent = (e: Event) => {
+    const custom = e as CustomEvent;
+    if (custom.detail) {
+      callback(custom.detail);
+    }
+  };
+
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === LOCAL_STORAGE_KEY && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        callback(parsed);
+      } catch {}
+    }
+  };
+
+  window.addEventListener(TRUCK_SCHEDULE_EVENT, handleCustomEvent);
+  window.addEventListener('storage', handleStorage);
+
+  let bc: BroadcastChannel | null = null;
+  if ('BroadcastChannel' in window) {
+    try {
+      bc = new BroadcastChannel('agentex_truck_channel');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'UPDATE' && event.data.data) {
+          callback(event.data.data);
+        }
+      };
+    } catch {}
+  }
+
+  return () => {
+    window.removeEventListener(TRUCK_SCHEDULE_EVENT, handleCustomEvent);
+    window.removeEventListener('storage', handleStorage);
+    if (bc) {
+      bc.close();
+    }
+  };
 }
