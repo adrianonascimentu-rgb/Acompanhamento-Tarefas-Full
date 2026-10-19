@@ -26,8 +26,8 @@ const LeadsMap = dynamic(() => import('@/components/LeadsMap'), {
 
 const MOCK_LEADS = [
   { id: 1, name: 'Ricardo Santos', company: 'Restaurante Mangai', status: 'Novo', email: 'contato@mangai.com.br', phone: '(83) 3226-1615', segment: 'Restaurante', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1145, lng: -34.8290, address: 'Av. Gen. Edson Ramalho, 696 - Manaíra, João Pessoa - PB' },
-  { id: 2, name: 'Juliana Paiva', company: 'Padaria El Shaddai', status: 'Em Contato', email: 'financeiro@elshaddai.com', phone: '(83) 3246-4554', segment: 'Padaria', assigned_to: null, created_at: new Date().toISOString(), lat: -7.0890, lng: -34.8320, address: 'R. Francisco Leocádio Ribeiro Coutinho, 451 - Bessa, João Pessoa - PB' },
-  { id: 3, name: 'Marcos Oliveira', company: 'Açougue do Boi', status: 'Qualificado', email: 'marcos@acouguedoboi.com.br', phone: '(83) 99123-4455', segment: 'Açougue', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1150, lng: -34.8630, address: 'Av. Dom Pedro II, 567 - Centro, João Pessoa - PB' },
+  { id: 2, name: 'Juliana Paiva', company: 'Padaria El Shaddai', status: 'Em Contato', email: null, phone: '(83) 3246-4554', segment: 'Padaria', assigned_to: null, created_at: new Date().toISOString(), lat: -7.0890, lng: -34.8320, address: 'R. Francisco Leocádio Ribeiro Coutinho, 451 - Bessa, João Pessoa - PB' },
+  { id: 3, name: 'Marcos Oliveira', company: 'Açougue do Boi', status: 'Qualificado', email: null, phone: '(83) 99123-4455', segment: 'Açougue', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1150, lng: -34.8630, address: 'Av. Dom Pedro II, 567 - Centro, João Pessoa - PB' },
   { id: 4, name: 'Camila Doces', company: 'Amor Doce', status: 'Novo', email: 'camila@amordoce.com', phone: '(83) 3247-1122', segment: 'Doceria', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1250, lng: -34.8230, address: 'Av. Cabo Branco, 2120 - Cabo Branco, João Pessoa - PB' },
 ];
 
@@ -153,11 +153,23 @@ export default function LeadsPage() {
 
     setIsSearching(true);
     try {
-      const res = await authFetch('/api/gemini/search-leads', {
+      let res = await authFetch('/api/gemini/search-leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ segment: searchSegment }),
       });
+
+      // Se receber 401 por token expirado, renovar e tentar novamente
+      if (res.status === 401) {
+        try {
+          await supabase.auth.refreshSession();
+        } catch {}
+        res = await authFetch('/api/gemini/search-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ segment: searchSegment }),
+        });
+      }
 
       const data = await res.json();
       if (!res.ok) {
@@ -172,26 +184,33 @@ export default function LeadsPage() {
       if (isConfigured) {
         const { error } = await supabase
           .from('leads')
-          .insert(leadsData.map((l: any) => ({
-            name: l.name,
-            company: l.company,
-            email: l.email,
-            phone: l.phone,
-            segment: l.segment,
-            status: 'Novo',
-            created_at: new Date().toISOString()
-          })));
+          .insert(leadsData.map((l: any) => {
+            const hasEmail = l.email && typeof l.email === 'string' && l.email.trim().length > 4 && l.email.includes('@');
+            return {
+              name: l.name,
+              company: l.company,
+              email: hasEmail ? l.email.trim() : null,
+              phone: l.phone,
+              segment: l.segment,
+              status: 'Novo',
+              created_at: new Date().toISOString()
+            };
+          }));
         
         if (error) throw error;
         await fetchLeads();
       } else {
         // Mock save
-        const mockNewLeads = leadsData.map((l: any, i: number) => ({
-          ...l,
-          id: Math.max(...leads.map(l => l.id), 0) + i + 1,
-          status: 'Novo',
-          created_at: new Date().toISOString()
-        }));
+        const mockNewLeads = leadsData.map((l: any, i: number) => {
+          const hasEmail = l.email && typeof l.email === 'string' && l.email.trim().length > 4 && l.email.includes('@');
+          return {
+            ...l,
+            email: hasEmail ? l.email.trim() : null,
+            id: Math.max(...leads.map(l => l.id), 0) + i + 1,
+            status: 'Novo',
+            created_at: new Date().toISOString()
+          };
+        });
         setLeads([...mockNewLeads, ...leads]);
       }
       
@@ -369,9 +388,14 @@ export default function LeadsPage() {
     try {
       const isConfigured = Boolean(isSupabaseConfigured);
 
+      const cleanEmail = newLead.email && newLead.email.trim() ? newLead.email.trim() : null;
+
       if (selectedLeadForAssignment) {
         // Edit mode
-        const leadData = { ...newLead };
+        const leadData = { 
+          ...newLead,
+          email: cleanEmail
+        };
 
         if (isConfigured && !tableMissing) {
           const { error } = await supabase
@@ -389,6 +413,7 @@ export default function LeadsPage() {
         const leadWithoutAddress = { ...newLead };
         const leadData = {
           ...leadWithoutAddress,
+          email: cleanEmail,
           status: 'Novo',
           created_at: new Date().toISOString(),
           assigned_to: null,
@@ -1392,8 +1417,10 @@ export default function LeadsPage() {
                       <span className="text-xs text-slate-500">{lead.phone}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Mail size={14} className="text-slate-400" />
-                      <span className="text-xs text-slate-500 truncate">{lead.email}</span>
+                      <Mail size={14} className={lead.email ? 'text-slate-400 shrink-0' : 'text-slate-300 dark:text-slate-600 shrink-0'} />
+                      <span className={`text-xs truncate ${lead.email ? 'text-slate-500' : 'text-slate-400 dark:text-slate-500 italic'}`}>
+                        {lead.email || 'Não informado'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <Calendar size={14} className="text-slate-400" />
@@ -1589,12 +1616,15 @@ export default function LeadsPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">E-mail</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">E-mail</label>
+                      <span className="text-[10px] text-slate-400 font-medium">Apenas se disponível</span>
+                    </div>
                     <div className="relative">
                       <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input 
                         type="email"
-                        placeholder="joao@email.com"
+                        placeholder="Opcional (somente se disponível)"
                         value={newLead.email || ''}
                         onChange={(e) => {
                           const email = e.target.value;
