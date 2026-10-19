@@ -13,8 +13,9 @@ import { useUI } from '@/hooks/useUI';
 import { useNotifications } from '@/hooks/useNotifications';
 import { VoiceSearch } from '@/components/ui/VoiceSearch';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { supabase } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { authFetch } from '@/lib/authFetch';
+import { applyStatusToProfiles, getInactiveCollaboratorIds } from '@/lib/collaboratorStatus';
 
 import dynamic from 'next/dynamic';
 
@@ -31,8 +32,11 @@ const MOCK_LEADS = [
 ];
 
 const MOCK_VENDEDORES = [
-  { id: '88888888-8888-8888-8888-888888888888', name: 'Carlos Vendedor', role: 'Consultor de Vendas', type: 'vendedor', image_url: 'https://picsum.photos/seed/carlos/200' },
-  { id: '99999999-9999-9999-9999-999999999999', name: 'Mariana Vendas', role: 'Consultora de Vendas', type: 'vendedor', image_url: 'https://picsum.photos/seed/mariana/200' },
+  { id: 'vendedor-alex', name: 'Alex Estevam', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/alex/200' },
+  { id: 'vendedor-joabson', name: 'Joabson Lima', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/joabson/200' },
+  { id: 'vendedor-aldo', name: 'Aldo Serafim', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/aldo/200' },
+  { id: 'vendedor-jessica', name: 'Jessica Floriano', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/jessica/200' },
+  { id: 'vendedor-adriano', name: 'Adriano teste', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/adriano/200' },
 ];
 
 export default function LeadsPage() {
@@ -88,9 +92,7 @@ export default function LeadsPage() {
     const newValue = !userReceivesLeads;
     
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       if (isConfigured) {
         const { error } = await supabase
@@ -165,9 +167,7 @@ export default function LeadsPage() {
       const leadsData = data.leads || [];
       
       // Save to Supabase
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       if (isConfigured) {
         const { error } = await supabase
@@ -209,59 +209,74 @@ export default function LeadsPage() {
   const fetchVendedores = async () => {
     console.log('Fetching vendedores...');
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      let rawProfiles: any[] = [];
 
-      if (!isConfigured) {
-        console.log('Supabase not configured, using mock vendedores');
-        setVendedores(MOCK_VENDEDORES.map(v => ({ ...v, receives_leads: true })));
-        return;
-      }
-
-      // Fetch potential lead receivers (vendedores, gerentes, supervisores)
-      // We check multiple columns and patterns to ensure compatibility with different database versions
+      // 1. Tentar carregar perfis diretamente do Supabase
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
-        .or('type.eq.vendedor,type.eq.gerente,type.eq.supervisor,role.ilike.%vendedor%,role.ilike.%gerente%,role.ilike.%consultor%')
         .order('name');
       
-      if (error) {
-        console.warn('Error fetching vendedores from Supabase:', error.message);
-        // Emergency fallback: fetch all non-admin profiles
-        const { data: allProfiles } = await supabase.from('profiles').select('*').neq('type', 'admin').limit(20);
-        if (allProfiles && allProfiles.length > 0) {
-          setVendedores(allProfiles);
-        } else {
-          setVendedores(MOCK_VENDEDORES.map(v => ({ ...v, receives_leads: true })));
-        }
+      if (!error && data && data.length > 0) {
+        rawProfiles = data;
       } else {
-        console.log(`Fetched ${data?.length || 0} potential vendedores from Supabase`);
-        if (data && data.length > 0) {
-          setVendedores(data);
-        } else {
-          // If specific query returned nothing, try to get anyone who isn't an admin
-          const { data: anyNonAdmin } = await supabase.from('profiles').select('*').neq('type', 'admin').limit(15);
-          if (anyNonAdmin && anyNonAdmin.length > 0) {
-            setVendedores(anyNonAdmin);
-          } else {
-            // Last resort: mock data
-            setVendedores(MOCK_VENDEDORES.map(v => ({ ...v, receives_leads: true })));
+        // Fallback para rota /api/collaborators que contorna restrições de permissão
+        try {
+          const res = await authFetch('/api/collaborators');
+          const json = await res.json();
+          if (json?.collaborators?.length) {
+            rawProfiles = json.collaborators;
           }
+        } catch (apiErr) {
+          console.warn('Fallback /api/collaborators falhou:', apiErr);
         }
       }
+
+      if (rawProfiles.length === 0) {
+        rawProfiles = MOCK_VENDEDORES;
+      }
+
+      // Aplica status do localStorage (caso algum vendedor tenha sido inativado)
+      const withStatus = applyStatusToProfiles(rawProfiles);
+      const inactiveIds = getInactiveCollaboratorIds();
+
+      // FILTRO RIGOROSO: SOMENTE VENDEDORES ATIVOS
+      const activeSellers = withStatus.filter(p => {
+        // 1. Deve estar ATIVO
+        if (inactiveIds.includes(p.id)) return false;
+        if (p.active === false) return false;
+        const status = (p.status || 'Ativo').toLowerCase().trim();
+        if (status === 'inativo') return false;
+
+        // 2. Não pode ser entregador nem estoque
+        const role = (p.role || '').toLowerCase();
+        const type = (p.type || '').toLowerCase();
+        if (type === 'entregador' || role.includes('entrega') || role.includes('estoque')) {
+          return false;
+        }
+
+        // 3. Deve ser da área comercial/vendas
+        const isSeller = 
+          type === 'vendedor' || 
+          role.includes('vendedor') || 
+          role.includes('vendas') || 
+          role.includes('consultor') ||
+          p.can_access_leads === true;
+
+        return isSeller;
+      });
+
+      console.log(`Vendedores ativos carregados para leads: ${activeSellers.length}`);
+      setVendedores(activeSellers);
     } catch (err) {
       console.error('Error fetching vendedores:', err);
-      setVendedores(MOCK_VENDEDORES.map(v => ({ ...v, receives_leads: true })));
+      setVendedores(MOCK_VENDEDORES.filter(v => v.status === 'Ativo'));
     }
   };
 
   const fetchLeads = async () => {
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       if (!isConfigured) {
         setLeads(MOCK_LEADS);
@@ -352,9 +367,7 @@ export default function LeadsPage() {
 
     setIsSaving(true);
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       if (selectedLeadForAssignment) {
         // Edit mode
@@ -467,9 +480,7 @@ export default function LeadsPage() {
         return;
       }
       
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       // Prepare updates
       const updates: any[] = [];
@@ -558,9 +569,7 @@ export default function LeadsPage() {
 
     // Persist to Supabase
     try {
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       if (isConfigured) {
         await supabase
@@ -585,9 +594,7 @@ export default function LeadsPage() {
     try {
       const vendedor = vendedores.find(v => v.id === vendedorId);
       
-      const isConfigured = 
-        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+      const isConfigured = Boolean(isSupabaseConfigured);
 
       if (isConfigured) {
         const { error } = await supabase
@@ -638,9 +645,7 @@ export default function LeadsPage() {
       type: 'danger',
       onConfirm: async () => {
         try {
-          const isConfigured = 
-            process.env.NEXT_PUBLIC_SUPABASE_URL && 
-            process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+          const isConfigured = Boolean(isSupabaseConfigured);
 
           if (isConfigured && !tableMissing) {
             const { error } = await supabase
@@ -671,9 +676,7 @@ export default function LeadsPage() {
       type: 'danger',
       onConfirm: async () => {
         try {
-          const isConfigured = 
-            process.env.NEXT_PUBLIC_SUPABASE_URL && 
-            process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+          const isConfigured = Boolean(isSupabaseConfigured);
 
           if (isConfigured && !tableMissing) {
             const { error } = await supabase
@@ -884,9 +887,11 @@ export default function LeadsPage() {
                     <Shuffle size={16} className={isDistributing ? 'animate-spin' : ''} />
                   </button>
                 </div>
-                {vendedores.length > 0 ? (
+                {vendedores.filter(v => (v.status === 'Ativo' || !v.status) && v.active !== false).length > 0 ? (
                   <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                    {vendedores.map((vendedor) => (
+                    {vendedores
+                      .filter(v => (v.status === 'Ativo' || !v.status) && v.active !== false)
+                      .map((vendedor) => (
                       <div 
                         key={vendedor.id}
                         className={`flex flex-col items-center p-3 rounded-2xl border min-w-[100px] transition-all relative ${
@@ -901,20 +906,13 @@ export default function LeadsPage() {
                             alt={vendedor.name}
                             fill
                             referrerPolicy="no-referrer"
-                            className={`rounded-full object-cover ${(vendedor.status !== 'Ativo' && vendedor.status) ? 'grayscale contrast-75' : ''}`}
+                            className="rounded-full object-cover"
                           />
                           <div className={`absolute -top-1 -right-1 size-5 rounded-full border-2 border-white dark:border-slate-800 flex items-center justify-center transition-colors ${
-                            vendedor.receives_leads !== false && (vendedor.status === 'Ativo' || !vendedor.status) ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-500'
+                            vendedor.receives_leads !== false ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-500'
                           }`}>
-                            {vendedor.receives_leads !== false && (vendedor.status === 'Ativo' || !vendedor.status) ? <Check size={10} /> : <X size={10} />}
+                            {vendedor.receives_leads !== false ? <Check size={10} /> : <X size={10} />}
                           </div>
-                          
-                          {/* Visual indicator for 'Inativo' status */}
-                          {(vendedor.status !== 'Ativo' && vendedor.status) && (
-                            <div className="absolute -bottom-1 -left-1 px-1 rounded-md bg-rose-500 text-white text-[7px] font-black uppercase">
-                              Inativo
-                            </div>
-                          )}
                         </div>
                         <p className={`text-[11px] font-bold text-center truncate w-full ${
                           vendedor.receives_leads !== false 
@@ -1814,16 +1812,19 @@ export default function LeadsPage() {
               </div>
 
               <div className="space-y-3 max-h-[50vh] overflow-y-auto mb-6 pr-2 custom-scrollbar">
-                {vendedores.filter(v => v.name?.toLowerCase().includes(vendedorSearchQuery.toLowerCase())).map((vendedor) => (
+                {vendedores
+                  .filter(v => (v.status === 'Ativo' || !v.status) && v.active !== false)
+                  .filter(v => v.name?.toLowerCase().includes(vendedorSearchQuery.toLowerCase()))
+                  .map((vendedor) => (
                   <button
                     key={vendedor.id}
                     onClick={() => handleAssignLead(vendedor.id)}
-                    disabled={isDistributing || (vendedor.status !== 'Ativo' && vendedor.status)}
+                    disabled={isDistributing}
                     className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
                       selectedLeadForAssignment?.assigned_to === vendedor.id
                         ? (isDarkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-200')
                         : (isDarkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50 border-slate-100')
-                    } ${isDistributing || (vendedor.status !== 'Ativo' && vendedor.status) ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300'}`}
+                    } ${isDistributing ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300'}`}
                   >
                     <div className="flex items-center gap-3">
                       <div className="size-10 rounded-full overflow-hidden bg-slate-200 relative">
@@ -1831,20 +1832,12 @@ export default function LeadsPage() {
                           src={vendedor.image_url || `https://picsum.photos/seed/${vendedor.id}/100`}
                           alt={vendedor.name}
                           fill
-                          className={`object-cover ${(vendedor.status !== 'Ativo' && vendedor.status) ? 'grayscale opacity-50' : ''}`}
+                          className="object-cover"
                         />
-                        {(vendedor.status !== 'Ativo' && vendedor.status) && (
-                          <div className="absolute inset-0 bg-slate-900/40 flex items-center justify-center">
-                            <X size={12} className="text-white" />
-                          </div>
-                        )}
                       </div>
                       <div className="text-left">
                         <p className={`font-bold text-sm ${isDarkMode ? 'text-slate-100' : 'text-slate-900'} flex items-center gap-2`}>
                           {vendedor.name || 'Sem Nome'}
-                          {(vendedor.status !== 'Ativo' && vendedor.status) && (
-                            <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-600 text-[7px] font-black uppercase">Inativo</span>
-                          )}
                         </p>
                         <p className="text-[10px] text-slate-500 uppercase tracking-wider">{vendedor.role || 'Vendedor'}</p>
                       </div>
@@ -1972,9 +1965,7 @@ export default function LeadsPage() {
 
                     // Persist to Supabase
                     try {
-                      const isConfigured = 
-                        process.env.NEXT_PUBLIC_SUPABASE_URL && 
-                        process.env.NEXT_PUBLIC_SUPABASE_URL !== 'https://placeholder-url.supabase.co';
+                      const isConfigured = Boolean(isSupabaseConfigured);
 
                       if (isConfigured) {
                         // Update all vendedores in the list
@@ -1998,17 +1989,20 @@ export default function LeadsPage() {
               </div>
 
               <div className="space-y-3 max-h-[40vh] overflow-y-auto mb-6 pr-2 custom-scrollbar">
-                {vendedores.filter(v => v.name?.toLowerCase().includes(vendedorSearchQuery.toLowerCase())).length > 0 ? (
-                  vendedores.filter(v => v.name?.toLowerCase().includes(vendedorSearchQuery.toLowerCase())).map((vendedor) => (
+                {vendedores
+                  .filter(v => (v.status === 'Ativo' || !v.status) && v.active !== false)
+                  .filter(v => v.name?.toLowerCase().includes(vendedorSearchQuery.toLowerCase())).length > 0 ? (
+                  vendedores
+                    .filter(v => (v.status === 'Ativo' || !v.status) && v.active !== false)
+                    .filter(v => v.name?.toLowerCase().includes(vendedorSearchQuery.toLowerCase())).map((vendedor) => (
                     <button
                       key={vendedor.id}
                       onClick={() => toggleVendedorSelection(vendedor.id)}
-                      disabled={(vendedor.status !== 'Ativo' && vendedor.status)}
                       className={`w-full flex items-center justify-between p-4 rounded-2xl border-2 transition-all ${
                         selectedVendedores.includes(vendedor.id)
                           ? (isDarkMode ? 'bg-indigo-900/20 border-indigo-500' : 'bg-indigo-50 border-indigo-200')
                           : (isDarkMode ? 'bg-slate-800/50 border-slate-800' : 'bg-slate-50 border-slate-100')
-                      } ${(vendedor.status !== 'Ativo' && vendedor.status) ? 'opacity-40 cursor-not-allowed border-dashed' : ''}`}
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className="size-10 rounded-full overflow-hidden bg-slate-200 relative">
@@ -2016,15 +2010,12 @@ export default function LeadsPage() {
                             src={vendedor.image_url || `https://picsum.photos/seed/${vendedor.id}/100`}
                             alt={vendedor.name}
                             fill
-                            className={`object-cover ${(vendedor.status !== 'Ativo' && vendedor.status) ? 'grayscale' : ''}`}
+                            className="object-cover"
                           />
                         </div>
                         <div className="text-left">
                           <p className={`font-bold text-sm ${isDarkMode ? 'text-slate-100' : 'text-slate-900'} flex items-center gap-2`}>
                             {vendedor.name || 'Sem Nome'}
-                            {(vendedor.status !== 'Ativo' && vendedor.status) && (
-                              <span className="px-1.5 py-0.5 rounded-md bg-rose-100 text-rose-600 text-[7px] font-black uppercase">Fora da Lista</span>
-                            )}
                           </p>
                           <p className="text-[10px] text-slate-500 uppercase tracking-wider">{vendedor.role || 'Vendedor'}</p>
                         </div>
