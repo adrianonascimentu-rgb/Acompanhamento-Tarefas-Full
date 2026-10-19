@@ -112,7 +112,8 @@ export function Sidebar() {
           { href: '/warranties', icon: ShieldCheck, label: 'Garantias', active: pathname?.startsWith('/warranties') && !pathname?.startsWith('/warranties/assistances') },
           { href: '/warranties/assistances', icon: Wrench, label: 'Assistência Técnica', active: pathname?.startsWith('/warranties/assistances') }
         ] : []),
-        { href: '/price-research', icon: Tag, label: 'Pesquisa de Preço', active: pathname?.startsWith('/price-research') },
+        { href: '/price-research', icon: Tag, label: 'Pesquisa de Preço', active: pathname?.startsWith('/price-research') && !pathname?.startsWith('/mercado-livre') },
+        { href: '/mercado-livre', icon: Tag, label: 'Pesquisa Mercado Livre', active: pathname?.startsWith('/mercado-livre') },
       ]
     },
     {

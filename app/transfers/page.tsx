@@ -1,3 +1,25 @@
+
+function getLocalTodayString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateBR(dateStr: string): string {
+  if (!dateStr) return "";
+  const cleanDate = dateStr.split("T")[0];
+  const parts = cleanDate.split("-");
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  try {
+    return new Date(dateStr).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  } catch (e) {
+    return dateStr;
+  }
+}
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -150,7 +172,7 @@ export default function TransfersPage() {
     { id: crypto.randomUUID(), code: '', name: '', reference: '', quantity: 1 }
   ]);
   const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
-  const [requestDate, setRequestDate] = useState(new Date().toISOString().split('T')[0]);
+  const [requestDate, setRequestDate] = useState(getLocalTodayString());
   const [status, setStatus] = useState<TransferStatus>('Em separação');
   const [responsibleId, setResponsibleId] = useState<string>('');
   const [transferType, setTransferType] = useState<'solicitada' | 'recebida'>('solicitada');
@@ -436,7 +458,7 @@ export default function TransfersPage() {
       setRequesterName(user?.name || '');
       setDescription('');
       setRequestedItems([{ id: crypto.randomUUID(), code: '', name: '', reference: '', quantity: 1 }]);
-      setRequestDate(new Date().toISOString().split('T')[0]);
+      setRequestDate(getLocalTodayString());
       setStatus('Solicitado');
       setResponsibleId('');
       setTransferType(activeTab === 'todas' || activeTab === 'meus' ? 'solicitada' : activeTab);
@@ -528,7 +550,7 @@ export default function TransfersPage() {
             sequential_number: nextSeq,
             requester_name: requesterName,
             requester_id: requesterId || null,
-            description,
+            description: finalDescription,
             request_date: requestDate,
             status,
             created_at: newTransfer.createdAt,
@@ -1327,7 +1349,7 @@ NOTIFY pgrst, 'reload schema';`}
                     <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
                       <div className={`text-xs flex items-center gap-1.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                         <Clock size={13} />
-                        <span>Solicitado em: {new Date(transfer.requestDate).toLocaleDateString('pt-BR')}</span>
+                        <span>Solicitado em: {formatDateBR(transfer.requestDate)}</span>
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
@@ -1403,7 +1425,7 @@ NOTIFY pgrst, 'reload schema';`}
                     <div className={`pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
                       <div className={`text-xs flex items-center gap-1.5 mb-2.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                         <Clock size={13} />
-                        <span>{new Date(transfer.requestDate).toLocaleDateString('pt-BR')}</span>
+                        <span>{formatDateBR(transfer.requestDate)}</span>
                       </div>
                       <div className="flex flex-wrap items-center gap-1.5">
                         {(['Solicitado', 'Em separação', 'Separado', 'Enviado', 'Desistiu'] as TransferStatus[]).map((status) => (
@@ -1494,7 +1516,7 @@ NOTIFY pgrst, 'reload schema';`}
                                 <div className="flex flex-col gap-1">
                                   <div className={`text-[9px] font-bold flex items-center gap-1 ${isDarkMode ? 'text-slate-600' : 'text-slate-400'}`}>
                                     <Clock size={10} />
-                                    {new Date(transfer.requestDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                    {formatDateBR(transfer.requestDate).substring(0, 5)}
                                   </div>
                                 </div>
                                 
@@ -1565,7 +1587,7 @@ NOTIFY pgrst, 'reload schema';`}
                           </td>
                           <td className="px-4 py-3 font-bold">{transfer.requesterName}</td>
                           <td className="px-4 py-3 max-w-[200px] truncate" title={transfer.description}>{transfer.description}</td>
-                          <td className="px-4 py-3 whitespace-nowrap">{new Date(transfer.requestDate).toLocaleDateString('pt-BR')}</td>
+                          <td className="px-4 py-3 whitespace-nowrap">{formatDateBR(transfer.requestDate)}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {transfer.responsibleId ? (
                               <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
