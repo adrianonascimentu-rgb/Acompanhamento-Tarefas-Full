@@ -1,3 +1,4 @@
+'use client';
 
 function getLocalTodayString(): string {
   const d = new Date();
@@ -20,7 +21,7 @@ function formatDateBR(dateStr: string): string {
     return dateStr;
   }
 }
-'use client';
+
 
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Search, Edit2, Trash2, Package, Clock, CheckCircle2, Send, XCircle, MoreVertical, X, User, LayoutGrid, List, Columns, Table, Settings, AlertCircle } from 'lucide-react';
