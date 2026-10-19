@@ -331,10 +331,12 @@ export default function MercadoLivreResearchPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link 
-              href="/" 
-              className={`p-2 rounded-xl border transition-colors ${isDarkMode ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'}`}
+              href="/social-media" 
+              className={`p-2 rounded-xl border transition-colors flex items-center gap-1.5 text-xs font-semibold ${isDarkMode ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'}`}
+              title="Voltar para Site"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4" />
+              <span className="hidden sm:inline">Voltar para Site</span>
             </Link>
             <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500">
               <Tag className="w-6 h-6" />

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingBag, Globe, Package, Plus, 
   CheckCircle2, Clock, 
-  X, Users, Calendar, Trash2
+  X, Users, Calendar, Trash2, Tag, ArrowRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'motion/react';
@@ -199,6 +199,13 @@ export default function SiteAndMarketplacePlannerPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <Link
+              href="/mercado-livre"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 dark:bg-amber-400 dark:text-slate-950 shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+            >
+              <Tag size={15} />
+              <span>Pesquisa Mercado Livre</span>
+            </Link>
             <button
               onClick={() => setIsModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black text-white bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-md shadow-orange-500/25 transition-all cursor-pointer"
@@ -257,6 +264,38 @@ export default function SiteAndMarketplacePlannerPage() {
 
       {/* Main Content */}
       <main className="p-6 max-w-7xl mx-auto space-y-6">
+        {/* Banner Card de Acesso Exclusivo à Pesquisa Mercado Livre */}
+        <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${
+          isDarkMode 
+            ? 'bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border-amber-500/30 shadow-lg shadow-black/20' 
+            : 'bg-gradient-to-r from-amber-50 via-white to-orange-50 border-amber-200/80 shadow-xs'
+        }`}>
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/25 shrink-0">
+              <Tag size={24} className="text-slate-950" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">Pesquisa de Preços Mercado Livre</h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                  Módulo Integrado ao Site
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
+                Gerenciador e comparador completo de preços de concorrentes no Mercado Livre, acompanhamento de margens, links de anúncios e simulação de custos Mercado Envios e Full.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/mercado-livre"
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-xs font-black text-slate-950 bg-amber-400 hover:bg-amber-300 shadow-md shadow-amber-500/25 transition-all shrink-0 cursor-pointer"
+          >
+            <Tag size={15} />
+            <span>Abrir Pesquisa Mercado Livre</span>
+            <ArrowRight size={15} />
+          </Link>
+        </div>
+
         {/* Split Comparison Overview Cards */}
         <div className={`grid grid-cols-1 ${activeCategory === 'all' ? 'md:grid-cols-2' : 'md:grid-cols-1'} gap-6`}>
           
@@ -348,9 +387,18 @@ export default function SiteAndMarketplacePlannerPage() {
                     <p className="text-[11px] text-slate-400">Gestão de anúncios, Full, reputação e campanhas</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600">
-                  {mlTasks.length} ações
-                </span>
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/mercado-livre"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs transition-colors"
+                  >
+                    <Tag size={13} />
+                    <span>Pesquisa ML</span>
+                  </Link>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-600">
+                    {mlTasks.length} ações
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-3">

@@ -99,7 +99,7 @@ export function Sidebar() {
       items: [
         ...(canAccessWhatsapp ? [{ href: '/whatsapp', icon: MessageCircle, label: 'WhatsApp', active: pathname?.startsWith('/whatsapp') }] : []),
         ...(canAccessLeads ? [{ href: '/leads', icon: Target, label: 'Leads', active: pathname?.startsWith('/leads') }] : []),
-        ...(canAccessSocialMedia ? [{ href: '/social-media', icon: ShoppingBag, label: 'Site', active: pathname?.startsWith('/social-media') }] : []),
+        ...(canAccessSocialMedia ? [{ href: '/social-media', icon: ShoppingBag, label: 'Site', active: pathname?.startsWith('/social-media') || pathname?.startsWith('/mercado-livre') }] : []),
       ]
     },
     {
@@ -112,8 +112,7 @@ export function Sidebar() {
           { href: '/warranties', icon: ShieldCheck, label: 'Garantias', active: pathname?.startsWith('/warranties') && !pathname?.startsWith('/warranties/assistances') },
           { href: '/warranties/assistances', icon: Wrench, label: 'Assistência Técnica', active: pathname?.startsWith('/warranties/assistances') }
         ] : []),
-        { href: '/price-research', icon: Tag, label: 'Pesquisa de Preço', active: pathname?.startsWith('/price-research') && !pathname?.startsWith('/mercado-livre') },
-        { href: '/mercado-livre', icon: Tag, label: 'Pesquisa Mercado Livre', active: pathname?.startsWith('/mercado-livre') },
+        { href: '/price-research', icon: Tag, label: 'Pesquisa de Preço', active: pathname?.startsWith('/price-research') },
       ]
     },
     {

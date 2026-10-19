@@ -29,7 +29,8 @@ import {
   ChevronRight,
   Tag,
   Package,
-  DollarSign
+  DollarSign,
+  ShoppingBag
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRole } from '@/hooks/useRole';
@@ -127,7 +128,7 @@ export function BottomNav() {
     { href: '/routes', label: 'Rotas & GPS', icon: Truck, show: true },
     { href: '/whatsapp', label: 'WhatsApp', icon: MessageSquare, show: canAccessWhatsapp },
     { href: '/leads', label: 'Leads (CRM)', icon: Target, show: canAccessLeads },
-    { href: '/social-media', label: 'Redes Sociais', icon: Share2, show: canAccessSocialMedia },
+    { href: '/social-media', label: 'Site', icon: ShoppingBag, show: canAccessSocialMedia },
     { href: '/deliveries', label: 'Entregas', icon: Truck, show: canAccessDeliveries },
     { href: '/transfers', label: 'Transferências', icon: ArrowRightLeft, show: canAccessTransfers },
     { href: '/warranties', label: 'Garantias', icon: ShieldCheck, show: canAccessWarranties },
