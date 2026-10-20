@@ -59,6 +59,38 @@ FOR DELETE TO authenticated, anon USING (true);
 
 NOTIFY pgrst, 'reload schema';`;
 
+const parseNum = (val: any) => (val !== '' && val !== null && val !== undefined ? parseFloat(String(val).replace(',', '.')) : null);
+const parseIntVal = (val: any) => (val !== '' && val !== null && val !== undefined ? parseInt(String(val), 10) : 0);
+
+function mapItemPayload(item: any) {
+  return {
+    segmento_ml: item.segmento_ml?.trim() || null,
+    codigo: item.codigo?.trim() || null,
+    nome: item.nome?.trim() || null,
+    cod_adicional_1: item.cod_adicional_1?.trim() || null,
+    estoque: parseIntVal(item.estoque),
+    vds_6m: parseIntVal(item.vds_6m),
+    a_vista_cp: parseNum(item.a_vista_cp),
+    liq_ml_envios: parseNum(item.liq_ml_envios),
+    pr_cp_ml: parseNum(item.pr_cp_ml),
+    pr_vende_mais: parseNum(item.pr_vende_mais),
+    liq_ml_full: parseNum(item.liq_ml_full),
+    full_price: parseNum(item.full_price),
+    segundo_preco: parseNum(item.segundo_preco),
+    cod_adicional_2: item.cod_adicional_2?.trim() || null,
+    cod_adicional_3: item.cod_adicional_3?.trim() || null,
+    cod_adicional_4: item.cod_adicional_4?.trim() || null,
+    cod_adicional_5: item.cod_adicional_5?.trim() || null,
+    codigo_barras: item.codigo_barras?.trim() || null,
+    nome_fabricante: item.nome_fabricante?.trim() || null,
+    link_campos: item.link_campos?.trim() || null,
+    link_vd_mais: item.link_vd_mais?.trim() || null,
+    vd_mais_segundo_pr: parseNum(item.vd_mais_segundo_pr),
+    company_id: item.company_id || null,
+    created_by: item.created_by || null,
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const auth = await requireAuth(request);
@@ -96,66 +128,31 @@ export async function POST(request: Request) {
     const supabase = getSupabaseClient();
     const body = await request.json();
 
-    const {
-      segmento_ml,
-      codigo,
-      nome,
-      cod_adicional_1,
-      estoque,
-      vds_6m,
-      a_vista_cp,
-      liq_ml_envios,
-      pr_cp_ml,
-      pr_vende_mais,
-      liq_ml_full,
-      full_price,
-      segundo_preco,
-      cod_adicional_2,
-      cod_adicional_3,
-      cod_adicional_4,
-      cod_adicional_5,
-      codigo_barras,
-      nome_fabricante,
-      link_campos,
-      link_vd_mais,
-      vd_mais_segundo_pr,
-      company_id,
-      created_by
-    } = body;
+    if (Array.isArray(body) || Array.isArray(body.items)) {
+      const rawList = Array.isArray(body) ? body : body.items;
+      const recordsToInsert = rawList.map(mapItemPayload);
+      const { data, error } = await supabase
+        .from('mercado_livre_research')
+        .insert(recordsToInsert)
+        .select();
 
-    const parseNum = (val: any) => (val !== '' && val !== null && val !== undefined ? parseFloat(val) : null);
-    const parseIntVal = (val: any) => (val !== '' && val !== null && val !== undefined ? parseInt(val, 10) : 0);
+      if (error) {
+        if (error.message?.includes('schema cache') || error.message?.includes('mercado_livre_research') || error.code === 'PGRST301' || error.code === '42P01') {
+          return NextResponse.json({ 
+            error: "A tabela 'mercado_livre_research' não existe no Supabase.",
+            missing_table: true,
+            create_sql: CREATE_TABLE_SQL
+          }, { status: 400 });
+        }
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, count: data?.length || 0, data });
+    }
 
+    const payload = mapItemPayload(body);
     const { data, error } = await supabase
       .from('mercado_livre_research')
-      .insert([
-        {
-          segmento_ml: segmento_ml?.trim() || null,
-          codigo: codigo?.trim() || null,
-          nome: nome?.trim() || null,
-          cod_adicional_1: cod_adicional_1?.trim() || null,
-          estoque: parseIntVal(estoque),
-          vds_6m: parseIntVal(vds_6m),
-          a_vista_cp: parseNum(a_vista_cp),
-          liq_ml_envios: parseNum(liq_ml_envios),
-          pr_cp_ml: parseNum(pr_cp_ml),
-          pr_vende_mais: parseNum(pr_vende_mais),
-          liq_ml_full: parseNum(liq_ml_full),
-          full_price: parseNum(full_price),
-          segundo_preco: parseNum(segundo_preco),
-          cod_adicional_2: cod_adicional_2?.trim() || null,
-          cod_adicional_3: cod_adicional_3?.trim() || null,
-          cod_adicional_4: cod_adicional_4?.trim() || null,
-          cod_adicional_5: cod_adicional_5?.trim() || null,
-          codigo_barras: codigo_barras?.trim() || null,
-          nome_fabricante: nome_fabricante?.trim() || null,
-          link_campos: link_campos?.trim() || null,
-          link_vd_mais: link_vd_mais?.trim() || null,
-          vd_mais_segundo_pr: parseNum(vd_mais_segundo_pr),
-          company_id: company_id || null,
-          created_by: created_by || null,
-        }
-      ])
+      .insert([payload])
       .select()
       .single();
 
@@ -176,6 +173,60 @@ export async function POST(request: Request) {
   }
 }
 
+export async function PUT(request: Request) {
+  try {
+    const auth = await requireAuth(request);
+    if (!auth.authorized) return auth.response;
+
+    const supabase = getSupabaseClient();
+    const body = await request.json();
+    const { id, ...updateFields } = body;
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID é obrigatório para atualização.' }, { status: 400 });
+    }
+
+    const payload: Record<string, any> = {};
+    if (updateFields.segmento_ml !== undefined) payload.segmento_ml = updateFields.segmento_ml?.trim() || null;
+    if (updateFields.codigo !== undefined) payload.codigo = updateFields.codigo?.trim() || null;
+    if (updateFields.nome !== undefined) payload.nome = updateFields.nome?.trim() || null;
+    if (updateFields.cod_adicional_1 !== undefined) payload.cod_adicional_1 = updateFields.cod_adicional_1?.trim() || null;
+    if (updateFields.estoque !== undefined) payload.estoque = parseIntVal(updateFields.estoque);
+    if (updateFields.vds_6m !== undefined) payload.vds_6m = parseIntVal(updateFields.vds_6m);
+    if (updateFields.a_vista_cp !== undefined) payload.a_vista_cp = parseNum(updateFields.a_vista_cp);
+    if (updateFields.liq_ml_envios !== undefined) payload.liq_ml_envios = parseNum(updateFields.liq_ml_envios);
+    if (updateFields.pr_cp_ml !== undefined) payload.pr_cp_ml = parseNum(updateFields.pr_cp_ml);
+    if (updateFields.pr_vende_mais !== undefined) payload.pr_vende_mais = parseNum(updateFields.pr_vende_mais);
+    if (updateFields.liq_ml_full !== undefined) payload.liq_ml_full = parseNum(updateFields.liq_ml_full);
+    if (updateFields.full_price !== undefined) payload.full_price = parseNum(updateFields.full_price);
+    if (updateFields.segundo_preco !== undefined) payload.segundo_preco = parseNum(updateFields.segundo_preco);
+    if (updateFields.cod_adicional_2 !== undefined) payload.cod_adicional_2 = updateFields.cod_adicional_2?.trim() || null;
+    if (updateFields.cod_adicional_3 !== undefined) payload.cod_adicional_3 = updateFields.cod_adicional_3?.trim() || null;
+    if (updateFields.cod_adicional_4 !== undefined) payload.cod_adicional_4 = updateFields.cod_adicional_4?.trim() || null;
+    if (updateFields.cod_adicional_5 !== undefined) payload.cod_adicional_5 = updateFields.cod_adicional_5?.trim() || null;
+    if (updateFields.codigo_barras !== undefined) payload.codigo_barras = updateFields.codigo_barras?.trim() || null;
+    if (updateFields.nome_fabricante !== undefined) payload.nome_fabricante = updateFields.nome_fabricante?.trim() || null;
+    if (updateFields.link_campos !== undefined) payload.link_campos = updateFields.link_campos?.trim() || null;
+    if (updateFields.link_vd_mais !== undefined) payload.link_vd_mais = updateFields.link_vd_mais?.trim() || null;
+    if (updateFields.vd_mais_segundo_pr !== undefined) payload.vd_mais_segundo_pr = parseNum(updateFields.vd_mais_segundo_pr);
+
+    const { data, error } = await supabase
+      .from('mercado_livre_research')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || 'Erro ao atualizar registro do Mercado Livre.' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const auth = await requireAuth(request);
@@ -184,7 +235,6 @@ export async function DELETE(request: Request) {
     const supabase = getSupabaseClient();
     const { searchParams } = new URL(request.url);
     let id = searchParams.get('id');
-
     if (!id) {
       try {
         const body = await request.json();

@@ -1,12 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { 
   ArrowLeft, Tag, Plus, Search, Trash2, Copy, Check, Download, Upload, 
-  ExternalLink, Package, DollarSign, BarChart3, RefreshCw, AlertCircle, CheckCircle2, X 
+  ExternalLink, Package, DollarSign, BarChart3, RefreshCw, AlertCircle, 
+  CheckCircle2, X, Edit2, Save, FileSpreadsheet, Layers, Store
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import * as XLSX from 'xlsx';
 
 interface MLItem {
   id: string;
@@ -48,105 +50,33 @@ const SAMPLE_ITEMS = [
     pr_cp_ml: 253.00,
     pr_vende_mais: 205.90,
     liq_ml_full: null,
-    full_price: 255.55,
-    segundo_preco: 235.00,
-    cod_adicional_2: '',
-    cod_adicional_3: '',
-    cod_adicional_4: '',
-    cod_adicional_5: '',
-    codigo_barras: '7891129254787',
-    nome_fabricante: 'WHIRLPOOL',
-    link_campos: 'https://www.mercadolivre.com.br',
-    link_vd_mais: 'https://www.mercadolivre.com.br',
-    vd_mais_segundo_pr: null
-  },
-  {
-    segmento_ml: 'Brastemp',
-    codigo: '211616',
-    nome: 'RECIPIENTE P/COMPRESSOR CARCAÇA ALTA',
-    cod_adicional_1: 'REBC',
-    estoque: 8,
-    vds_6m: 16,
-    a_vista_cp: 25.82,
-    liq_ml_envios: 25.88,
-    pr_cp_ml: 36.80,
-    pr_vende_mais: 29.99,
-    liq_ml_full: null,
-    full_price: 29.99,
-    segundo_preco: 29.99,
-    cod_adicional_2: 'W10585857',
-    cod_adicional_3: '',
-    cod_adicional_4: '',
-    cod_adicional_5: '',
-    codigo_barras: '',
-    nome_fabricante: 'DISTRIBUID',
-    link_campos: 'https://www.mercadolivre.com.br',
-    link_vd_mais: 'https://www.mercadolivre.com.br',
-    vd_mais_segundo_pr: null
-  },
-  {
-    segmento_ml: 'Brastemp',
-    codigo: '311662',
-    nome: 'TAMPA DA GAVETA LEGUMES BRM38/BRM39+ BRASTEMP',
-    cod_adicional_1: 'W10287527',
-    estoque: 5,
-    vds_6m: 4,
-    a_vista_cp: 198.04,
-    liq_ml_envios: 198.42,
-    pr_cp_ml: 326.50,
-    pr_vende_mais: 148.00,
-    liq_ml_full: null,
-    full_price: 99.76,
-    segundo_preco: 190.12,
-    cod_adicional_2: '',
-    cod_adicional_3: '',
-    cod_adicional_4: '',
-    cod_adicional_5: '',
-    codigo_barras: '7891129254770',
-    nome_fabricante: 'WHIRLPOOL',
-    link_campos: 'https://www.mercadolivre.com.br',
-    link_vd_mais: 'https://www.mercadolivre.com.br',
-    vd_mais_segundo_pr: null
-  },
-  {
-    segmento_ml: 'Consul',
-    codigo: '311666',
-    nome: 'TAMPA DA GAVETA LEGUMES CRC30/CRA30+ CONSUL',
-    cod_adicional_1: 'W10212441',
-    estoque: 18,
-    vds_6m: 6,
-    a_vista_cp: 35.76,
-    liq_ml_envios: 35.99,
-    pr_cp_ml: 51.50,
-    pr_vende_mais: 46.49,
-    liq_ml_full: null,
     full_price: null,
     segundo_preco: null,
     cod_adicional_2: '',
     cod_adicional_3: '',
     cod_adicional_4: '',
     cod_adicional_5: '',
-    codigo_barras: '7891129259850',
+    codigo_barras: '7891129202875',
     nome_fabricante: 'WHIRLPOOL',
     link_campos: 'https://www.mercadolivre.com.br',
-    link_vd_mais: 'https://www.mercadolivre.com.br',
+    link_vd_mais: '',
     vd_mais_segundo_pr: null
   },
   {
     segmento_ml: 'Electrolux',
-    codigo: '212086',
-    nome: 'TAMPA DA GAVETA LEGUMES DF42/DFN42+ ELECTROLUX',
-    cod_adicional_1: 'A99338503',
-    estoque: 18,
-    vds_6m: 11,
-    a_vista_cp: 112.80,
-    liq_ml_envios: 112.86,
-    pr_cp_ml: 189.50,
-    pr_vende_mais: 117.14,
-    liq_ml_full: null,
-    full_price: null,
-    segundo_preco: 70201022,
-    cod_adicional_2: '41019674',
+    codigo: '104322',
+    nome: 'PLACA POTENCIA REFRIGERADOR ELECTROLUX DFW52/DW52X 127V/220V',
+    cod_adicional_1: '64502391',
+    estoque: 15,
+    vds_6m: 8,
+    a_vista_cp: 210.00,
+    liq_ml_envios: 205.50,
+    pr_cp_ml: 310.00,
+    pr_vende_mais: 280.00,
+    liq_ml_full: 215.00,
+    full_price: 325.00,
+    segundo_preco: 299.90,
+    cod_adicional_2: '',
     cod_adicional_3: '',
     cod_adicional_4: '',
     cod_adicional_5: '',
@@ -158,6 +88,32 @@ const SAMPLE_ITEMS = [
   }
 ];
 
+const EMPTY_FORM = {
+  id: '',
+  segmento_ml: '',
+  codigo: '',
+  nome: '',
+  cod_adicional_1: '',
+  estoque: '0',
+  vds_6m: '0',
+  a_vista_cp: '',
+  liq_ml_envios: '',
+  pr_cp_ml: '',
+  pr_vende_mais: '',
+  liq_ml_full: '',
+  full_price: '',
+  segundo_preco: '',
+  cod_adicional_2: '',
+  cod_adicional_3: '',
+  cod_adicional_4: '',
+  cod_adicional_5: '',
+  codigo_barras: '',
+  nome_fabricante: '',
+  link_campos: '',
+  link_vd_mais: '',
+  vd_mais_segundo_pr: ''
+};
+
 export default function MercadoLivreResearchPage() {
   const { isDarkMode } = useTheme();
   const [items, setItems] = useState<MLItem[]>([]);
@@ -165,33 +121,14 @@ export default function MercadoLivreResearchPage() {
   const [search, setSearch] = useState('');
   const [segmentFilter, setSegmentFilter] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineFormData, setInlineFormData] = useState<any>({});
   const [missingTableInfo, setMissingTableInfo] = useState<{ missing: boolean; sql?: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [formData, setFormData] = useState({
-    segmento_ml: '',
-    codigo: '',
-    nome: '',
-    cod_adicional_1: '',
-    estoque: '0',
-    vds_6m: '0',
-    a_vista_cp: '',
-    liq_ml_envios: '',
-    pr_cp_ml: '',
-    pr_vende_mais: '',
-    liq_ml_full: '',
-    full_price: '',
-    segundo_preco: '',
-    cod_adicional_2: '',
-    cod_adicional_3: '',
-    cod_adicional_4: '',
-    cod_adicional_5: '',
-    codigo_barras: '',
-    nome_fabricante: '',
-    link_campos: '',
-    link_vd_mais: '',
-    vd_mais_segundo_pr: ''
-  });
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -235,50 +172,101 @@ export default function MercadoLivreResearchPage() {
     }
   };
 
+  const openNewModal = () => {
+    setEditingId(null);
+    setFormData(EMPTY_FORM);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (item: MLItem) => {
+    setEditingId(item.id);
+    setFormData({
+      id: item.id,
+      segmento_ml: item.segmento_ml || '',
+      codigo: item.codigo || '',
+      nome: item.nome || '',
+      cod_adicional_1: item.cod_adicional_1 || '',
+      estoque: String(item.estoque ?? 0),
+      vds_6m: String(item.vds_6m ?? 0),
+      a_vista_cp: item.a_vista_cp !== null ? String(item.a_vista_cp) : '',
+      liq_ml_envios: item.liq_ml_envios !== null ? String(item.liq_ml_envios) : '',
+      pr_cp_ml: item.pr_cp_ml !== null ? String(item.pr_cp_ml) : '',
+      pr_vende_mais: item.pr_vende_mais !== null ? String(item.pr_vende_mais) : '',
+      liq_ml_full: item.liq_ml_full !== null ? String(item.liq_ml_full) : '',
+      full_price: item.full_price !== null ? String(item.full_price) : '',
+      segundo_preco: item.segundo_preco !== null ? String(item.segundo_preco) : '',
+      cod_adicional_2: item.cod_adicional_2 || '',
+      cod_adicional_3: item.cod_adicional_3 || '',
+      cod_adicional_4: item.cod_adicional_4 || '',
+      cod_adicional_5: item.cod_adicional_5 || '',
+      codigo_barras: item.codigo_barras || '',
+      nome_fabricante: item.nome_fabricante || '',
+      link_campos: item.link_campos || '',
+      link_vd_mais: item.link_vd_mais || '',
+      vd_mais_segundo_pr: item.vd_mais_segundo_pr !== null ? String(item.vd_mais_segundo_pr) : ''
+    });
+    setIsModalOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/mercado-livre', {
-        method: 'POST',
+      const isEdit = Boolean(editingId);
+      const url = '/api/mercado-livre';
+      const method = isEdit ? 'PUT' : 'POST';
+
+      const payload = isEdit ? { id: editingId, ...formData } : formData;
+
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(payload)
       });
       const json = await res.json();
       if (res.ok) {
         setIsModalOpen(false);
-        setFormData({
-          segmento_ml: '',
-          codigo: '',
-          nome: '',
-          cod_adicional_1: '',
-          estoque: '0',
-          vds_6m: '0',
-          a_vista_cp: '',
-          liq_ml_envios: '',
-          pr_cp_ml: '',
-          pr_vende_mais: '',
-          liq_ml_full: '',
-          full_price: '',
-          segundo_preco: '',
-          cod_adicional_2: '',
-          cod_adicional_3: '',
-          cod_adicional_4: '',
-          cod_adicional_5: '',
-          codigo_barras: '',
-          nome_fabricante: '',
-          link_campos: '',
-          link_vd_mais: '',
-          vd_mais_segundo_pr: ''
-        });
+        setEditingId(null);
+        setFormData(EMPTY_FORM);
         fetchItems();
       } else if (json.missing_table) {
         setMissingTableInfo({ missing: true, sql: json.create_sql });
         alert(json.error);
       } else {
-        alert(json.error || 'Erro ao salvar');
+        alert(json.error || 'Erro ao salvar registro.');
       }
     } catch (err: any) {
       alert('Erro de conexão: ' + err.message);
+    }
+  };
+
+  const startInlineEdit = (item: MLItem) => {
+    setInlineEditingId(item.id);
+    setInlineFormData({ ...item });
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEditingId(null);
+    setInlineFormData({});
+  };
+
+  const saveInlineEdit = async () => {
+    if (!inlineEditingId) return;
+    try {
+      const res = await fetch('/api/mercado-livre', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: inlineEditingId, ...inlineFormData })
+      });
+      if (res.ok) {
+        setInlineEditingId(null);
+        setInlineFormData({});
+        fetchItems();
+      } else {
+        const json = await res.json();
+        alert(json.error || 'Erro ao salvar alteração inline.');
+      }
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + err.message);
     }
   };
 
@@ -299,70 +287,254 @@ export default function MercadoLivreResearchPage() {
     }
   };
 
-  const uniqueSegments = useMemo(() => {
-    const s = new Set<string>();
-    items.forEach(i => { if (i.segmento_ml) s.add(i.segmento_ml); });
-    return Array.from(s).sort();
-  }, [items]);
+  // Exportar Excel
+  const handleExportExcel = () => {
+    if (filteredItems.length === 0) {
+      alert('Nenhum registro para exportar.');
+      return;
+    }
+
+    const exportData = filteredItems.map(item => ({
+      'Segmento ML': item.segmento_ml || '',
+      'Código': item.codigo || '',
+      'Nome': item.nome || '',
+      'Cód. Adicional 1': item.cod_adicional_1 || '',
+      'Estoque': item.estoque ?? 0,
+      'Vds 6M': item.vds_6m ?? 0,
+      'À Vista CP': item.a_vista_cp ?? '',
+      'Liq. ML Envios': item.liq_ml_envios ?? '',
+      'Pr. CP ML': item.pr_cp_ml ?? '',
+      'Pr. Vende+': item.pr_vende_mais ?? '',
+      'Liq. ML Full': item.liq_ml_full ?? '',
+      'FULL': item.full_price ?? '',
+      '2º Preço': item.segundo_preco ?? '',
+      'Cód. Adic. 2': item.cod_adicional_2 || '',
+      'Cód. Adic. 3': item.cod_adicional_3 || '',
+      'Cód. Adic. 4': item.cod_adicional_4 || '',
+      'Cód. Adic. 5': item.cod_adicional_5 || '',
+      'Código Barras': item.codigo_barras || '',
+      'Nome Fabricante': item.nome_fabricante || '',
+      'Link Campos': item.link_campos || '',
+      'Link Vd+': item.link_vd_mais || '',
+      'Vd+ 2º Pr.': item.vd_mais_segundo_pr ?? ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pesquisa Mercado Livre');
+    XLSX.writeFile(workbook, `Pesquisa_Mercado_Livre_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Importar Excel / CSV
+  const handleTriggerImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+
+        if (rawData.length === 0) {
+          alert('O arquivo selecionado está vazio ou não possui linhas válidas.');
+          return;
+        }
+
+        const mapped = rawData.map(row => {
+          const getVal = (...keys: string[]) => {
+            for (const k of keys) {
+              const foundKey = Object.keys(row).find(rk => rk.trim().toLowerCase() === k.trim().toLowerCase());
+              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
+                return row[foundKey];
+              }
+            }
+            return null;
+          };
+
+          return {
+            segmento_ml: getVal('Segmento ML', 'Segmento', 'segmento_ml', 'segmento'),
+            codigo: getVal('Código', 'Codigo', 'codigo', 'cod'),
+            nome: getVal('Nome', 'Nome do Produto', 'nome_produto', 'produto', 'descricao'),
+            cod_adicional_1: getVal('Cód. Adicional 1', 'Cod. Adicional 1', 'cod_adicional_1', 'cod_adic_1'),
+            estoque: getVal('Estoque', 'estoque', 'qtd'),
+            vds_6m: getVal('Vds 6M', 'Vendas 6M', 'vds_6m', 'vendas_6m'),
+            a_vista_cp: getVal('À Vista CP', 'A Vista CP', 'a_vista_cp', 'a_vista'),
+            liq_ml_envios: getVal('Liq. ML Envios', 'Liq ML Envios', 'liq_ml_envios'),
+            pr_cp_ml: getVal('Pr. CP ML', 'Pr CP ML', 'pr_cp_ml', 'preco_cp_ml'),
+            pr_vende_mais: getVal('Pr. Vende+', 'Pr Vende+', 'pr_vende_mais'),
+            liq_ml_full: getVal('Liq. ML Full', 'Liq ML Full', 'liq_ml_full'),
+            full_price: getVal('FULL', 'Full', 'full_price', 'preco_full'),
+            segundo_preco: getVal('2º Preço', '2o Preco', 'segundo_preco'),
+            cod_adicional_2: getVal('Cód. Adic. 2', 'cod_adicional_2'),
+            cod_adicional_3: getVal('Cód. Adic. 3', 'cod_adicional_3'),
+            cod_adicional_4: getVal('Cód. Adic. 4', 'cod_adicional_4'),
+            cod_adicional_5: getVal('Cód. Adic. 5', 'cod_adicional_5'),
+            codigo_barras: getVal('Código Barras', 'Codigo Barras', 'codigo_barras', 'ean'),
+            nome_fabricante: getVal('Nome Fabricante', 'Fabricante', 'nome_fabricante', 'marca'),
+            link_campos: getVal('Link Campos', 'link_campos'),
+            link_vd_mais: getVal('Link Vd+', 'link_vd_mais'),
+            vd_mais_segundo_pr: getVal('Vd+ 2º Pr.', 'vd_mais_segundo_pr')
+          };
+        });
+
+        if (!confirm(`Foram encontrados ${mapped.length} registros no arquivo. Deseja importar para a pesquisa de preços do Mercado Livre?`)) {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+
+        setLoading(true);
+        const res = await fetch('/api/mercado-livre', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mapped)
+        });
+
+        const json = await res.json();
+        if (res.ok) {
+          alert(`Importação concluída com sucesso! ${json.count || mapped.length} itens adicionados.`);
+          fetchItems();
+        } else {
+          alert(json.error || 'Erro ao importar arquivo.');
+        }
+      } catch (err: any) {
+        alert('Erro ao processar arquivo: ' + err.message);
+      } finally {
+        setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      const matchSearch = 
-        (item.nome || '').toLowerCase().includes(search.toLowerCase()) ||
-        (item.codigo || '').toLowerCase().includes(search.toLowerCase()) ||
-        (item.codigo_barras || '').toLowerCase().includes(search.toLowerCase()) ||
-        (item.cod_adicional_1 || '').toLowerCase().includes(search.toLowerCase());
-      
-      const matchSegment = segmentFilter === 'ALL' || item.segmento_ml === segmentFilter;
+      const q = search.toLowerCase().trim();
+      const matchesSearch = !q || 
+        (item.nome && item.nome.toLowerCase().includes(q)) ||
+        (item.codigo && item.codigo.toLowerCase().includes(q)) ||
+        (item.segmento_ml && item.segmento_ml.toLowerCase().includes(q)) ||
+        (item.codigo_barras && item.codigo_barras.toLowerCase().includes(q)) ||
+        (item.cod_adicional_1 && item.cod_adicional_1.toLowerCase().includes(q));
 
-      return matchSearch && matchSegment;
+      const matchesSegment = segmentFilter === 'ALL' || item.segmento_ml === segmentFilter;
+
+      return matchesSearch && matchesSegment;
     });
   }, [items, search, segmentFilter]);
 
+  const uniqueSegments = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach(i => { if (i.segmento_ml) set.add(i.segmento_ml); });
+    return Array.from(set).sort();
+  }, [items]);
+
   const formatCurrency = (val: number | null) => {
-    if (val === null || val === undefined || isNaN(val)) return '-';
-    return Number(val).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (val === null || val === undefined) return '-';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
   return (
-    <div className={`min-h-screen pb-16 transition-colors ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      {/* Top Header */}
-      <header className={`sticky top-0 z-30 border-b backdrop-blur-md ${isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div className={`min-h-screen pb-16 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
+      {/* Hidden File Input for Import */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        accept=".xlsx, .xls, .csv" 
+        className="hidden" 
+      />
+
+      {/* Header Bar */}
+      <div className="max-w-[98%] mx-auto px-2 sm:px-4 lg:px-6 pt-4">
+        <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-2xl w-fit">
+          <Link
+            href="/price-research"
+            className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-2"
+          >
+            <Tag className="w-4 h-4" />
+            <span>Pesquisa Concorrentes</span>
+          </Link>
+          <Link
+            href="/mercado-livre"
+            className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white dark:bg-slate-900 text-amber-500 shadow-xs flex items-center gap-2"
+          >
+            <Store className="w-4 h-4" />
+            <span>Mercado Livre</span>
+          </Link>
+        </div>
+      </div>
+
+      <header className={`sticky top-0 z-30 border-b backdrop-blur-md ${
+        isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white/90 border-slate-200'
+      }`}>
+        <div className="max-w-[98%] mx-auto px-2 sm:px-4 lg:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link 
-              href="/social-media" 
-              className={`p-2 rounded-xl border transition-colors flex items-center gap-1.5 text-xs font-semibold ${isDarkMode ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300' : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'}`}
-              title="Voltar para Site"
+            <Link
+              href="/"
+              className={`p-2 rounded-xl border transition-colors ${
+                isDarkMode ? 'border-slate-800 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
+              }`}
             >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Voltar para Site</span>
+              <ArrowLeft className="w-5 h-5" />
             </Link>
-            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500">
-              <Tag className="w-6 h-6" />
-            </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">Pesquisa de Preços - Mercado Livre</h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Gerenciador e comparador de preços e concorrentes do Mercado Livre</p>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
+                  MERCADO LIVRE
+                </span>
+                <h1 className="text-xl font-bold tracking-tight">Pesquisa de Preços Mercado Livre</h1>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Planilha comparativa e precificação oficial Mercado Livre
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Importar Excel / CSV */}
+            <button
+              onClick={handleTriggerImport}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium text-xs sm:text-sm border border-slate-700 shadow-xs transition-colors flex items-center gap-2"
+              title="Importar planilha Excel ou CSV"
+            >
+              <Upload className="w-4 h-4 text-amber-400" />
+              <span>Importar</span>
+            </button>
+
+            {/* Exportar Excel */}
+            <button
+              onClick={handleExportExcel}
+              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-2"
+              title="Exportar registros filtrados para Excel"
+            >
+              <Download className="w-4 h-4" />
+              <span>Exportar Excel</span>
+            </button>
+
             {items.length === 0 && (
               <button
                 onClick={handleSeedSample}
-                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-medium text-xs sm:text-sm shadow-sm transition-colors flex items-center gap-2"
+                className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/30 font-medium text-xs sm:text-sm transition-colors flex items-center gap-2"
               >
-                <Plus className="w-4 h-4" />
-                Carregar Exemplo da Planilha
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Carregar Exemplos</span>
               </button>
             )}
+
             <button
-              onClick={() => setIsModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs sm:text-sm shadow-sm transition-colors flex items-center gap-2"
+              onClick={openNewModal}
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-2"
             >
               <Plus className="w-4 h-4" />
-              Adicionar Item
+              <span>Adicionar Item</span>
             </button>
           </div>
         </div>
@@ -375,7 +547,7 @@ export default function MercadoLivreResearchPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5 font-bold">
                 <AlertCircle className="w-5 h-5 text-amber-500" />
-                <span>A tabela 'mercado_livre_research' não foi encontrada no banco de dados Supabase.</span>
+                <span>A tabela &apos;mercado_livre_research&apos; não foi encontrada no banco de dados Supabase.</span>
               </div>
               <button
                 onClick={() => {
@@ -434,7 +606,7 @@ export default function MercadoLivreResearchPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
             <span>Total de registros: <strong className="text-slate-900 dark:text-white">{filteredItems.length}</strong></span>
             <button
               onClick={fetchItems}
@@ -442,7 +614,7 @@ export default function MercadoLivreResearchPage() {
               className={`p-2 rounded-xl border transition-colors ${
                 isDarkMode ? 'border-slate-800 hover:bg-slate-800 text-slate-300' : 'border-slate-200 hover:bg-slate-100 text-slate-700'
               }`}
-              title="Atualizar"
+              title="Atualizar dados"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
@@ -481,7 +653,7 @@ export default function MercadoLivreResearchPage() {
                   <th className="p-3 border-r dark:border-slate-700">Link Campos</th>
                   <th className="p-3 border-r dark:border-slate-700">Link Vd+</th>
                   <th className="p-3 border-r dark:border-slate-700 text-right">Vd+ 2º Pr.</th>
-                  <th className="p-3 text-center">Ações</th>
+                  <th className="p-3 text-center sticky right-0 z-30 bg-slate-800 dark:bg-slate-800 text-slate-100">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -497,70 +669,340 @@ export default function MercadoLivreResearchPage() {
                       <div className="flex flex-col items-center justify-center space-y-3">
                         <Tag className="w-10 h-10 text-slate-400" />
                         <p className="font-medium text-sm">Nenhum registro encontrado.</p>
-                        <button
-                          onClick={handleSeedSample}
-                          className="px-4 py-2 rounded-xl bg-amber-500 text-white font-medium text-xs hover:bg-amber-600 transition-colors"
-                        >
-                          Carregar Exemplos da Planilha
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleTriggerImport}
+                            className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-medium flex items-center gap-1.5 hover:bg-slate-700 transition-colors"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-amber-400" />
+                            Importar Planilha
+                          </button>
+                          <button
+                            onClick={openNewModal}
+                            className="px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-medium flex items-center gap-1.5 hover:bg-blue-700 transition-colors"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Cadastrar Item
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredItems.map((item, idx) => (
-                    <tr 
-                      key={item.id} 
-                      className={`transition-colors hover:bg-blue-500/5 ${
-                        idx % 2 === 0 
-                          ? (isDarkMode ? 'bg-slate-900/40' : 'bg-white') 
-                          : (isDarkMode ? 'bg-slate-900/80' : 'bg-slate-50/50')
-                      }`}
-                    >
-                      <td className="p-3 border-r dark:border-slate-800 font-medium">{item.segmento_ml || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono text-blue-600 dark:text-blue-400 font-semibold">{item.codigo || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-medium max-w-[320px] truncate" title={item.nome || ''}>{item.nome || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_1 || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-center font-semibold">{item.estoque ?? 0}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-center">{item.vds_6m ?? 0}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.a_vista_cp)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.liq_ml_envios)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.pr_cp_ml)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right font-bold bg-blue-500/5 text-blue-600 dark:text-blue-400">{formatCurrency(item.pr_vende_mais)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.liq_ml_full)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right font-medium">{formatCurrency(item.full_price)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.segundo_preco)}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_2 || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_3 || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_4 || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_5 || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800 font-mono">{item.codigo_barras || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800">{item.nome_fabricante || '-'}</td>
-                      <td className="p-3 border-r dark:border-slate-800">
-                        {item.link_campos ? (
-                          <a href={item.link_campos} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline flex items-center gap-1">
-                            Link <ExternalLink className="w-3 h-3" />
-                          </a>
-                        ) : '-'}
-                      </td>
-                      <td className="p-3 border-r dark:border-slate-800">
-                        {item.link_vd_mais ? (
-                          <a href={item.link_vd_mais} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline flex items-center gap-1">
-                            Link <ExternalLink className="w-3 h-3" />
-                          </a>
-                        ) : '-'}
-                      </td>
-                      <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.vd_mais_segundo_pr)}</td>
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => handleDelete(item.id)}
-                          className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  filteredItems.map((item) => {
+                    const isInlineEditing = inlineEditingId === item.id;
+
+                    if (isInlineEditing) {
+                      return (
+                        <tr key={item.id} className="bg-amber-500/10 dark:bg-amber-500/20 font-medium">
+                          {/* Segmento ML */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.segmento_ml || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, segmento_ml: e.target.value })}
+                              className="w-full px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Código */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.codigo || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, codigo: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Nome */}
+                          <td className="p-1 border-r dark:border-slate-800 min-w-[280px]">
+                            <input
+                              type="text"
+                              value={inlineFormData.nome || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, nome: e.target.value })}
+                              className="w-full px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Cód Adicional 1 */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.cod_adicional_1 || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, cod_adicional_1: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Estoque */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              value={inlineFormData.estoque ?? 0}
+                              onChange={e => setInlineFormData({ ...inlineFormData, estoque: e.target.value })}
+                              className="w-16 px-2 py-1 text-xs text-center rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Vds 6M */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              value={inlineFormData.vds_6m ?? 0}
+                              onChange={e => setInlineFormData({ ...inlineFormData, vds_6m: e.target.value })}
+                              className="w-16 px-2 py-1 text-xs text-center rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* À Vista CP */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.a_vista_cp ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, a_vista_cp: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Liq ML Envios */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.liq_ml_envios ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, liq_ml_envios: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Pr CP ML */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.pr_cp_ml ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, pr_cp_ml: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Pr Vende+ */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.pr_vende_mais ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, pr_vende_mais: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-blue-500/50 bg-slate-900 text-white font-bold"
+                            />
+                          </td>
+                          {/* Liq ML Full */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.liq_ml_full ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, liq_ml_full: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* FULL */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.full_price ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, full_price: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* 2º Preço */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.segundo_preco ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, segundo_preco: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Cód Adic 2 */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.cod_adicional_2 || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, cod_adicional_2: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Cód Adic 3 */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.cod_adicional_3 || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, cod_adicional_3: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Cód Adic 4 */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.cod_adicional_4 || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, cod_adicional_4: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Cód Adic 5 */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.cod_adicional_5 || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, cod_adicional_5: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Código Barras */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.codigo_barras || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, codigo_barras: e.target.value })}
+                              className="w-32 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Fabricante */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.nome_fabricante || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, nome_fabricante: e.target.value })}
+                              className="w-28 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Link Campos */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.link_campos || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, link_campos: e.target.value })}
+                              className="w-36 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Link Vd+ */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="text"
+                              value={inlineFormData.link_vd_mais || ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, link_vd_mais: e.target.value })}
+                              className="w-36 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Vd+ 2º Pr. */}
+                          <td className="p-1 border-r dark:border-slate-800">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={inlineFormData.vd_mais_segundo_pr ?? ''}
+                              onChange={e => setInlineFormData({ ...inlineFormData, vd_mais_segundo_pr: e.target.value })}
+                              className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                            />
+                          </td>
+                          {/* Inline Save / Cancel */}
+                          <td className="p-1 text-center sticky right-0 z-30 bg-slate-900 shadow-md">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={saveInlineEdit}
+                                className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                                title="Salvar Alterações"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={cancelInlineEdit}
+                                className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                                title="Cancelar"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    return (
+                      <tr 
+                        key={item.id} 
+                        className={`hover:bg-slate-500/5 transition-colors group ${
+                          isDarkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="p-3 border-r dark:border-slate-800 font-semibold text-amber-500">{item.segmento_ml || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-400">{item.codigo || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-medium text-slate-900 dark:text-slate-100 min-w-[280px]">
+                          {item.nome || '-'}
+                        </td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-400">{item.cod_adicional_1 || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-center font-bold">{item.estoque ?? 0}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-center font-bold text-slate-400">{item.vds_6m ?? 0}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.a_vista_cp)}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.liq_ml_envios)}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.pr_cp_ml)}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right font-bold text-blue-600 dark:text-blue-400 bg-blue-500/5">
+                          {formatCurrency(item.pr_vende_mais)}
+                        </td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.liq_ml_full)}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right font-semibold text-amber-500">{formatCurrency(item.full_price)}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.segundo_preco)}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_2 || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_3 || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_4 || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_5 || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-400">{item.codigo_barras || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 text-slate-400">{item.nome_fabricante || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800">
+                          {item.link_campos ? (
+                            <a href={item.link_campos} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline flex items-center gap-1">
+                              Link <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td className="p-3 border-r dark:border-slate-800">
+                          {item.link_vd_mais ? (
+                            <a href={item.link_vd_mais} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline flex items-center gap-1">
+                              Link <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.vd_mais_segundo_pr)}</td>
+                        {/* Actions column */}
+                        <td className="p-3 text-center sticky right-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Fast Inline Edit */}
+                            <button
+                              onClick={() => startInlineEdit(item)}
+                              className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-500/10 transition-colors"
+                              title="Editar na Tabela"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Full Edit Modal */}
+                            <button
+                              onClick={() => openEditModal(item)}
+                              className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-500/10 transition-colors"
+                              title="Editar em Formulário"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Delete */}
+                            <button
+                              onClick={() => handleDelete(item.id)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -568,20 +1010,24 @@ export default function MercadoLivreResearchPage() {
         </div>
       </main>
 
-      {/* Modal Adicionar Item */}
+      {/* Modal Adicionar / Editar Item */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl border p-6 ${
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl border p-6 my-8 ${
             isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900'
           }`}>
             <div className="flex items-center justify-between pb-4 mb-6 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-600 text-white">
-                  <Tag className="w-5 h-5" />
+                <div className={`p-2.5 rounded-xl ${editingId ? 'bg-amber-500 text-slate-950' : 'bg-blue-600 text-white'}`}>
+                  {editingId ? <Edit2 className="w-5 h-5" /> : <Tag className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold">Novo Item de Pesquisa Mercado Livre</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Preencha os campos da pesquisa de preço</p>
+                  <h2 className="text-lg font-bold">
+                    {editingId ? 'Editar Item de Pesquisa Mercado Livre' : 'Novo Item de Pesquisa Mercado Livre'}
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {editingId ? 'Edite os campos e salve as alterações no banco' : 'Preencha os campos da pesquisa de preço'}
+                  </p>
                 </div>
               </div>
               <button
@@ -592,249 +1038,283 @@ export default function MercadoLivreResearchPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Segmento ML</label>
-                  <input
-                    type="text"
-                    value={formData.segmento_ml}
-                    onChange={e => setFormData({ ...formData, segmento_ml: e.target.value })}
-                    placeholder="Ex: Brastemp"
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Código</label>
-                  <input
-                    type="text"
-                    value={formData.codigo}
-                    onChange={e => setFormData({ ...formData, codigo: e.target.value })}
-                    placeholder="Ex: 212445"
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Nome do Produto</label>
-                  <input
-                    type="text"
-                    value={formData.nome}
-                    onChange={e => setFormData({ ...formData, nome: e.target.value })}
-                    placeholder="Ex: FRONTAL DA GAVETA..."
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Cód. Adicional 1</label>
-                  <input
-                    type="text"
-                    value={formData.cod_adicional_1}
-                    onChange={e => setFormData({ ...formData, cod_adicional_1: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Estoque</label>
-                  <input
-                    type="number"
-                    value={formData.estoque}
-                    onChange={e => setFormData({ ...formData, estoque: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Vds 6M</label>
-                  <input
-                    type="number"
-                    value={formData.vds_6m}
-                    onChange={e => setFormData({ ...formData, vds_6m: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">À Vista CP (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.a_vista_cp}
-                    onChange={e => setFormData({ ...formData, a_vista_cp: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Seção 1: Identificação */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b pb-1 dark:border-slate-800">
+                  Identificação do Produto
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Segmento ML</label>
+                    <input
+                      type="text"
+                      value={formData.segmento_ml}
+                      onChange={e => setFormData({ ...formData, segmento_ml: e.target.value })}
+                      placeholder="Ex: Brastemp"
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Código</label>
+                    <input
+                      type="text"
+                      value={formData.codigo}
+                      onChange={e => setFormData({ ...formData, codigo: e.target.value })}
+                      placeholder="Ex: 212445"
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Nome do Produto</label>
+                    <input
+                      type="text"
+                      value={formData.nome}
+                      onChange={e => setFormData({ ...formData, nome: e.target.value })}
+                      placeholder="Ex: FRONTAL DA GAVETA..."
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Liq. ML Envios (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.liq_ml_envios}
-                    onChange={e => setFormData({ ...formData, liq_ml_envios: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+              {/* Seção 2: Códigos Adicionais e Fabricante */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b pb-1 dark:border-slate-800">
+                  Códigos Adicionais & Fabricante
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Cód. Adicional 1</label>
+                    <input
+                      type="text"
+                      value={formData.cod_adicional_1}
+                      onChange={e => setFormData({ ...formData, cod_adicional_1: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Cód. Adicional 2</label>
+                    <input
+                      type="text"
+                      value={formData.cod_adicional_2}
+                      onChange={e => setFormData({ ...formData, cod_adicional_2: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Cód. Adicional 3</label>
+                    <input
+                      type="text"
+                      value={formData.cod_adicional_3}
+                      onChange={e => setFormData({ ...formData, cod_adicional_3: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Cód. Adicional 4</label>
+                    <input
+                      type="text"
+                      value={formData.cod_adicional_4}
+                      onChange={e => setFormData({ ...formData, cod_adicional_4: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Pr. CP ML (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.pr_cp_ml}
-                    onChange={e => setFormData({ ...formData, pr_cp_ml: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Pr. Vende+ (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.pr_vende_mais}
-                    onChange={e => setFormData({ ...formData, pr_vende_mais: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Liq. ML Full (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.liq_ml_full}
-                    onChange={e => setFormData({ ...formData, liq_ml_full: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Cód. Adicional 5</label>
+                    <input
+                      type="text"
+                      value={formData.cod_adicional_5}
+                      onChange={e => setFormData({ ...formData, cod_adicional_5: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Código de Barras (EAN)</label>
+                    <input
+                      type="text"
+                      value={formData.codigo_barras}
+                      onChange={e => setFormData({ ...formData, codigo_barras: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Nome Fabricante</label>
+                    <input
+                      type="text"
+                      value={formData.nome_fabricante}
+                      onChange={e => setFormData({ ...formData, nome_fabricante: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">FULL (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.full_price}
-                    onChange={e => setFormData({ ...formData, full_price: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">2º Preço (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.segundo_preco}
-                    onChange={e => setFormData({ ...formData, segundo_preco: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Cód. Adicional 2</label>
-                  <input
-                    type="text"
-                    value={formData.cod_adicional_2}
-                    onChange={e => setFormData({ ...formData, cod_adicional_2: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Cód. Adicional 3</label>
-                  <input
-                    type="text"
-                    value={formData.cod_adicional_3}
-                    onChange={e => setFormData({ ...formData, cod_adicional_3: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+              {/* Seção 3: Estoque e Vendas */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b pb-1 dark:border-slate-800">
+                  Estoque & Vendas
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Estoque</label>
+                    <input
+                      type="number"
+                      value={formData.estoque}
+                      onChange={e => setFormData({ ...formData, estoque: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Vds 6M (Vendas 6 Meses)</label>
+                    <input
+                      type="number"
+                      value={formData.vds_6m}
+                      onChange={e => setFormData({ ...formData, vds_6m: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Cód. Adicional 4</label>
-                  <input
-                    type="text"
-                    value={formData.cod_adicional_4}
-                    onChange={e => setFormData({ ...formData, cod_adicional_4: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+              {/* Seção 4: Valores e Precificação */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b pb-1 dark:border-slate-800">
+                  Preços & Liquidez Mercado Livre (R$)
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">À Vista CP (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.a_vista_cp}
+                      onChange={e => setFormData({ ...formData, a_vista_cp: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Liq. ML Envios (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.liq_ml_envios}
+                      onChange={e => setFormData({ ...formData, liq_ml_envios: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Pr. CP ML (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.pr_cp_ml}
+                      onChange={e => setFormData({ ...formData, pr_cp_ml: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 text-blue-500 font-bold">Pr. Vende+ (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.pr_vende_mais}
+                      onChange={e => setFormData({ ...formData, pr_vende_mais: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm font-bold rounded-xl border border-blue-500/50 ${isDarkMode ? 'bg-slate-800 text-white' : 'bg-blue-50/50 text-blue-900'}`}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Cód. Adicional 5</label>
-                  <input
-                    type="text"
-                    value={formData.cod_adicional_5}
-                    onChange={e => setFormData({ ...formData, cod_adicional_5: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Código de Barras</label>
-                  <input
-                    type="text"
-                    value={formData.codigo_barras}
-                    onChange={e => setFormData({ ...formData, codigo_barras: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Nome Fabricante</label>
-                  <input
-                    type="text"
-                    value={formData.nome_fabricante}
-                    onChange={e => setFormData({ ...formData, nome_fabricante: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-2">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Liq. ML Full (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.liq_ml_full}
+                      onChange={e => setFormData({ ...formData, liq_ml_full: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">FULL Price (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.full_price}
+                      onChange={e => setFormData({ ...formData, full_price: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">2º Preço (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.segundo_preco}
+                      onChange={e => setFormData({ ...formData, segundo_preco: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Vd+ 2º Pr. (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={formData.vd_mais_segundo_pr}
+                      onChange={e => setFormData({ ...formData, vd_mais_segundo_pr: e.target.value })}
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Link Campos</label>
-                  <input
-                    type="text"
-                    value={formData.link_campos}
-                    onChange={e => setFormData({ ...formData, link_campos: e.target.value })}
-                    placeholder="https://..."
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Link Vd+</label>
-                  <input
-                    type="text"
-                    value={formData.link_vd_mais}
-                    onChange={e => setFormData({ ...formData, link_vd_mais: e.target.value })}
-                    placeholder="https://..."
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold mb-1">Vd+ 2º Pr. (R$)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.vd_mais_segundo_pr}
-                    onChange={e => setFormData({ ...formData, vd_mais_segundo_pr: e.target.value })}
-                    className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
-                  />
+              {/* Seção 5: Links */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 border-b pb-1 dark:border-slate-800">
+                  Links Externos
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Link Campos (Mercado Livre)</label>
+                    <input
+                      type="text"
+                      value={formData.link_campos}
+                      onChange={e => setFormData({ ...formData, link_campos: e.target.value })}
+                      placeholder="https://www.mercadolivre.com.br/..."
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold mb-1">Link Vd+ (Vende Mais)</label>
+                    <input
+                      type="text"
+                      value={formData.link_vd_mais}
+                      onChange={e => setFormData({ ...formData, link_vd_mais: e.target.value })}
+                      placeholder="https://www.mercadolivre.com.br/..."
+                      className={`w-full px-3 py-2 text-sm rounded-xl border ${isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-sm font-medium border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="px-5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-medium transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow-sm"
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md transition-colors flex items-center gap-2"
                 >
-                  Salvar Registro
+                  <Save className="w-4 h-4" />
+                  {editingId ? 'Salvar Alterações' : 'Cadastrar Item'}
                 </button>
               </div>
             </form>

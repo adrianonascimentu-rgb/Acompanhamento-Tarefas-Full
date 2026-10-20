@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Tag, Search, Trash2, RefreshCw, PlusCircle, Store, Calendar, DollarSign, Package, Filter, SlidersHorizontal, RotateCcw, X } from 'lucide-react';
+import { 
+  ArrowLeft, Tag, Search, Trash2, RefreshCw, PlusCircle, Store, Calendar, 
+  DollarSign, Package, Filter, SlidersHorizontal, RotateCcw, X, Upload, 
+  Download, Edit2, Check, Save, FileSpreadsheet
+} from 'lucide-react';
 import PriceResearchForm from '@/components/PriceResearchForm';
 import PriceEvolutionChart from '@/components/PriceEvolutionChart';
+import * as XLSX from 'xlsx';
 
 interface PriceResearchItem {
   id: string;
@@ -23,6 +28,10 @@ export default function PriceResearchPage() {
   const [showForm, setShowForm] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Estados de Edição Inline
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineFormData, setInlineFormData] = useState<any>({});
+
   // Estados dos Filtros Avançados
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -36,6 +45,8 @@ export default function PriceResearchPage() {
   const [hoveredLegend, setHoveredLegend] = useState<'min' | 'max' | 'regular' | null>(null);
   const [focusedProductCode, setFocusedProductCode] = useState<string | null>(null);
   const [hoveredProductCode, setHoveredProductCode] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -60,33 +71,157 @@ export default function PriceResearchPage() {
     if (!confirm('Deseja realmente remover esta pesquisa de preço?')) return;
     setDeletingId(id);
     try {
-      // Tenta passar o ID tanto na query quanto no body para máxima compatibilidade
       const res = await fetch(`/api/competitor-prices?id=${id}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-      
       const json = await res.json().catch(() => ({}));
-      
       if (res.ok) {
         setItems(prev => prev.filter(item => item.id !== id));
       } else {
-        console.error('Erro ao excluir item:', json);
-        const errorMsg = json.error || json.message || res.statusText;
-        alert(`Não foi possível excluir: ${errorMsg}\n\nVerifique se você tem permissão ou se a tabela foi criada corretamente.`);
+        alert(`Não foi possível excluir: ${json.error || 'Erro ao excluir'}`);
       }
     } catch (err: any) {
-      console.error('Erro ao se comunicar com o servidor:', err);
       alert('Erro de conexão: ' + (err?.message || 'O servidor não respondeu.'));
     } finally {
       setDeletingId(null);
     }
   };
 
-  // Lista única de lojas para o filtro
+  // Exportar Excel
+  const handleExportExcel = () => {
+    if (filteredItems.length === 0) {
+      alert('Nenhum registro para exportar.');
+      return;
+    }
+
+    const exportData = filteredItems.map(item => ({
+      'Data/Hora': item.created_at ? new Date(item.created_at).toLocaleString('pt-BR') : '',
+      'Código': item.product_code || '',
+      'Produto': item.product_name || '',
+      'Preço Cheio': item.full_price ?? '',
+      'Preço À Vista': item.cash_price ?? '',
+      'Loja Concorrente': item.store_name || ''
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Pesquisa de Preços');
+    XLSX.writeFile(workbook, `Pesquisa_Precos_Concorrentes_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Importar Excel / CSV
+  const handleTriggerImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+
+        if (rawData.length === 0) {
+          alert('O arquivo selecionado está vazio ou não possui linhas válidas.');
+          return;
+        }
+
+        const mapped = rawData.map(row => {
+          const getVal = (...keys: string[]) => {
+            for (const k of keys) {
+              const foundKey = Object.keys(row).find(rk => rk.trim().toLowerCase() === k.trim().toLowerCase());
+              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
+                return row[foundKey];
+              }
+            }
+            return null;
+          };
+
+          return {
+            product_code: getVal('Código', 'Codigo', 'product_code', 'cod'),
+            product_name: getVal('Produto', 'Nome', 'product_name', 'descricao'),
+            full_price: getVal('Preço Cheio', 'Preco Cheio', 'full_price', 'preco_tabela'),
+            cash_price: getVal('Preço À Vista', 'Preco A Vista', 'cash_price', 'a_vista'),
+            store_name: getVal('Loja Concorrente', 'Loja', 'Concorrente', 'store_name')
+          };
+        });
+
+        if (!confirm(`Foram encontrados ${mapped.length} registros no arquivo. Deseja importar para a pesquisa de preços?`)) {
+          if (fileInputRef.current) fileInputRef.current.value = '';
+          return;
+        }
+
+        setLoading(true);
+        const res = await fetch('/api/competitor-prices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mapped)
+        });
+
+        const json = await res.json();
+        if (res.ok) {
+          alert(`Importação concluída com sucesso! ${json.count || mapped.length} itens adicionados.`);
+          fetchItems();
+        } else {
+          alert(json.error || 'Erro ao importar arquivo.');
+        }
+      } catch (err: any) {
+        alert('Erro ao processar arquivo: ' + err.message);
+      } finally {
+        setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // Funções de Edição Inline na Tabela
+  const startInlineEdit = (item: PriceResearchItem) => {
+    setInlineEditingId(item.id);
+    setInlineFormData({
+      id: item.id,
+      product_code: item.product_code || '',
+      product_name: item.product_name || '',
+      full_price: item.full_price !== null ? String(item.full_price) : '',
+      cash_price: item.cash_price !== null ? String(item.cash_price) : '',
+      store_name: item.store_name || ''
+    });
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEditingId(null);
+    setInlineFormData({});
+  };
+
+  const saveInlineEdit = async () => {
+    if (!inlineEditingId) return;
+    try {
+      const res = await fetch('/api/competitor-prices', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inlineFormData)
+      });
+      if (res.ok) {
+        setInlineEditingId(null);
+        setInlineFormData({});
+        fetchItems();
+      } else {
+        const json = await res.json();
+        alert(json.error || 'Erro ao salvar alteração.');
+      }
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + err.message);
+    }
+  };
+
   const uniqueStores = useMemo(() => {
     const set = new Set<string>();
     items.forEach(i => {
@@ -108,66 +243,41 @@ export default function PriceResearchPage() {
     searchQuery || startDate || endDate || (selectedStoreFilter && selectedStoreFilter !== 'ALL') || minPrice || maxPrice
   );
 
-  // Calcular Menor e Maior Preço por produto em janela de 15 dias baseado no Código do Produto
   const getItemPriceExtremes15Days = useCallback(
     (targetItem: PriceResearchItem) => {
       const codeKey = (targetItem.product_code || targetItem.product_name || 'SEM_CODIGO')
         .trim()
         .toLowerCase();
-
       if (!codeKey) {
         return { isMinCash: false, isMaxCash: false, isMinFull: false, isMaxFull: false };
       }
 
-      const targetTime = new Date(targetItem.created_at).getTime();
-      const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
+      const targetDate = new Date(targetItem.created_at).getTime();
+      const fifteenDaysMs = 15 * 24 * 60 * 60 * 1000;
 
-      // Filtrar amostras do mesmo código de produto dentro da janela de 15 dias (antes ou depois)
-      const windowItems = items.filter(other => {
-        const otherCodeKey = (other.product_code || other.product_name || 'SEM_CODIGO')
-          .trim()
-          .toLowerCase();
-
-        if (otherCodeKey !== codeKey) return false;
-
-        const otherTime = new Date(other.created_at).getTime();
-        return Math.abs(targetTime - otherTime) <= FIFTEEN_DAYS_MS;
+      const groupItems = items.filter(i => {
+        const k = (i.product_code || i.product_name || 'SEM_CODIGO').trim().toLowerCase();
+        if (k !== codeKey) return false;
+        const d = new Date(i.created_at).getTime();
+        return Math.abs(targetDate - d) <= fifteenDaysMs;
       });
 
-      // Extrair preços de caixa (à vista) e cheios na janela
-      const cashPrices = windowItems
-        .map(i => (i.cash_price !== null && i.cash_price !== undefined ? Number(i.cash_price) : null))
-        .filter((v): v is number => v !== null);
-
-      const fullPrices = windowItems
-        .map(i => (i.full_price !== null && i.full_price !== undefined ? Number(i.full_price) : null))
-        .filter((v): v is number => v !== null);
-
-      // Avaliação Preço À Vista
-      let isMinCash = false;
-      let isMaxCash = false;
-      if (cashPrices.length > 1 && targetItem.cash_price !== null && targetItem.cash_price !== undefined) {
-        const val = Number(targetItem.cash_price);
-        const minCash = Math.min(...cashPrices);
-        const maxCash = Math.max(...cashPrices);
-        if (minCash < maxCash) {
-          if (val === minCash) isMinCash = true;
-          else if (val === maxCash) isMaxCash = true;
-        }
+      if (groupItems.length <= 1) {
+        return { isMinCash: false, isMaxCash: false, isMinFull: false, isMaxFull: false };
       }
 
-      // Avaliação Preço Cheio
-      let isMinFull = false;
-      let isMaxFull = false;
-      if (fullPrices.length > 1 && targetItem.full_price !== null && targetItem.full_price !== undefined) {
-        const val = Number(targetItem.full_price);
-        const minFull = Math.min(...fullPrices);
-        const maxFull = Math.max(...fullPrices);
-        if (minFull < maxFull) {
-          if (val === minFull) isMinFull = true;
-          else if (val === maxFull) isMaxFull = true;
-        }
-      }
+      const cashPrices = groupItems.map(i => i.cash_price).filter((p): p is number => p !== null && p !== undefined);
+      const minCash = cashPrices.length > 0 ? Math.min(...cashPrices) : null;
+      const maxCash = cashPrices.length > 0 ? Math.max(...cashPrices) : null;
+
+      const fullPrices = groupItems.map(i => i.full_price).filter((p): p is number => p !== null && p !== undefined);
+      const minFull = fullPrices.length > 0 ? Math.min(...fullPrices) : null;
+      const maxFull = fullPrices.length > 0 ? Math.max(...fullPrices) : null;
+
+      const isMinCash = targetItem.cash_price !== null && minCash !== null && targetItem.cash_price === minCash && minCash !== maxCash;
+      const isMaxCash = targetItem.cash_price !== null && maxCash !== null && targetItem.cash_price === maxCash && minCash !== maxCash;
+      const isMinFull = targetItem.full_price !== null && minFull !== null && targetItem.full_price === minFull && minFull !== maxFull;
+      const isMaxFull = targetItem.full_price !== null && maxFull !== null && targetItem.full_price === maxFull && minFull !== maxFull;
 
       return { isMinCash, isMaxCash, isMinFull, isMaxFull };
     },
@@ -176,554 +286,520 @@ export default function PriceResearchPage() {
 
   const filteredItems = useMemo(() => {
     return items.filter(item => {
-      // 1. Busca por texto
       const q = searchQuery.toLowerCase().trim();
-      if (q) {
-        const matchName = (item.product_name || '').toLowerCase().includes(q);
-        const matchCode = (item.product_code || '').toLowerCase().includes(q);
-        const matchStore = (item.store_name || '').toLowerCase().includes(q);
-        if (!matchName && !matchCode && !matchStore) return false;
-      }
+      const matchQuery =
+        !q ||
+        (item.product_name && item.product_name.toLowerCase().includes(q)) ||
+        (item.product_code && item.product_code.toLowerCase().includes(q)) ||
+        (item.store_name && item.store_name.toLowerCase().includes(q));
 
-      // 2. Intervalo de Datas
+      const matchStore =
+        selectedStoreFilter === 'ALL' ||
+        (item.store_name && item.store_name.toLowerCase() === selectedStoreFilter.toLowerCase());
+
+      let matchDate = true;
       if (startDate) {
-        const itemDate = new Date(item.created_at);
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        if (itemDate < start) return false;
+        const itemDate = new Date(item.created_at).toISOString().split('T')[0];
+        if (itemDate < startDate) matchDate = false;
+      }
+      if (endDate && matchDate) {
+        const itemDate = new Date(item.created_at).toISOString().split('T')[0];
+        if (itemDate > endDate) matchDate = false;
       }
 
-      if (endDate) {
-        const itemDate = new Date(item.created_at);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        if (itemDate > end) return false;
+      let matchPrice = true;
+      const effectivePrice = item.cash_price !== null ? item.cash_price : item.full_price;
+      if (minPrice && effectivePrice !== null) {
+        if (effectivePrice < parseFloat(minPrice)) matchPrice = false;
+      }
+      if (maxPrice && effectivePrice !== null && matchPrice) {
+        if (effectivePrice > parseFloat(maxPrice)) matchPrice = false;
       }
 
-      // 3. Nome da Loja
-      if (selectedStoreFilter && selectedStoreFilter !== 'ALL') {
-        if ((item.store_name || '').toLowerCase() !== selectedStoreFilter.toLowerCase()) {
-          return false;
-        }
-      }
-
-      // 4. Faixa de Preço (verifica preço à vista ou preço cheio)
-      const priceVal = item.cash_price !== null && item.cash_price !== undefined
-        ? item.cash_price
-        : item.full_price;
-
-      if (minPrice !== '' && !isNaN(Number(minPrice))) {
-        if (priceVal === null || priceVal < Number(minPrice)) return false;
-      }
-
-      if (maxPrice !== '' && !isNaN(Number(maxPrice))) {
-        if (priceVal === null || priceVal > Number(maxPrice)) return false;
-      }
-
-      return true;
+      return matchQuery && matchStore && matchDate && matchPrice;
     });
-  }, [items, searchQuery, startDate, endDate, selectedStoreFilter, minPrice, maxPrice]);
+  }, [items, searchQuery, selectedStoreFilter, startDate, endDate, minPrice, maxPrice]);
 
-  // Contadores dinâmicos para a legenda interativa
   const legendCounts = useMemo(() => {
     let minCount = 0;
     let maxCount = 0;
     let regularCount = 0;
+
     filteredItems.forEach(item => {
-      if (focusedProductCode) {
-        const code = (item.product_code || item.product_name || 'SEM_CODIGO').trim().toLowerCase();
-        if (code !== focusedProductCode.toLowerCase()) return;
-      }
       const { isMinCash, isMaxCash, isMinFull, isMaxFull } = getItemPriceExtremes15Days(item);
-      if (isMinCash || isMinFull) minCount++;
-      if (isMaxCash || isMaxFull) maxCount++;
-      if (!isMinCash && !isMaxCash && !isMinFull && !isMaxFull) regularCount++;
+      if (isMinCash || isMinFull) {
+        minCount++;
+      } else if (isMaxCash || isMaxFull) {
+        maxCount++;
+      } else {
+        regularCount++;
+      }
     });
+
     return { minCount, maxCount, regularCount };
-  }, [filteredItems, getItemPriceExtremes15Days, focusedProductCode]);
+  }, [filteredItems, getItemPriceExtremes15Days]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-              title="Voltar ao Painel"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
-              <div className="flex items-center gap-2">
-                <Tag className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                <h1 className="text-xl font-extrabold tracking-tight">Pesquisa de Preços de Concorrentes</h1>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Registre e acompanhe preços praticados por concorrentes no mercado.
-              </p>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 p-4 md:p-6 space-y-6">
+      {/* Hidden file input for import */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileUpload} 
+        accept=".xlsx, .xls, .csv" 
+        className="hidden" 
+      />
+
+      {/* Tabs de Navegação entre Módulos de Pesquisa */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-200/80 dark:bg-slate-800/80 rounded-2xl w-fit">
+        <Link
+          href="/price-research"
+          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-xs flex items-center gap-2"
+        >
+          <Tag className="w-4 h-4" />
+          <span>Pesquisa Concorrentes</span>
+        </Link>
+        <Link
+          href="/mercado-livre"
+          className="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-2"
+        >
+          <Store className="w-4 h-4" />
+          <span>Mercado Livre</span>
+        </Link>
+      </div>
+
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            title="Voltar ao Painel"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-2">
+              <Tag className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              <h1 className="text-xl font-extrabold tracking-tight">Pesquisa de Preços de Concorrentes</h1>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="px-4 py-2.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-sm"
-            >
-              <PlusCircle className="w-4 h-4" />
-              {showForm ? 'Ocultar Formulário' : 'Nova Pesquisa'}
-            </button>
-
-            <button
-              onClick={fetchItems}
-              disabled={loading}
-              className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"
-              title="Atualizar Dados"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Registre, importe e acompanhe preços praticados por concorrentes no mercado.
+            </p>
           </div>
         </div>
 
-        {/* Form Section */}
-        {showForm && (
-          <div className="animate-in fade-in slide-in-from-top-2 duration-200">
-            <PriceResearchForm onSuccess={fetchItems} />
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botão Importar */}
+          <button
+            onClick={handleTriggerImport}
+            className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold border border-slate-700 shadow-xs transition-colors flex items-center gap-2"
+            title="Importar de arquivo Excel ou CSV"
+          >
+            <Upload className="w-4 h-4 text-amber-400" />
+            <span>Importar</span>
+          </button>
 
-        {/* History Section */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-6">
-          {/* Data Visualization Chart (Recharts) directly at the top of history section */}
-          <PriceEvolutionChart 
-            items={filteredItems} 
-            title="Variação de Preços por Produto ao Longo do Tempo"
-            subtitle="Gráfico com a evolução histórica de preços para os produtos filtrados"
-          />
+          {/* Botão Exportar Excel */}
+          <button
+            onClick={handleExportExcel}
+            className="px-3.5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-2"
+            title="Exportar pesquisas filtradas para Excel"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar Excel</span>
+          </button>
 
-          {/* Painel de Filtros Avançados */}
-          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/60 pb-2.5">
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
-                  Filtros Avançados de Pesquisa
-                </h3>
-              </div>
-              <div className="flex items-center gap-2">
-                {hasActiveFilters && (
-                  <button
-                    onClick={handleClearFilters}
-                    className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-900/50 transition-colors flex items-center gap-1"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    Limpar Filtros
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                >
-                  {showAdvancedFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-                </button>
-              </div>
+          {/* Alternar Formulário */}
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="px-4 py-2.5 text-xs font-bold rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2 shadow-xs"
+          >
+            <PlusCircle className="w-4 h-4" />
+            {showForm ? 'Ocultar Formulário' : 'Nova Pesquisa'}
+          </button>
+
+          {/* Atualizar */}
+          <button
+            onClick={fetchItems}
+            disabled={loading}
+            className="p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-300"
+            title="Atualizar Dados"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Form Section */}
+      {showForm && (
+        <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+          <PriceResearchForm onSuccess={fetchItems} />
+        </div>
+      )}
+
+      {/* History Section */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs space-y-6">
+        <PriceEvolutionChart 
+          items={filteredItems} 
+          title="Variação de Preços por Produto ao Longo do Tempo"
+          subtitle="Gráfico com a evolução histórica de preços para os produtos filtrados"
+        />
+
+        {/* Painel de Filtros Avançados */}
+        <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/80 p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700/60 pb-2.5">
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                Filtros Avançados de Pesquisa
+              </h3>
             </div>
-
-            {showAdvancedFilters && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-                {/* Intervalo de Datas */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-blue-500" />
-                    Intervalo de Datas
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
-                      className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      title="Data Inicial"
-                    />
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
-                      className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      title="Data Final"
-                    />
-                  </div>
-                </div>
-
-                {/* Loja / Concorrente */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                    <Store className="w-3 h-3 text-emerald-500" />
-                    Loja Concorrente
-                  </label>
-                  <select
-                    value={selectedStoreFilter}
-                    onChange={e => setSelectedStoreFilter(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="ALL">Todas as Lojas</option>
-                    {uniqueStores.map(store => (
-                      <option key={store} value={store}>
-                        {store}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Faixa de Preço */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                    <DollarSign className="w-3 h-3 text-amber-500" />
-                    Faixa de Preço (R$)
-                  </label>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <input
-                      type="number"
-                      placeholder="Min"
-                      value={minPrice}
-                      onChange={e => setMinPrice(e.target.value)}
-                      className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Max"
-                      value={maxPrice}
-                      onChange={e => setMaxPrice(e.target.value)}
-                      className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                {/* Busca Rápida por Nome/Código */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                    <Search className="w-3 h-3 text-blue-500" />
-                    Produto ou Código
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Nome do produto ou código..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    />
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <div>
-              <h2 className="text-base font-bold flex items-center gap-2">
-                <Store className="w-4 h-4 text-slate-500" />
-                Histórico de Pesquisas Registradas ({filteredItems.length})
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {hasActiveFilters ? 'Exibindo pesquisas filtradas pelo painel acima.' : 'Últimas pesquisas enviadas pela equipe comercial.'}
-              </p>
-            </div>
-
-            {/* Legenda Interativa Clicável e com Hover (Janela de 15 dias) */}
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
-              <span className="text-slate-500 dark:text-slate-400 text-[10px] uppercase font-bold mr-1">
-                Destacar (clique ou passe o mouse):
-              </span>
-
-              {/* Botão Menor Preço */}
-              <button
-                type="button"
-                onMouseEnter={() => setHoveredLegend('min')}
-                onMouseLeave={() => setHoveredLegend(null)}
-                onClick={() => setLegendHighlight(prev => prev === 'min' ? 'all' : 'min')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none ${
-                  (hoveredLegend === 'min' || legendHighlight === 'min')
-                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-400/50 scale-[1.03]'
-                    : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
-                }`}
-                title="Passe o mouse ou clique para destacar todas as linhas com Menor Preço"
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900"></span>
-                <span>Menor Preço</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  (hoveredLegend === 'min' || legendHighlight === 'min')
-                    ? 'bg-emerald-800 text-white'
-                    : 'bg-emerald-200/70 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200'
-                }`}>
-                  {legendCounts.minCount}
-                </span>
-              </button>
-
-              {/* Botão Maior Preço */}
-              <button
-                type="button"
-                onMouseEnter={() => setHoveredLegend('max')}
-                onMouseLeave={() => setHoveredLegend(null)}
-                onClick={() => setLegendHighlight(prev => prev === 'max' ? 'all' : 'max')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none ${
-                  (hoveredLegend === 'max' || legendHighlight === 'max')
-                    ? 'bg-rose-600 text-white border-rose-600 shadow-sm ring-2 ring-rose-400/50 scale-[1.03]'
-                    : 'text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800/60 hover:bg-rose-100 dark:hover:bg-rose-900/40'
-                }`}
-                title="Passe o mouse ou clique para destacar todas as linhas com Maior Preço"
-              >
-                <span className="w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"></span>
-                <span>Maior Preço</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  (hoveredLegend === 'max' || legendHighlight === 'max')
-                    ? 'bg-rose-800 text-white'
-                    : 'bg-rose-200/70 dark:bg-rose-900/60 text-rose-800 dark:text-rose-200'
-                }`}>
-                  {legendCounts.maxCount}
-                </span>
-              </button>
-
-              {/* Botão Preço Regular */}
-              <button
-                type="button"
-                onMouseEnter={() => setHoveredLegend('regular')}
-                onMouseLeave={() => setHoveredLegend(null)}
-                onClick={() => setLegendHighlight(prev => prev === 'regular' ? 'all' : 'regular')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all cursor-pointer select-none ${
-                  (hoveredLegend === 'regular' || legendHighlight === 'regular')
-                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-slate-900 shadow-sm ring-2 ring-slate-400/50 scale-[1.03]'
-                    : 'text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-                title="Passe o mouse ou clique para destacar todas as linhas de Preço Regular"
-              >
-                <span className="w-2 h-2 rounded-full bg-slate-800 dark:bg-slate-200"></span>
-                <span>Regular</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  (hoveredLegend === 'regular' || legendHighlight === 'regular')
-                    ? 'bg-slate-700 text-white dark:bg-slate-300 dark:text-slate-900'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
-                }`}>
-                  {legendCounts.regularCount}
-                </span>
-              </button>
-
-              {/* Tag informativa de Foco por Item */}
-              {focusedProductCode && (
-                <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[10px] font-bold">
-                  <span>Item: {focusedProductCode}</span>
-                  <button
-                    onClick={() => setFocusedProductCode(null)}
-                    className="p-0.5 hover:bg-blue-200/50 dark:hover:bg-blue-800/50 rounded"
-                    title="Remover foco do item"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-
-              {/* Botão de Limpar Destaques */}
-              {(legendHighlight !== 'all' || focusedProductCode) && (
+            <div className="flex items-center gap-2">
+              {hasActiveFilters && (
                 <button
-                  onClick={() => {
-                    setLegendHighlight('all');
-                    setFocusedProductCode(null);
-                  }}
-                  className="px-2 py-1 text-[10px] font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 underline ml-1 cursor-pointer"
+                  onClick={handleClearFilters}
+                  className="px-2.5 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg border border-rose-200 dark:border-rose-900/50 transition-colors flex items-center gap-1"
                 >
-                  Limpar Destaque
+                  <RotateCcw className="w-3 h-3" />
+                  Limpar Filtros
                 </button>
               )}
+              <button
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                {showAdvancedFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+              </button>
             </div>
           </div>
 
-          {/* Table / List */}
-          {loading ? (
-            <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 flex flex-col items-center justify-center gap-2">
-              <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-              Carregando pesquisas gravadas...
-            </div>
-          ) : filteredItems.length === 0 ? (
-            <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-              <Package className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700 mb-2" />
-              {searchQuery ? 'Nenhuma pesquisa encontrada com este filtro.' : 'Nenhuma pesquisa de preço registrada ainda.'}
-            </div>
-          ) : (
-            <div className="overflow-x-auto price-research-history-table">
-              <table className="w-full text-left text-xs price-research-history-table">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">
-                    <th className="pb-3 px-2">Data/Hora</th>
-                    <th className="pb-3 px-2">Código</th>
-                    <th className="pb-3 px-2">Produto</th>
-                    <th className="pb-3 px-2 text-right">Preço Cheio</th>
-                    <th className="pb-3 px-2 text-right">Preço À Vista</th>
-                    <th className="pb-3 px-2">Loja Concorrente</th>
-                    <th className="pb-3 px-2 text-center">Ação</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                  {filteredItems.map(item => {
-                    const { isMinCash, isMaxCash, isMinFull, isMaxFull } = getItemPriceExtremes15Days(item);
+          {showAdvancedFilters && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+              {/* Intervalo de Datas */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-blue-500" />
+                  Intervalo de Datas
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={e => setStartDate(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    title="Data Inicial"
+                  />
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={e => setEndDate(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    title="Data Final"
+                  />
+                </div>
+              </div>
 
-                    // Identificador para agrupar o item específico
-                    const itemCode = (item.product_code || item.product_name || 'SEM_CODIGO').trim();
-                    const activeType = hoveredLegend || (legendHighlight !== 'all' ? legendHighlight : null);
-                    const currentFocused = hoveredProductCode || focusedProductCode;
+              {/* Filtro por Loja */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Store className="w-3 h-3 text-purple-500" />
+                  Loja Concorrente
+                </label>
+                <select
+                  value={selectedStoreFilter}
+                  onChange={e => setSelectedStoreFilter(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="ALL">Todas as Lojas</option>
+                  {uniqueStores.map(st => (
+                    <option key={st} value={st}>{st}</option>
+                  ))}
+                </select>
+              </div>
 
-                    const isProductMatch = !currentFocused || itemCode.toLowerCase() === currentFocused.toLowerCase();
-                    const isMinRow = isMinCash || isMinFull;
-                    const isMaxRow = isMaxCash || isMaxFull;
-                    const isRegularRow = !isMinRow && !isMaxRow;
+              {/* Faixa de Preço */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <DollarSign className="w-3 h-3 text-emerald-500" />
+                  Faixa de Preço (R$)
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={minPrice}
+                    onChange={e => setMinPrice(e.target.value)}
+                    placeholder="Mín"
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={maxPrice}
+                    onChange={e => setMaxPrice(e.target.value)}
+                    placeholder="Máx"
+                    className="w-full px-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
 
-                    // Avaliação de destaque
-                    let isHighlighted = false;
-                    let isDimmed = false;
-
-                    if (activeType) {
-                      const matchesType = activeType === 'min' ? isMinRow : activeType === 'max' ? isMaxRow : isRegularRow;
-                      if (matchesType && isProductMatch) {
-                        isHighlighted = true;
-                      } else {
-                        isDimmed = true;
-                      }
-                    } else if (currentFocused) {
-                      if (isProductMatch) {
-                        isHighlighted = true;
-                      } else {
-                        isDimmed = true;
-                      }
-                    }
-
-                    return (
-                      <tr
-                        key={item.id}
-                        onMouseEnter={() => setHoveredProductCode(itemCode)}
-                        onMouseLeave={() => setHoveredProductCode(null)}
-                        onClick={() => setFocusedProductCode(prev => prev === itemCode ? null : itemCode)}
-                        className={`transition-all duration-200 cursor-pointer select-none ${
-                          isHighlighted
-                            ? isMinRow
-                              ? 'bg-emerald-500/15 dark:bg-emerald-950/60 ring-2 ring-emerald-500/70 border-l-4 border-l-emerald-600 shadow-xs z-10 relative font-semibold'
-                              : isMaxRow
-                              ? 'bg-rose-500/15 dark:bg-rose-950/60 ring-2 ring-rose-500/70 border-l-4 border-l-rose-600 shadow-xs z-10 relative font-semibold'
-                              : 'bg-blue-500/10 dark:bg-blue-950/40 ring-2 ring-blue-500/50 border-l-4 border-l-blue-600 shadow-xs z-10 relative font-semibold'
-                            : isDimmed
-                            ? 'opacity-25 dark:opacity-20 filter grayscale-[40%]'
-                            : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
-                        }`}
-                        title={
-                          focusedProductCode === itemCode
-                            ? `Item "${itemCode}" fixado! Clique para liberar o foco.`
-                            : `Passe o mouse ou clique nesta linha para destacar o menor/maior preço do item "${itemCode}".`
-                        }
-                      >
-                        <td className="py-3 px-2 text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {new Date(item.created_at).toLocaleString('pt-BR', {
-                              dateStyle: 'short',
-                              timeStyle: 'short'
-                            })}
-                          </div>
-                        </td>
-
-                        <td className="py-3 px-2 font-mono text-slate-900 dark:text-slate-100 font-medium">
-                          {item.product_code ? (
-                            <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/80 font-bold border border-slate-200 dark:border-slate-700">
-                              {item.product_code}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic">-</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-2 font-medium text-slate-900 dark:text-slate-100">
-                          {item.product_name || <span className="text-slate-400 italic">Não informado</span>}
-                        </td>
-
-                        {/* Preço Cheio: Verde (Menor), Vermelho (Maior), Preto (Regular) */}
-                        <td className="py-3 px-2 text-right">
-                          {item.full_price !== null && item.full_price !== undefined ? (
-                            <span className={`inline-flex items-center gap-1 ${
-                              isMinFull
-                                ? 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800/80 shadow-2xs'
-                                : isMaxFull
-                                ? 'text-rose-700 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-800/80 shadow-2xs'
-                                : 'text-slate-900 dark:text-slate-100 font-medium'
-                            }`}>
-                              R$ {Number(item.full_price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              {isMinFull && (
-                                <span className="text-[9px] bg-emerald-600 text-white px-1 py-0.2 rounded font-extrabold uppercase tracking-wider">Menor</span>
-                              )}
-                              {isMaxFull && (
-                                <span className="text-[9px] bg-rose-600 text-white px-1 py-0.2 rounded font-extrabold uppercase tracking-wider">Maior</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-normal italic">-</span>
-                          )}
-                        </td>
-
-                        {/* Preço à Vista: Verde (Menor), Vermelho (Maior), Preto (Regular) */}
-                        <td className="py-3 px-2 text-right">
-                          {item.cash_price !== null && item.cash_price !== undefined ? (
-                            <span className={`inline-flex items-center gap-1 ${
-                              isMinCash
-                                ? 'text-emerald-700 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-200 dark:border-emerald-800/80 shadow-2xs'
-                                : isMaxCash
-                                ? 'text-rose-700 dark:text-rose-400 font-bold bg-rose-50 dark:bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-800/80 shadow-2xs'
-                                : 'text-slate-900 dark:text-slate-100 font-medium'
-                            }`}>
-                              R$ {Number(item.cash_price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                              {isMinCash && (
-                                <span className="text-[9px] bg-emerald-600 text-white px-1 py-0.2 rounded font-extrabold uppercase tracking-wider">Menor</span>
-                              )}
-                              {isMaxCash && (
-                                <span className="text-[9px] bg-rose-600 text-white px-1 py-0.2 rounded font-extrabold uppercase tracking-wider">Maior</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-normal italic">-</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-2 font-medium text-slate-700 dark:text-slate-300">
-                          {item.store_name ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                              <Store className="w-3 h-3 text-slate-400" />
-                              {item.store_name}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic">-</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-2 text-center">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(item.id);
-                            }}
-                            disabled={deletingId === item.id}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-                            title="Excluir Registro"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {/* Busca de Texto */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                  <Search className="w-3 h-3 text-amber-500" />
+                  Busca por Código/Nome
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Ex: 104322 ou Placa..."
+                    className="w-full pl-7 pr-2 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <Search className="w-3 h-3 absolute left-2 top-2 text-slate-400" />
+                </div>
+              </div>
             </div>
           )}
         </div>
 
+        {/* Título do Histórico e Legenda */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+          <div>
+            <h2 className="text-base font-bold tracking-tight">
+              Histórico de Pesquisas Registradas ({filteredItems.length})
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {hasActiveFilters ? 'Exibindo pesquisas filtradas pelo painel acima.' : 'Últimas pesquisas enviadas pela equipe comercial.'}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setLegendHighlight(prev => prev === 'min' ? 'all' : 'min')}
+              onMouseEnter={() => setHoveredLegend('min')}
+              onMouseLeave={() => setHoveredLegend(null)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+                legendHighlight === 'min' || hoveredLegend === 'min'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500/30'
+                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Menor Preço (15 dias)</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-600 text-white font-bold">
+                {legendCounts.minCount}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setLegendHighlight(prev => prev === 'max' ? 'all' : 'max')}
+              onMouseEnter={() => setHoveredLegend('max')}
+              onMouseLeave={() => setHoveredLegend(null)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+                legendHighlight === 'max' || hoveredLegend === 'max'
+                  ? 'bg-rose-500/20 border-rose-500 text-rose-700 dark:text-rose-300 ring-2 ring-rose-500/30'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+              <span>Maior Preço (15 dias)</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-600 text-white font-bold">
+                {legendCounts.maxCount}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Table / List */}
+        {loading ? (
+          <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 flex flex-col items-center justify-center gap-2">
+            <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
+            Carregando pesquisas gravadas...
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+            <Package className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700 mb-2" />
+            {searchQuery ? 'Nenhuma pesquisa encontrada com este filtro.' : 'Nenhuma pesquisa de preço registrada ainda.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider">
+                  <th className="pb-3 px-2">Data/Hora</th>
+                  <th className="pb-3 px-2">Código</th>
+                  <th className="pb-3 px-2">Produto</th>
+                  <th className="pb-3 px-2 text-right">Preço Cheio</th>
+                  <th className="pb-3 px-2 text-right">Preço À Vista</th>
+                  <th className="pb-3 px-2">Loja Concorrente</th>
+                  <th className="pb-3 px-2 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                {filteredItems.map(item => {
+                  const isEditing = inlineEditingId === item.id;
+                  const { isMinCash, isMaxCash, isMinFull, isMaxFull } = getItemPriceExtremes15Days(item);
+                  const itemCode = (item.product_code || item.product_name || 'SEM_CODIGO').trim();
+
+                  if (isEditing) {
+                    return (
+                      <tr key={item.id} className="bg-amber-500/10 dark:bg-amber-500/20 font-medium">
+                        <td className="py-2 px-2 text-slate-400">
+                          {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={inlineFormData.product_code || ''}
+                            onChange={e => setInlineFormData({ ...inlineFormData, product_code: e.target.value })}
+                            className="w-24 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={inlineFormData.product_name || ''}
+                            onChange={e => setInlineFormData({ ...inlineFormData, product_name: e.target.value })}
+                            className="w-full px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={inlineFormData.full_price || ''}
+                            onChange={e => setInlineFormData({ ...inlineFormData, full_price: e.target.value })}
+                            className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={inlineFormData.cash_price || ''}
+                            onChange={e => setInlineFormData({ ...inlineFormData, cash_price: e.target.value })}
+                            className="w-24 px-2 py-1 text-xs text-right rounded border border-amber-500/50 bg-slate-900 text-white font-bold"
+                          />
+                        </td>
+                        <td className="py-2 px-2">
+                          <input
+                            type="text"
+                            value={inlineFormData.store_name || ''}
+                            onChange={e => setInlineFormData({ ...inlineFormData, store_name: e.target.value })}
+                            className="w-32 px-2 py-1 text-xs rounded border border-amber-500/50 bg-slate-900 text-white"
+                          />
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={saveInlineEdit}
+                              className="p-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                              title="Salvar"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={cancelInlineEdit}
+                              className="p-1.5 rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+                              title="Cancelar"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors"
+                    >
+                      <td className="py-3 px-2 text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          {new Date(item.created_at).toLocaleString('pt-BR', {
+                            dateStyle: 'short',
+                            timeStyle: 'short'
+                          })}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-2 font-mono text-slate-900 dark:text-slate-100 font-medium">
+                        {item.product_code ? (
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/80 font-bold border border-slate-200 dark:border-slate-700">
+                            {item.product_code}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-2 font-medium text-slate-900 dark:text-slate-100">
+                        {item.product_name || <span className="text-slate-400 italic">Não informado</span>}
+                      </td>
+
+                      <td className="py-3 px-2 text-right">
+                        {item.full_price !== null && item.full_price !== undefined ? (
+                          <span className={isMinFull ? 'text-emerald-600 font-bold' : isMaxFull ? 'text-rose-600 font-bold' : ''}>
+                            R$ {item.full_price.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-2 text-right">
+                        {item.cash_price !== null && item.cash_price !== undefined ? (
+                          <span className={isMinCash ? 'text-emerald-600 font-bold' : isMaxCash ? 'text-rose-600 font-bold' : 'font-bold'}>
+                            R$ {item.cash_price.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-2 text-slate-700 dark:text-slate-300 font-medium">
+                        {item.store_name ? (
+                          <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-300">
+                            <Store className="w-3 h-3 text-purple-500" />
+                            {item.store_name}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 italic">-</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-2 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => startInlineEdit(item)}
+                            className="p-1.5 rounded text-amber-500 hover:bg-amber-500/10 transition-colors"
+                            title="Editar Linha"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item.id)}
+                            disabled={deletingId === item.id}
+                            className="p-1.5 rounded text-rose-500 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

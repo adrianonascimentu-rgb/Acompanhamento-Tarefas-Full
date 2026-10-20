@@ -123,7 +123,7 @@ export function GoogleMapsFleetTracker({
   className = '',
   height = '560px'
 }: GoogleMapsFleetTrackerProps) {
-  const { mapsApiKey, isDarkMode } = useTheme();
+  const { mapsApiKey, isDarkMode, hasBillingError: themeBillingError, setHasBillingError: setThemeBillingError } = useTheme();
   const [vehicles, setVehicles] = useState<LiveVehiclePosition[]>(() => getLocalFleetPositions());
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>(vehicles[0]?.id || 'truck-reposicao-01');
   const [activeInfoWindow, setActiveInfoWindow] = useState<LiveVehiclePosition | DeliveryStop | null>(null);
@@ -134,6 +134,34 @@ export function GoogleMapsFleetTracker({
 
   const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
   const [hasBillingError, setHasBillingError] = useState(false);
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>('google');
+  const [LeafletComponents, setLeafletComponents] = useState<any>(null);
+  const [L, setL] = useState<any>(null);
+
+  const isBillingError = hasBillingError || themeBillingError;
+
+  useEffect(() => {
+    if (isBillingError) {
+      setMapEngine('leaflet');
+    }
+  }, [isBillingError]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (mapEngine === 'leaflet' || isBillingError) {
+      Promise.all([
+        import('react-leaflet'),
+        import('leaflet')
+      ]).then(([rl, leaflet]) => {
+        if (!isMounted) return;
+        setLeafletComponents(rl);
+        setL(leaflet.default || leaflet);
+      }).catch(err => {
+        console.error('Erro ao carregar mapa Leaflet:', err);
+      });
+    }
+    return () => { isMounted = false; };
+  }, [mapEngine, isBillingError]);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || null;
 

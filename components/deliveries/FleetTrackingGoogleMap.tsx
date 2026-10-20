@@ -240,12 +240,40 @@ export function FleetTrackingGoogleMap({
   onSelectDelivery,
   className = ''
 }: FleetTrackingGoogleMapProps) {
-  const { isDarkMode, mapsApiKey } = useTheme();
+  const { isDarkMode, mapsApiKey, hasBillingError: themeBillingError, setHasBillingError: setThemeBillingError } = useTheme();
   const { user, isAdmin, role } = useRole();
   const isManagerOrAdmin = isAdmin || (role as string) === 'gerente' || (role as string) === 'supervisor' || (role as string) === 'administrador';
 
   const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
   const [hasBillingError, setHasBillingError] = useState(false);
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>('google');
+  const [LeafletComponents, setLeafletComponents] = useState<any>(null);
+  const [L, setL] = useState<any>(null);
+
+  const isBillingError = hasBillingError || themeBillingError;
+
+  useEffect(() => {
+    if (isBillingError) {
+      setMapEngine('leaflet');
+    }
+  }, [isBillingError]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (mapEngine === 'leaflet' || isBillingError) {
+      Promise.all([
+        import('react-leaflet'),
+        import('leaflet')
+      ]).then(([rl, leaflet]) => {
+        if (!isMounted) return;
+        setLeafletComponents(rl);
+        setL(leaflet.default || leaflet);
+      }).catch(err => {
+        console.error('Erro ao carregar mapa Leaflet:', err);
+      });
+    }
+    return () => { isMounted = false; };
+  }, [mapEngine, isBillingError]);
 
   // Frota ativa
   const [vehicles, setVehicles] = useState<TruckVehicle[]>([]);
