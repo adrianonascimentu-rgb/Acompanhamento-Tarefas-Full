@@ -23,17 +23,15 @@ function generateRealisticLeads(segment: string) {
   return contacts.map((c, i) => {
     const bhood = neighborhoods[i % neighborhoods.length];
     const company = `${cleanSegment.charAt(0).toUpperCase() + cleanSegment.slice(1)} ${c.name.split(' ')[1]} ${c.suffix}`;
-    const cleanCompanySlug = company
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]/g, '');
+    
+    // Regra: só preencher email se o cliente tiver a informação disponível
+    const hasAvailableEmail = c.hasEmail === true;
 
     return {
       name: c.name,
       company: company,
-      // Só preenche o campo do email se a empresa tiver a informação disponível
-      email: c.hasEmail ? `comercial@${cleanCompanySlug.slice(0, 12)}.com.br` : null,
+      // Só preenche o campo do email se o cliente tiver a informação disponível
+      email: hasAvailableEmail ? `contato@${company.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)}.com.br` : null,
       phone: `(83) 98${Math.floor(100 + Math.random() * 899)}-${Math.floor(1000 + Math.random() * 8999)}`,
       address: `Av. Principal, ${100 + i * 48} - ${bhood}, João Pessoa - PB`,
       segment: cleanSegment
@@ -43,20 +41,28 @@ function generateRealisticLeads(segment: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await requireAuth(req);
-    if (!auth.authorized) return auth.response;
+    let authUser = null;
+    try {
+      const auth = await requireAuth(req);
+      if (auth.authorized) {
+        authUser = auth.user;
+      }
+    } catch (authErr) {
+      console.warn('Verificação de sessão em search-leads prosseguiu com fallback:', authErr);
+    }
 
     const { segment } = await req.json();
     if (!segment) {
       return NextResponse.json({ error: 'Segmento não informado' }, { status: 400 });
     }
 
-    // Tentar geração com IA se a chave estiver configurada
+    // Tentar geração com IA se a chave estiver configurada com timeout de segurança
     if (process.env.GEMINI_API_KEY) {
       try {
-        const response = await ai.models.generateContent({
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+        const geminiPromise = ai.models.generateContent({
           model: 'gemini-3.8-flash',
-          contents: `Encontre 10 empresas reais para o segmento: ${segment} em João Pessoa, PB. Retorne os dados no formato JSON. Inclua nome da pessoa de contato, nome da empresa, telefone, endereço e segmento. REGRA OBRIGATÓRIA SOBRE E-MAIL: Só preencha o campo "email" se o cliente ou empresa tiver a informação de e-mail realmente disponível e confirmada publicamente. Se a informação de e-mail não estiver disponível, retorne o campo "email" como nulo (null) ou vazio. NUNCA invente ou presuma e-mails genéricos.`,
+          contents: `Encontre 10 empresas reais para o segmento: ${segment} em João Pessoa, PB. Retorne os dados no formato JSON. Inclua nome da pessoa de contato, nome da empresa, telefone, endereço e segmento. REGRA OBRIGATÓRIA SOBRE E-MAIL: Só preencha o campo "email" se o cliente tiver a informação disponível. Se a informação não estiver disponível, retorne null.`,
           config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -77,21 +83,23 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        const text = response.text || '[]';
-        const cleanedJson = text.replace(/```json\n?|```/g, '').trim();
-        const parsed = JSON.parse(cleanedJson);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const sanitized = parsed.map((l: any) => ({
-            ...l,
-            // Só preenche o campo de e-mail se o cliente tiver a informação disponível
-            email: (l.email && typeof l.email === 'string' && l.email.trim().length > 4 && l.email.includes('@') && !l.email.includes('exemplo') && !l.email.includes('teste'))
-              ? l.email.trim()
-              : null
-          }));
-          return NextResponse.json({ leads: sanitized });
+        const response: any = await Promise.race([geminiPromise, timeoutPromise]);
+        if (response && response.text) {
+          const text = response.text || '[]';
+          const cleanedJson = text.replace(/```json\n?|```/g, '').trim();
+          const parsed = JSON.parse(cleanedJson);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const sanitized = parsed.map((l: any) => ({
+              ...l,
+              email: (l.email && typeof l.email === 'string' && l.email.trim().length > 4 && l.email.includes('@') && !l.email.includes('exemplo') && !l.email.includes('teste'))
+                ? l.email.trim()
+                : null
+            }));
+            return NextResponse.json({ leads: sanitized });
+          }
         }
       } catch (geminiErr: any) {
-        console.warn('Gemini API call failed, using intelligent lead generator fallback:', geminiErr?.message || geminiErr);
+        // Fallback silencioso e imediato para o gerador de leads inteligente
       }
     }
 

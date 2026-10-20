@@ -29,7 +29,10 @@ import {
   TrendingUp,
   FileUp,
   CheckCircle2,
-  ShieldCheck
+  ShieldCheck,
+  PlusCircle,
+  Eye,
+  ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useTheme } from '@/hooks/useTheme';
@@ -80,6 +83,18 @@ export default function ProductsCatalogPage() {
   const [lastSyncBanner, setLastSyncBanner] = useState<{
     message: string;
     timestamp: string;
+    newCount?: number;
+    updatedCount?: number;
+    totalCount?: number;
+    newItems?: CatalogProduct[];
+    updatedItems?: CatalogProduct[];
+  } | null>(null);
+
+  // Modal to inspect full list of new or updated items from PDF
+  const [pdfViewModal, setPdfViewModal] = useState<{
+    type: 'new' | 'updated';
+    title: string;
+    items: CatalogProduct[];
   } | null>(null);
 
   const currentUserRole = (user?.role || user?.type || '').toLowerCase();
@@ -251,12 +266,23 @@ export default function ProductsCatalogPage() {
 
   const handlePdfUpdateSuccess = async (
     updatedCatalog: CatalogProduct[],
-    summary: { newCount: number; updatedCount: number; totalCount: number }
+    summary: { 
+      newCount: number; 
+      updatedCount: number; 
+      totalCount: number;
+      newItems?: CatalogProduct[];
+      updatedItems?: CatalogProduct[];
+    }
   ) => {
     await saveProducts(updatedCatalog);
     const syncInfo = {
       message: `Catálogo atualizado com sucesso via PDF: ${summary.newCount} novos itens cadastrados e ${summary.updatedCount} produtos atualizados de um total de ${summary.totalCount} itens.`,
-      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      newCount: summary.newCount,
+      updatedCount: summary.updatedCount,
+      totalCount: summary.totalCount,
+      newItems: summary.newItems || [],
+      updatedItems: summary.updatedItems || [],
     };
     setLastSyncBanner(syncInfo);
     try {
@@ -269,6 +295,39 @@ export default function ProductsCatalogPage() {
           updated_at: new Date().toISOString()
         });
     } catch {}
+  };
+
+  const [pdfFilter, setPdfFilter] = useState<'all' | 'new' | 'updated'>('all');
+
+  const handleOpenPdfItemsModal = (type: 'new' | 'updated') => {
+    let items: CatalogProduct[] = [];
+    if (type === 'new') {
+      if (lastSyncBanner?.newItems && Array.isArray(lastSyncBanner.newItems) && lastSyncBanner.newItems.length > 0) {
+        items = lastSyncBanner.newItems;
+      } else if (lastSyncBanner?.newCount && lastSyncBanner.newCount > 0) {
+        items = products.slice(-lastSyncBanner.newCount);
+      } else {
+        items = [];
+      }
+      setPdfViewModal({
+        type: 'new',
+        title: `Lista de Novos Itens Adicionados (${items.length} produtos)`,
+        items
+      });
+    } else {
+      if (lastSyncBanner?.updatedItems && Array.isArray(lastSyncBanner.updatedItems) && lastSyncBanner.updatedItems.length > 0) {
+        items = lastSyncBanner.updatedItems;
+      } else if (lastSyncBanner?.updatedCount && lastSyncBanner.updatedCount > 0) {
+        items = products.slice(0, lastSyncBanner.updatedCount);
+      } else {
+        items = [];
+      }
+      setPdfViewModal({
+        type: 'updated',
+        title: `Lista de Itens Atualizados (${items.length} produtos)`,
+        items
+      });
+    }
   };
 
   // Distinct manufacturers
@@ -321,7 +380,33 @@ export default function ProductsCatalogPage() {
       else if (stockFilter === 'low_stock') matchStock = p.stock > 0 && p.stock <= 3;
       else if (stockFilter === 'out_of_stock') matchStock = p.stock === 0;
 
-      return matchSearch && matchManufacturer && matchCategory && matchStock;
+      // PDF Filter: Novos ou Atualizados exclusivamente
+      let matchPdfFilter = true;
+      if (pdfFilter === 'new') {
+        const newItemsList = lastSyncBanner?.newItems || [];
+        if (newItemsList.length > 0) {
+          const newCodes = new Set(newItemsList.map(i => i.code.toLowerCase().trim()));
+          matchPdfFilter = newCodes.has(p.code.toLowerCase().trim());
+        } else if (lastSyncBanner?.newCount && lastSyncBanner.newCount > 0) {
+          const newProds = products.slice(-lastSyncBanner.newCount);
+          matchPdfFilter = newProds.some(np => np.code.toLowerCase().trim() === p.code.toLowerCase().trim());
+        } else {
+          matchPdfFilter = false;
+        }
+      } else if (pdfFilter === 'updated') {
+        const updatedItemsList = lastSyncBanner?.updatedItems || [];
+        if (updatedItemsList.length > 0) {
+          const updatedCodes = new Set(updatedItemsList.map(i => i.code.toLowerCase().trim()));
+          matchPdfFilter = updatedCodes.has(p.code.toLowerCase().trim());
+        } else if (lastSyncBanner?.updatedCount && lastSyncBanner.updatedCount > 0) {
+          const updatedProds = products.slice(0, lastSyncBanner.updatedCount);
+          matchPdfFilter = updatedProds.some(up => up.code.toLowerCase().trim() === p.code.toLowerCase().trim());
+        } else {
+          matchPdfFilter = false;
+        }
+      }
+
+      return matchSearch && matchManufacturer && matchCategory && matchStock && matchPdfFilter;
     }).sort((a, b) => {
       if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
       if (sortBy === 'price_asc') return a.price - b.price;
@@ -330,7 +415,7 @@ export default function ProductsCatalogPage() {
       if (sortBy === 'code_asc') return a.code.localeCompare(b.code, undefined, { numeric: true });
       return 0;
     });
-  }, [products, searchTerm, selectedManufacturer, selectedCategory, stockFilter, sortBy]);
+  }, [products, searchTerm, selectedManufacturer, selectedCategory, stockFilter, sortBy, pdfFilter, lastSyncBanner]);
 
   const totalCatalogPages = Math.max(1, Math.ceil(filteredProducts.length / itemsPerPage));
   const paginatedProducts = useMemo(() => {
@@ -518,9 +603,9 @@ export default function ProductsCatalogPage() {
 
         {/* Recent Sync / Update Notification Banner */}
         {lastSyncBanner && (
-          <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs flex items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-200 text-xs flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2.5">
-              <CheckCircle2 size={16} className="text-emerald-500 shrink-0" />
+              <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
               <div>
                 <span className="font-bold">{lastSyncBanner.message}</span>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-2">
@@ -528,15 +613,67 @@ export default function ProductsCatalogPage() {
                 </span>
               </div>
             </div>
-            <button
-              onClick={() => {
-                setLastSyncBanner(null);
-                try { localStorage.removeItem('app_catalog_last_pdf_import'); } catch {}
-              }}
-              className="p-1 hover:bg-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-300 text-xs transition-colors"
-            >
-              <X size={14} />
-            </button>
+
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {/* Botão Novos Itens */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfFilter('new');
+                  setCatalogPage(1);
+                  handleOpenPdfItemsModal('new');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs transition-all active:scale-95 cursor-pointer ${
+                  pdfFilter === 'new'
+                    ? 'bg-emerald-700 text-white ring-2 ring-emerald-400'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                }`}
+                title="Clique para visualizar exclusivamente a lista dos novos itens cadastrados via PDF"
+              >
+                <PlusCircle size={14} />
+                <span>Novos Itens ({lastSyncBanner.newCount ?? 0})</span>
+              </button>
+
+              {/* Botão Atualizados */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPdfFilter('updated');
+                  setCatalogPage(1);
+                  handleOpenPdfItemsModal('updated');
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs shadow-xs transition-all active:scale-95 cursor-pointer ${
+                  pdfFilter === 'updated'
+                    ? 'bg-blue-700 text-white ring-2 ring-blue-400'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                title="Clique para visualizar exclusivamente a lista dos itens atualizados via PDF"
+              >
+                <RefreshCw size={14} />
+                <span>Atualizados ({lastSyncBanner.updatedCount ?? 0})</span>
+              </button>
+
+              {pdfFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => { setPdfFilter('all'); setCatalogPage(1); }}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                >
+                  Ver Todos no Catálogo
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setLastSyncBanner(null);
+                  try { localStorage.removeItem('app_catalog_last_pdf_import'); } catch {}
+                }}
+                className="p-1.5 hover:bg-emerald-500/20 rounded-lg text-emerald-700 dark:text-emerald-300 text-xs transition-colors cursor-pointer"
+                title="Fechar aviso"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -595,6 +732,50 @@ export default function ProductsCatalogPage() {
         <div className={`p-5 rounded-3xl border space-y-4 ${
           isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
         }`}>
+          {/* Quick PDF Import Filters if sync exists */}
+          {lastSyncBanner && (
+            <div className="flex items-center gap-2 pb-1 overflow-x-auto no-scrollbar border-b border-slate-100 dark:border-slate-800/80">
+              <span className="text-[10px] font-black uppercase text-slate-400 shrink-0">
+                Filtro PDF Recente:
+              </span>
+              <button
+                type="button"
+                onClick={() => { setPdfFilter('all'); setCatalogPage(1); }}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  pdfFilter === 'all'
+                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-xs'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                Todos ({products.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPdfFilter('new'); setCatalogPage(1); handleOpenPdfItemsModal('new'); }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  pdfFilter === 'new'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20'
+                }`}
+              >
+                <PlusCircle size={13} />
+                <span>Novos Itens Adicionados ({lastSyncBanner.newCount ?? 0})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setPdfFilter('updated'); setCatalogPage(1); handleOpenPdfItemsModal('updated'); }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  pdfFilter === 'updated'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20'
+                }`}
+              >
+                <RefreshCw size={13} />
+                <span>Itens Atualizados ({lastSyncBanner.updatedCount ?? 0})</span>
+              </button>
+            </div>
+          )}
+
           {/* Main Search Input */}
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -1304,6 +1485,115 @@ export default function ProductsCatalogPage() {
                     </button>
                   </div>
                 </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Modal de Visualização da Lista de Novos Itens ou Atualizados via PDF */}
+        <AnimatePresence>
+          {pdfViewModal && (
+            <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col"
+              >
+                {/* Header */}
+                <div className={`p-5 border-b flex items-center justify-between gap-3 ${
+                  pdfViewModal.type === 'new' 
+                    ? 'border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-950/20' 
+                    : 'border-blue-500/20 bg-blue-50/50 dark:bg-blue-950/20'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`size-10 rounded-2xl flex items-center justify-center ${
+                      pdfViewModal.type === 'new'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                        : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                    }`}>
+                      {pdfViewModal.type === 'new' ? <PlusCircle size={20} /> : <RefreshCw size={20} />}
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-900 dark:text-white">
+                        {pdfViewModal.title}
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {pdfViewModal.type === 'new' 
+                          ? 'Produtos inéditos inseridos no catálogo através da importação do PDF'
+                          : 'Produtos que tiveram alterações de Preço, Referência ou Estoque via PDF'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setPdfViewModal(null)}
+                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+
+                {/* Table Content */}
+                <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                  {pdfViewModal.items.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400">
+                      Nenhum item nesta lista.
+                    </div>
+                  ) : (
+                    <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 text-[11px] font-black uppercase text-slate-500 sticky top-0">
+                          <tr>
+                            <th className="py-2.5 px-3">Código</th>
+                            <th className="py-2.5 px-3">Descrição / Produto</th>
+                            <th className="py-2.5 px-3">Referência</th>
+                            <th className="py-2.5 px-3">Fabricante</th>
+                            <th className="py-2.5 px-3 text-right">Estoque</th>
+                            <th className="py-2.5 px-3 text-right">Preço (10X)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 bg-white dark:bg-slate-900">
+                          {pdfViewModal.items.map((prod, i) => (
+                            <tr key={`${prod.code}-${i}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-600 dark:text-slate-300">
+                                {prod.code}
+                              </td>
+                              <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-white">
+                                {prod.name}
+                              </td>
+                              <td className="py-2.5 px-3 font-mono text-slate-500">
+                                {prod.additionalCode || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-600 dark:text-slate-300">
+                                {prod.manufacturer || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                {formatStock(prod.stock)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {formatCurrency(prod.price)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/50">
+                  <span className="text-xs text-slate-500">
+                    Total: <strong>{pdfViewModal.items.length}</strong> produto(s) listado(s)
+                  </span>
+                  <button
+                    onClick={() => setPdfViewModal(null)}
+                    className="px-5 py-2 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-xs hover:opacity-90 transition-all cursor-pointer"
+                  >
+                    Fechar Lista
+                  </button>
+                </div>
               </motion.div>
             </div>
           )}

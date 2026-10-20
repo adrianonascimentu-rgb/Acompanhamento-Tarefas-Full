@@ -52,7 +52,16 @@ interface PdfUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentProducts: CatalogProduct[];
-  onApplyUpdate: (updatedCatalog: CatalogProduct[], summary: { newCount: number; updatedCount: number; totalCount: number }) => void;
+  onApplyUpdate: (
+    updatedCatalog: CatalogProduct[], 
+    summary: { 
+      newCount: number; 
+      updatedCount: number; 
+      totalCount: number;
+      newItems: CatalogProduct[];
+      updatedItems: CatalogProduct[];
+    }
+  ) => void;
   userRole?: string;
   userName?: string;
   isAdmin?: boolean;
@@ -306,10 +315,15 @@ export default function PdfUploadModal({
       });
     } catch {}
 
+    const newItems = diffs.filter(d => d.type === 'new').map(d => d.item);
+    const updatedItems = diffs.filter(d => d.type === 'updated').map(d => d.item);
+
     onApplyUpdate(newCatalogList, {
       newCount: stats.newCount,
       updatedCount: stats.updatedCount,
       totalCount: diffs.length,
+      newItems,
+      updatedItems,
     });
 
     // Reset and close
@@ -539,37 +553,79 @@ export default function PdfUploadModal({
             ) : (
               /* Step 2: Diff Preview & Confirmation */
               <div className="space-y-5">
-                {/* Stats Header */}
+                {/* Stats Header as Clickable Interactive Action Buttons */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => { setPreviewFilter('all'); setCurrentPage(1); }}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden group active:scale-95 ${
+                      previewFilter === 'all'
+                        ? 'bg-slate-200 dark:bg-slate-800 border-slate-400 dark:border-slate-600 ring-2 ring-slate-400/50 shadow-md scale-[1.02]'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
                     <span className="text-[10px] font-black uppercase text-slate-400 block">Total no PDF</span>
                     <span className="text-xl font-black text-slate-900 dark:text-white">{stats.total}</span>
-                    <span className="text-[10px] text-slate-400 block">Itens encontrados</span>
-                  </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
+                      {previewFilter === 'all' ? '● Exibindo todos' : 'Clique para ver todos'}
+                    </span>
+                  </button>
 
-                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20">
+                  <button
+                    type="button"
+                    onClick={() => { setPreviewFilter('new'); setCurrentPage(1); }}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden group active:scale-95 ${
+                      previewFilter === 'new'
+                        ? 'bg-emerald-500/20 border-emerald-500 ring-2 ring-emerald-500/50 shadow-md scale-[1.02]'
+                        : 'bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/15 hover:border-emerald-500/40'
+                    }`}
+                    title="Clique para visualizar a lista de novos itens"
+                  >
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Novos Itens</span>
-                      <PlusCircle size={14} className="text-emerald-500" />
+                      <PlusCircle size={15} className={`text-emerald-500 transition-transform ${previewFilter === 'new' ? 'scale-125' : 'group-hover:scale-110'}`} />
                     </div>
                     <span className="text-xl font-black text-emerald-600 dark:text-emerald-400">{stats.newCount}</span>
-                    <span className="text-[10px] text-emerald-600/80 dark:text-emerald-400/80 block">Serão cadastrados</span>
-                  </div>
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-300 block font-bold">
+                      {previewFilter === 'new' ? '● Visualizando Novos Itens' : 'Clique para ver a lista →'}
+                    </span>
+                  </button>
 
-                  <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20">
+                  <button
+                    type="button"
+                    onClick={() => { setPreviewFilter('updated'); setCurrentPage(1); }}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden group active:scale-95 ${
+                      previewFilter === 'updated'
+                        ? 'bg-blue-500/20 border-blue-500 ring-2 ring-blue-500/50 shadow-md scale-[1.02]'
+                        : 'bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/15 hover:border-blue-500/40'
+                    }`}
+                    title="Clique para visualizar a lista de itens atualizados"
+                  >
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black uppercase text-blue-600 dark:text-blue-400">Atualizados</span>
-                      <RefreshCw size={14} className="text-blue-500" />
+                      <RefreshCw size={15} className={`text-blue-500 transition-transform ${previewFilter === 'updated' ? 'scale-125 rotate-45' : 'group-hover:scale-110'}`} />
                     </div>
                     <span className="text-xl font-black text-blue-600 dark:text-blue-400">{stats.updatedCount}</span>
-                    <span className="text-[10px] text-blue-600/80 dark:text-blue-400/80 block">Preço / Estoque / Ref</span>
-                  </div>
+                    <span className="text-[10px] text-blue-700 dark:text-blue-300 block font-bold">
+                      {previewFilter === 'updated' ? '● Visualizando Atualizados' : 'Clique para ver a lista →'}
+                    </span>
+                  </button>
 
-                  <div className="p-3.5 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => { setPreviewFilter('unchanged'); setCurrentPage(1); }}
+                    className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden group active:scale-95 ${
+                      previewFilter === 'unchanged'
+                        ? 'bg-slate-300 dark:bg-slate-700 border-slate-500 dark:border-slate-500 ring-2 ring-slate-500/50 shadow-md scale-[1.02]'
+                        : 'bg-slate-100 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                    }`}
+                  >
                     <span className="text-[10px] font-black uppercase text-slate-400 block">Inalterados</span>
                     <span className="text-xl font-black text-slate-700 dark:text-slate-300">{stats.unchangedCount}</span>
-                    <span className="text-[10px] text-slate-400 block">Mesmos dados</span>
-                  </div>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">
+                      {previewFilter === 'unchanged' ? '● Exibindo inalterados' : 'Clique para ver'}
+                    </span>
+                  </button>
                 </div>
 
                 {/* Filter and Search Bar */}
@@ -630,6 +686,43 @@ export default function PdfUploadModal({
                     />
                   </div>
                 </div>
+
+                {/* Active View Context Banner */}
+                {previewFilter === 'new' && (
+                  <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <PlusCircle size={16} className="text-emerald-500 shrink-0" />
+                      <span className="font-bold">
+                        Lista de Novos Itens: Exibindo {filteredDiffs.length} novo(s) produto(s) identificado(s) no PDF para cadastro no catálogo.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setPreviewFilter('all'); setCurrentPage(1); }}
+                      className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer shrink-0 ml-2"
+                    >
+                      Ver Todos
+                    </button>
+                  </div>
+                )}
+
+                {previewFilter === 'updated' && (
+                  <div className="p-3 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-800 dark:text-blue-300 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <RefreshCw size={16} className="text-blue-500 shrink-0" />
+                      <span className="font-bold">
+                        Lista de Itens Atualizados: Exibindo {filteredDiffs.length} produto(s) com alterações de Preço, Estoque ou Referência.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setPreviewFilter('all'); setCurrentPage(1); }}
+                      className="text-[11px] font-bold text-blue-700 dark:text-blue-400 hover:underline cursor-pointer shrink-0 ml-2"
+                    >
+                      Ver Todos
+                    </button>
+                  </div>
+                )}
 
                 {/* Table Preview */}
                 <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-80 overflow-y-auto">

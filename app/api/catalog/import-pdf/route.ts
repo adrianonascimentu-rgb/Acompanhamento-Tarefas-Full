@@ -211,8 +211,14 @@ Regras Estritas:
           }
         } catch (err: any) {
           lastError = err;
-          console.warn(`Tentativa ${attempt} com modelo ${model} falhou:`, err?.message || err);
-          await delay(300 * attempt);
+          const msg = String(err?.message || err);
+          if (msg.includes('403') || msg.includes('leaked') || msg.includes('PERMISSION_DENIED')) {
+            return NextResponse.json(
+              { error: 'A chave da API Gemini está temporariamente indisponível. Cadastre os novos itens manualmente no catálogo enquanto a chave é atualizada.' },
+              { status: 400, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+          await delay(200 * attempt);
         }
       }
 
@@ -222,7 +228,10 @@ Regras Estritas:
     }
 
     if (!responseText) {
-      throw lastError || new Error('Não foi possível obter resposta dos modelos de IA após tentativas.');
+      return NextResponse.json(
+        { error: 'Não foi possível extrair os dados do PDF no momento. Tente novamente em instantes.' },
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     let parsedProducts: any[] = [];
