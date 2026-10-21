@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
-import { MessageCircle, Search, Filter, MoreVertical, Phone, Video, Paperclip, Send, Check, CheckCheck, Clock, User, LogOut, Settings, Bell, Archive, Trash2, X, ChevronLeft, RefreshCw, QrCode, AlertCircle, ExternalLink, ShieldCheck, BarChart3, TrendingUp } from 'lucide-react';
+import { MessageCircle, Search, Filter, MoreVertical, Phone, Video, Paperclip, Send, Check, CheckCheck, Clock, User, LogOut, Settings, Bell, Archive, Trash2, X, ChevronLeft, RefreshCw, QrCode, AlertCircle, ExternalLink, ShieldCheck, BarChart3, TrendingUp, Cpu, Server, Smartphone, Zap, CheckCircle2, Globe, Link2, Copy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import WhatsAppAnalytics from '@/components/whatsapp/WhatsAppAnalytics';
 
@@ -61,6 +61,44 @@ export default function WhatsAppPage() {
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   const [isSending, setIsSending] = useState(false);
 
+  // WhatsApp Provider Integration States
+  const [providerMode, setProviderMode] = useState<"meta" | "alternative" | "simulation">("alternative");
+  const [configTab, setConfigTab] = useState<"meta" | "alternative" | "simulation">("alternative");
+  const [altServerUrl, setAltServerUrl] = useState("https://api.z-api.io");
+  const [altApiKey, setAltApiKey] = useState("");
+  const [altInstance, setAltInstance] = useState("instancia_vendas_01");
+  const [qrStatus, setQrStatus] = useState<"idle" | "generating" | "waiting" | "connected">("connected");
+  const [qrPhoneConnected, setQrPhoneConnected] = useState("5511999999999");
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+
+  // Load saved provider settings on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedMode = localStorage.getItem("whatsapp_provider_mode") as any;
+      if (savedMode) {
+        setProviderMode(savedMode);
+        setConfigTab(savedMode);
+      }
+      const savedUrl = localStorage.getItem("whatsapp_alt_server_url");
+      if (savedUrl) setAltServerUrl(savedUrl);
+      const savedKey = localStorage.getItem("whatsapp_alt_api_key");
+      if (savedKey) setAltApiKey(savedKey);
+      const savedInst = localStorage.getItem("whatsapp_alt_instance");
+      if (savedInst) setAltInstance(savedInst);
+    }
+  }, []);
+
+  const handleSaveProviderConfig = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("whatsapp_provider_mode", configTab);
+      localStorage.setItem("whatsapp_alt_server_url", altServerUrl);
+      localStorage.setItem("whatsapp_alt_api_key", altApiKey);
+      localStorage.setItem("whatsapp_alt_instance", altInstance);
+    }
+    setProviderMode(configTab);
+    setIsConfiguring(false);
+  };
+
   // Fetch API status on mount
   useEffect(() => {
     checkApiStatus();
@@ -78,17 +116,25 @@ export default function WhatsAppPage() {
       const data = await res.json();
       setApiStatus(data);
       if (data.status === 'configured') {
-        setIsConnected(true);
-      } else {
+        setIsConnected(true
+  );
+}
+ else {
         // Keep connected in simulation mode for demonstration
-        setIsConnected(true);
-      }
+        setIsConnected(true
+  );
+}
+
     } catch (error) {
       console.error('Error checking WhatsApp status:', error);
-      setIsConnected(true);
-    } finally {
-      setIsLoadingStatus(false);
-    }
+      setIsConnected(true
+  );
+}
+ finally {
+      setIsLoadingStatus(false
+  );
+}
+
   };
 
   const handleSendMessage = async () => {
@@ -118,21 +164,27 @@ export default function WhatsAppPage() {
       [selectedChatId]: [...(prev[selectedChatId] || []), newMsg]
     }));
 
-    // If API configured, send via API
-    if (apiStatus?.status === 'configured') {
-      try {
-        await fetch('/api/whatsapp/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: chat.phone,
-            message: textMsg
-          })
-        });
-      } catch (err) {
-        console.warn('WhatsApp API send fallback to simulated delivery:', err);
+    // Send message via active provider mode
+    try {
+      await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: chat.phone,
+          message: textMsg,
+          providerMode,
+          altServerUrl,
+          altApiKey,
+          altInstance
+        })
       }
-    }
+  );
+}
+ catch (err) {
+      console.warn('WhatsApp API send fallback to simulated delivery:', err
+  );
+}
+
 
     setIsSending(false);
 
@@ -144,8 +196,10 @@ export default function WhatsAppPage() {
         [selectedChatId]: (prev[selectedChatId] || []).map(m =>
           m.id === msgId ? { ...m, status: 'sent' } : m
         )
-      }));
-    }, 600);
+      })
+  );
+}
+, 600);
 
     // 2. Delivered (2 checks cinzas) after 1500ms
     setTimeout(() => {
@@ -154,8 +208,10 @@ export default function WhatsAppPage() {
         [selectedChatId]: (prev[selectedChatId] || []).map(m =>
           m.id === msgId ? { ...m, status: 'delivered' } : m
         )
-      }));
-    }, 1500);
+      })
+  );
+}
+, 1500);
 
     // 3. Read (2 checks AZUIS - status de leitura visualizada) after 3000ms
     setTimeout(() => {
@@ -164,8 +220,10 @@ export default function WhatsAppPage() {
         [selectedChatId]: (prev[selectedChatId] || []).map(m =>
           m.id === msgId ? { ...m, status: 'read' } : m
         )
-      }));
-    }, 3000);
+      })
+  );
+}
+, 3000);
 
     // 4. Simulated interactive reply from recipient
     setTimeout(() => {
@@ -188,10 +246,16 @@ export default function WhatsAppPage() {
         setChatMessages(prev => ({
           ...prev,
           [selectedChatId]: [...(prev[selectedChatId] || []), replyMsg]
-        }));
-      }, 2000);
-    }, 3800);
-  };
+        })
+  );
+}
+, 2000
+  );
+}
+, 3800
+  );
+}
+;
 
   const filteredChats = useMemo(() => {
     return INITIAL_CHATS.filter(chat => {
@@ -201,8 +265,10 @@ export default function WhatsAppPage() {
         (activeFilter === 'unread' && chat.unread > 0) || 
         (activeFilter === 'groups' && chat.type === 'group');
       return matchSearch && matchFilter;
-    });
-  }, [searchQuery, activeFilter]);
+    }
+  );
+}
+, [searchQuery, activeFilter]);
 
   const selectedChat = useMemo(() => 
     INITIAL_CHATS.find(c => c.id === selectedChatId), 
@@ -221,7 +287,7 @@ export default function WhatsAppPage() {
         <h2 className="text-xl font-bold mb-2">Acesso Restrito</h2>
         <p>Você não tem permissão para acessar o módulo de WhatsApp.</p>
       </div>
-    );
+  );
   }
 
   return (
@@ -235,13 +301,38 @@ export default function WhatsAppPage() {
               <MessageCircle className="text-emerald-500" />
               WhatsApp Business
             </h1>
-            <div className="relative">
-              <button 
-                onClick={() => setShowMenu(!showMenu)}
-                className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsConfiguring(true)}
+                className={`px-2.5 py-1 rounded-xl text-[10px] font-bold flex items-center gap-1.5 border transition-all ${
+                  providerMode === "alternative"
+                    ? "bg-blue-500/10 border-blue-500/30 text-blue-500 hover:bg-blue-500/20"
+                    : providerMode === "meta"
+                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20"
+                    : "bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20"
+                }`}
+                title="Clique para alterar provedor de WhatsApp"
               >
-                <MoreVertical size={20} />
+                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                  providerMode === "alternative" ? "bg-blue-500" : providerMode === "meta" ? "bg-emerald-500" : "bg-amber-500"
+                }`} />
+                <span>
+                  {providerMode === "alternative"
+                    ? "Gateway / QR Code"
+                    : providerMode === "meta"
+                    ? "Meta API Oficial"
+                    : "Modo Simulação"}
+                </span>
+                <Settings size={12} className="ml-0.5 opacity-70" />
               </button>
+
+              <div className="relative">
+                <button 
+                  onClick={() => setShowMenu(!showMenu)}
+                  className={`p-2 rounded-full transition-colors ${isDarkMode ? "hover:bg-slate-800 text-slate-400" : "hover:bg-slate-100 text-slate-500"}`}
+                >
+                  <MoreVertical size={20} />
+                </button>
               
               <AnimatePresence>
                 {showMenu && (
@@ -302,7 +393,6 @@ export default function WhatsAppPage() {
             >
               <BarChart3 size={14} />
               <span>Análises</span>
-              <span className="size-1.5 rounded-full bg-emerald-500" />
             </button>
           </div>
           
@@ -404,15 +494,16 @@ export default function WhatsAppPage() {
                         </p>
                       </div>
                       {chat.unread > 0 && (
-                        <span className="min-w-5 h-5 px-1.5 flex items-center justify-center bg-emerald-500 text-white text-[9px] font-black rounded-full shadow-sm ring-2 ring-emerald-500/10 shrink-0">
-                          {chat.unread}
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                          {chat.unread} nova
                         </span>
                       )}
                     </div>
                   </div>
                 </button>
-              );
-            })
+  );
+}
+)
           ) : (
             <div className="flex flex-col items-center justify-center h-full p-6 text-center opacity-50">
               <MessageCircle size={48} className="mb-4" />
@@ -463,10 +554,9 @@ export default function WhatsAppPage() {
                   <span className="hidden sm:inline text-xs">Métricas</span>
                 </button>
 
-                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-semibold text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400">Leitura:</span>
-                  <span className="flex items-center gap-0.5 text-[#53bdeb] font-bold">
-                    <CheckCheck size={13} className="text-[#53bdeb]" />
+                <div className="hidden sm:flex items-center gap-2 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                  <span>Leitura:</span>
+                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
                     Visualizada
                   </span>
                 </div>
@@ -649,19 +739,21 @@ export default function WhatsAppPage() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className={`relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl border ${
-                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'
+              className={`relative w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl border ${
+                isDarkMode ? "bg-slate-900 border-slate-800 text-white" : "bg-white border-slate-100 text-slate-900"
               }`}
             >
-              <div className="p-8">
-                <div className="flex justify-between items-center mb-8">
+              <div className="p-6 sm:p-8">
+                <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
                       <Settings size={20} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-black">Configuração API Cloud</h3>
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Passo a passo meta developers</p>
+                      <h3 className="text-xl font-black">Integração do WhatsApp</h3>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                        Escolha o modo de conexão com WhatsApp
+                      </p>
                     </div>
                   </div>
                   <button 
@@ -672,97 +764,319 @@ export default function WhatsAppPage() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="font-bold text-sm mb-4 flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center">1</span>
-                        Meta para Desenvolvedores
-                      </h4>
-                      <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Crie uma conta em <span className="font-bold">developers.facebook.com</span>, crie um novo App &quot;Business&quot; e adicione o produto &quot;WhatsApp&quot;.
-                      </p>
-                      <a 
-                        href="https://developers.facebook.com" 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-emerald-500 text-xs font-bold flex items-center gap-1 hover:underline"
-                      >
-                        Acessar Portal <ExternalLink size={12} />
-                      </a>
-                    </div>
-
-                    <div>
-                      <h4 className="font-bold text-sm mb-4 flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center">2</span>
-                        Parâmetros do App
-                      </h4>
-                      <p className={`text-xs leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        Vá em Configurações do WhatsApp para obter as chaves abaixo:
-                      </p>
-                      <div className="mt-3 space-y-2">
-                         {[
-                           { label: 'Token de Acesso', status: apiStatus?.config?.hasAccessToken },
-                           { label: 'ID Número de Telefone', status: apiStatus?.config?.hasPhoneNumberId },
-                           { label: 'ID Conta Business', status: apiStatus?.config?.hasBusinessAccountId },
-                         ].map((item, idx) => (
-                           <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
-                             <span className="text-[10px] font-bold text-slate-500">{item.label}</span>
-                             {item.status ? (
-                               <span className="text-[9px] font-black text-emerald-500 uppercase">Configurado</span>
-                             ) : (
-                               <span className="text-[9px] font-black text-rose-500 uppercase">Pendente</span>
-                             )}
-                           </div>
-                         ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div>
-                      <h4 className="font-bold text-sm mb-4 flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-indigo-500 text-white text-[10px] flex items-center justify-center">3</span>
-                        Webhook do Sistema
-                      </h4>
-                      <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                        No painel da Meta, configure o Webhook para receber as mensagens de volta para este sistema:
-                      </p>
-                      <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 font-mono text-[9px] break-all border border-slate-200 dark:border-slate-700 select-all">
-                        {typeof window !== 'undefined' ? window.location.origin : ''}/api/whatsapp/webhook
-                      </div>
-                    </div>
-
-                    <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-indigo-50 border-indigo-100'}`}>
-                      <h5 className="font-bold text-xs mb-2 text-indigo-500">Dica Pro</h5>
-                      <p className={`text-[10px] leading-relaxed ${isDarkMode ? 'text-indigo-300' : 'text-indigo-700'}`}>
-                        Para uso em produção, lembre-se de configurar um <span className="font-bold">System User Access Token</span> permanente, caso contrário o token temporário expirará em 24 horas.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 flex justify-end gap-3">
-                  <button 
-                    onClick={() => setIsConfiguring(false)}
-                    className={`px-6 py-2 rounded-xl text-xs font-bold transition-colors ${
-                      isDarkMode ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                {/* Tabs for Providers */}
+                <div className="flex flex-wrap items-center gap-2 p-1.5 mb-6 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setConfigTab("alternative")}
+                    className={`flex-1 min-w-[160px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+                      configTab === "alternative"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   >
-                    Fechar
+                    <QrCode size={16} />
+                    <span>Gateway / QR Code (Sem Meta)</span>
                   </button>
-                  <button 
-                    onClick={checkApiStatus}
-                    className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20"
+
+                  <button
+                    type="button"
+                    onClick={() => setConfigTab("meta")}
+                    className={`flex-1 min-w-[160px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+                      configTab === "meta"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
                   >
-                    Verificar Conexão
+                    <ShieldCheck size={16} />
+                    <span>API Cloud Oficial (Meta)</span>
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setConfigTab("simulation")}
+                    className={`flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
+                      configTab === "simulation"
+                        ? "bg-amber-500 text-white shadow-md"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    <Zap size={16} />
+                    <span>Modo Simulação</span>
+                  </button>
+                </div>
+
+                {/* TAB 1: ALTERNATIVE GATEWAY / QR CODE */}
+                {configTab === "alternative" && (
+                  <div className="space-y-6">
+                    <div className={`p-4 rounded-2xl border ${isDarkMode ? "bg-blue-500/10 border-blue-500/20 text-blue-300" : "bg-blue-50 border-blue-100 text-blue-900"}`}>
+                      <div className="flex items-center gap-2 mb-1 text-blue-500 font-bold text-xs uppercase tracking-wider">
+                        <Server size={16} />
+                        <span>Conexão Independente / QR Code (Evolution API, Z-API, Baileys)</span>
+                      </div>
+                      <p className="text-xs leading-relaxed opacity-90">
+                        Conecte qualquer número de WhatsApp por <span className="font-bold">QR Code</span> ou servidor de Gateway HTTP terceirizado sem necessidade de conta de desenvolvedor Facebook/Meta.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold mb-1.5">URL do Servidor Gateway</label>
+                          <input
+                            type="text"
+                            value={altServerUrl}
+                            onChange={e => setAltServerUrl(e.target.value)}
+                            placeholder="https://api.z-api.io ou https://evolution.suaempresa.com"
+                            className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold mb-1.5">Chave de API / Token (API Key)</label>
+                          <input
+                            type="password"
+                            value={altApiKey}
+                            onChange={e => setAltApiKey(e.target.value)}
+                            placeholder="Sua chave de API do Gateway"
+                            className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold mb-1.5">ID / Nome da Instância</label>
+                          <input
+                            type="text"
+                            value={altInstance}
+                            onChange={e => setAltInstance(e.target.value)}
+                            placeholder="instancia_01"
+                            className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                              isDarkMode ? "bg-slate-800 border-slate-700 text-white" : "bg-slate-50 border-slate-200 text-slate-900"
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {/* QR CODE CONNECTION CARD */}
+                      <div className={`p-5 rounded-2xl border flex flex-col items-center justify-center text-center ${
+                        isDarkMode ? "bg-slate-800/80 border-slate-700" : "bg-slate-50 border-slate-200"
+                      }`}>
+                        <div className="mb-3">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-600/10 text-blue-500 flex items-center justify-center mx-auto mb-2">
+                            <QrCode size={24} />
+                          </div>
+                          <span className="text-xs font-bold block">Pareamento por QR Code</span>
+                          <span className="text-[10px] text-slate-400">Digitalize com o WhatsApp do seu celular</span>
+                        </div>
+
+                        {/* Interactive Simulated QR Code Box */}
+                        <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-inner mb-3 relative group">
+                          <svg className="w-28 h-28 text-slate-900" viewBox="0 0 100 100" fill="currentColor">
+                            <path d="M0,0 h30 v30 h-30 z M10,10 h10 v10 h-10 z" />
+                            <path d="M70,0 h30 v30 h-30 z M80,10 h10 v10 h-10 z" />
+                            <path d="M0,70 h30 v30 h-30 z M10,80 h10 v10 h-10 z" />
+                            <rect x="35" y="5" width="8" height="8" />
+                            <rect x="50" y="5" width="12" height="12" />
+                            <rect x="35" y="20" width="10" height="10" />
+                            <rect x="5" y="35" width="12" height="12" />
+                            <rect x="25" y="35" width="8" height="8" />
+                            <rect x="40" y="35" width="20" height="10" />
+                            <rect x="70" y="35" width="10" height="10" />
+                            <rect x="85" y="35" width="10" height="10" />
+                            <rect x="35" y="50" width="15" height="15" />
+                            <rect x="55" y="50" width="10" height="10" />
+                            <rect x="75" y="50" width="15" height="15" />
+                            <rect x="35" y="70" width="10" height="10" />
+                            <rect x="50" y="70" width="20" height="10" />
+                            <rect x="75" y="70" width="20" height="20" />
+                          </svg>
+                          {qrStatus === "connected" && (
+                            <div className="absolute inset-0 bg-emerald-600/95 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center text-white p-2">
+                              <CheckCircle2 size={28} className="mb-1" />
+                              <span className="text-[11px] font-extrabold">Sessão Conectada</span>
+                              <span className="text-[9px] opacity-90">{qrPhoneConnected}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col gap-2 w-full">
+                          {qrStatus === "connected" ? (
+                            <button
+                              type="button"
+                              onClick={() => setQrStatus("waiting")}
+                              className="w-full py-1.5 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 font-bold text-xs transition-colors"
+                            >
+                              Desconectar Sessão
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQrStatus("connected");
+                                setQrPhoneConnected("5511987654321"
+  );
+}
+}
+                              className="w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all"
+                            >
+                              Simular Leitura do QR Code
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-xs font-bold block mb-1">Webhook de Mensagens Recebidas (Entrada)</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 font-mono text-[10px] break-all border border-slate-200 dark:border-slate-700 select-all">
+                          {typeof window !== "undefined" ? window.location.origin : ""}/api/whatsapp/webhook
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== "undefined") {
+                              navigator.clipboard.writeText(`${window.location.origin}/api/whatsapp/webhook`);
+                              setCopiedWebhook(true);
+                              setTimeout(() => setCopiedWebhook(false), 2000
+  );
+}
+
+                          }}
+                          className="p-2.5 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-xs font-bold transition-colors flex items-center gap-1 shrink-0"
+                        >
+                          <Copy size={14} />
+                          <span>{copiedWebhook ? "Copiado!" : "Copiar"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: META CLOUD API OFICIAL */}
+                {configTab === "meta" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-4">
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="font-bold text-sm mb-4 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center">1</span>
+                          Meta para Desenvolvedores
+                        </h4>
+                        <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                          Crie uma conta em <span className="font-bold">developers.facebook.com</span>, crie um novo App &quot;Business&quot; e adicione o produto &quot;WhatsApp&quot;.
+                        </p>
+                        <a 
+                          href="https://developers.facebook.com" 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-emerald-500 text-xs font-bold flex items-center gap-1 hover:underline"
+                        >
+                          Acessar Portal <ExternalLink size={12} />
+                        </a>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-sm mb-4 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-emerald-500 text-white text-[10px] flex items-center justify-center">2</span>
+                          Parâmetros do App
+                        </h4>
+                        <p className={`text-xs leading-relaxed ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                          Vá em Configurações do WhatsApp para obter as chaves abaixo:
+                        </p>
+                        <div className="mt-3 space-y-2">
+                           {[
+                             { label: "Token de Acesso", status: apiStatus?.config?.hasAccessToken },
+                             { label: "ID Número de Telefone", status: apiStatus?.config?.hasPhoneNumberId },
+                             { label: "ID Conta Business", status: apiStatus?.config?.hasBusinessAccountId },
+                           ].map((item, idx) => (
+                             <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-100 dark:bg-slate-800">
+                               <span className="text-[10px] font-bold text-slate-500">{item.label}</span>
+                               {item.status ? (
+                                 <span className="text-[9px] font-black text-emerald-500 uppercase">Configurado</span>
+                               ) : (
+                                 <span className="text-[9px] font-black text-rose-500 uppercase">Pendente</span>
+                               )}
+                             </div>
+                           ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="font-bold text-sm mb-4 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-indigo-500 text-white text-[10px] flex items-center justify-center">3</span>
+                          Webhook da Meta
+                        </h4>
+                        <p className={`text-xs leading-relaxed mb-4 ${isDarkMode ? "text-slate-400" : "text-slate-500"}`}>
+                          No painel da Meta, configure o Webhook para receber as mensagens de volta para este sistema:
+                        </p>
+                        <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 font-mono text-[9px] break-all border border-slate-200 dark:border-slate-700 select-all">
+                          {typeof window !== "undefined" ? window.location.origin : ""}/api/whatsapp/webhook
+                        </div>
+                      </div>
+
+                      <div className={`p-4 rounded-2xl border ${isDarkMode ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-100"}`}>
+                        <h5 className="font-bold text-xs mb-2 text-indigo-500">Dica Pro</h5>
+                        <p className={`text-[10px] leading-relaxed ${isDarkMode ? "text-indigo-300" : "text-indigo-700"}`}>
+                          Para uso em produção, lembre-se de configurar um <span className="font-bold">System User Access Token</span> permanente, caso contrário o token temporário expirará em 24 horas.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: MODO SIMULAÇÃO / SANDBOX */}
+                {configTab === "simulation" && (
+                  <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center space-y-4">
+                    <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center mx-auto">
+                      <Zap size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-amber-600 dark:text-amber-400">Modo Simulação / Sandbox Interno</h4>
+                      <p className={`text-xs mt-1 max-w-md mx-auto ${isDarkMode ? "text-slate-300" : "text-slate-600"}`}>
+                        Ideal para testes rápidos, treinamento da equipe e demonstrações sem necessidade de conectar nenhuma conta ou servidor externo.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-8 flex items-center justify-between border-t pt-4 border-slate-200 dark:border-slate-800">
+                  <div className="text-[11px] font-bold text-slate-500">
+                    Provedor Selecionado: <span className="text-emerald-500 uppercase font-black">{configTab}</span>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button 
+                      type="button"
+                      onClick={() => setIsConfiguring(false)}
+                      className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-colors ${
+                        isDarkMode ? "bg-slate-800 text-slate-300 hover:bg-slate-700" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      Cancelar
+                    </button>
+
+                    <button 
+                      type="button"
+                      onClick={handleSaveProviderConfig}
+                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>Salvar e Ativar Modo</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+    </div>
     </div>
   );
 }
