@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+
 import './globals.css';
 import { NotificationManager } from '@/components/NotificationManager';
 import { ClientProviders } from '@/components/ClientProviders';
@@ -10,12 +10,7 @@ import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import { TopTruckBanner } from '@/components/TopTruckBanner';
 import { FloatingDirectoriaBulletin } from '@/components/FloatingDirectoriaBulletin';
 
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-sans',
-  display: 'swap',
-});
+const plusJakartaSans = { className: 'font-sans', variable: '--font-sans' };
 
 export const viewport: Viewport = {
   themeColor: '#2563eb',

@@ -9,7 +9,7 @@ import {
   ListTodo,
   Users, 
   Target, 
-  Truck, 
+  Truck, Calculator, 
   ArrowRightLeft, 
   ShieldCheck, 
   Settings, 
@@ -106,6 +106,7 @@ export function Sidebar() {
       title: 'Operações',
       items: [
         ...(canAccessDeliveries ? [{ href: '/deliveries', icon: Truck, label: 'Entregas', active: pathname?.startsWith('/deliveries') }] : []),
+        { href: '/shipping-calculator', icon: Calculator, label: 'Cálculo de Frete', active: pathname?.startsWith('/shipping-calculator') },
         { href: '/reports/truck-history', icon: Truck, label: 'Caminhão Reposição', active: pathname?.startsWith('/reports/truck-history') },
         ...(canAccessTransfers ? [{ href: '/transfers', icon: ArrowRightLeft, label: 'Transferências', active: pathname?.startsWith('/transfers') }] : []),
         ...(canAccessWarranties ? [

@@ -42,7 +42,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
       window.addEventListener('error', handleChunkError);
 
       // Sincronizar nome da aplicação na base de dados (system_settings)
-      fetch('/api/system/settings', { method: 'POST' }).catch(() => {});
+      fetch('/api/system/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }).catch(() => {});
 
       return () => window.removeEventListener('error', handleChunkError);
     }

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
-import { ArrowLeft, Search, Plus, Truck, User, Calendar, MapPin, DollarSign, Clock, X, Check, CheckCircle2, Package, ChevronRight, Filter, TrendingUp, PieChart as PieIcon, Edit2, Trash2, AlertCircle, Phone, Database, List, Map as MapIcon, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Truck, Calculator, User, Calendar, MapPin, DollarSign, Clock, X, Check, CheckCircle2, Package, ChevronRight, Filter, TrendingUp, PieChart as PieIcon, Edit2, Trash2, AlertCircle, Phone, Database, List, Map as MapIcon, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
@@ -1407,6 +1407,14 @@ function DeliveriesContent() {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <Link
+              href="/shipping-calculator"
+              className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 shadow-sm transition-all"
+              title="Calcular frete por CEP e KM rodado"
+            >
+              <Calculator size={14} />
+              <span>Cálculo de Frete</span>
+            </Link>
             {/* Driver Dropdown */}
             <select
               value={driverFilter}
