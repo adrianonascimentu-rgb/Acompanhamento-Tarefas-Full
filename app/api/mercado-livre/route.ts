@@ -59,6 +59,13 @@ FOR DELETE TO authenticated, anon USING (true);
 
 NOTIFY pgrst, 'reload schema';`;
 
+
+const normCode = (val: any) => {
+  if (val === null || val === undefined) return "";
+  const s = String(val).trim().toLowerCase().replace(/^0+/, "");
+  return s || "0";
+};
+
 const parseStr = (val: any) => (val !== null && val !== undefined && String(val).trim() !== '' ? String(val).trim() : null);
 const parseNum = (val: any) => (val !== '' && val !== null && val !== undefined ? parseFloat(String(val).replace(',', '.')) : null);
 const parseIntVal = (val: any) => (val !== '' && val !== null && val !== undefined ? parseInt(String(val), 10) : 0);
@@ -131,23 +138,72 @@ export async function POST(request: Request) {
 
     if (Array.isArray(body) || Array.isArray(body.items)) {
       const rawList = Array.isArray(body) ? body : body.items;
-      const recordsToInsert = rawList.map(mapItemPayload);
-      const { data, error } = await supabase
-        .from('mercado_livre_research')
-        .insert(recordsToInsert)
-        .select();
+      const records = rawList.map(mapItemPayload);
 
-      if (error) {
-        if (error.message?.includes('schema cache') || error.message?.includes('mercado_livre_research') || error.code === 'PGRST301' || error.code === '42P01') {
-          return NextResponse.json({ 
-            error: "A tabela 'mercado_livre_research' não existe no Supabase.",
-            missing_table: true,
-            create_sql: CREATE_TABLE_SQL
-          }, { status: 400 });
-        }
-        return NextResponse.json({ error: error.message }, { status: 400 });
+      const { data: existingRecords, error: fetchErr } = await supabase
+        .from('mercado_livre_research')
+        .select('*');
+
+      if (fetchErr && (fetchErr.message?.includes('schema cache') || fetchErr.message?.includes('mercado_livre_research') || fetchErr.code === 'PGRST301' || fetchErr.code === '42P01')) {
+        return NextResponse.json({ 
+          error: "A tabela 'mercado_livre_research' não existe no Supabase.",
+          missing_table: true,
+          create_sql: CREATE_TABLE_SQL
+        }, { status: 400 });
       }
-      return NextResponse.json({ success: true, count: data?.length || 0, data });
+
+      const existingByCode = new Map<string, any>();
+      if (existingRecords) {
+        existingRecords.forEach((rec: any) => {
+          if (rec.codigo) {
+            existingByCode.set(normCode(rec.codigo), rec);
+          }
+        });
+      }
+
+      const toInsert: any[] = [];
+      let updatedCount = 0;
+
+      for (const item of records) {
+        const codeKey = item.codigo ? normCode(item.codigo) : null;
+        if (codeKey && existingByCode.has(codeKey)) {
+          const existing = existingByCode.get(codeKey);
+          await supabase
+            .from('mercado_livre_research')
+            .update(item)
+            .eq('id', existing.id);
+          updatedCount++;
+        } else {
+          toInsert.push(item);
+        }
+      }
+
+      let insertedCount = 0;
+      if (toInsert.length > 0) {
+        const { data: insertedData, error: insertErr } = await supabase
+          .from('mercado_livre_research')
+          .insert(toInsert)
+          .select();
+
+        if (insertErr) {
+          if (insertErr.message?.includes('schema cache') || insertErr.message?.includes('mercado_livre_research') || insertErr.code === 'PGRST301' || insertErr.code === '42P01') {
+            return NextResponse.json({ 
+              error: "A tabela 'mercado_livre_research' não existe no Supabase.",
+              missing_table: true,
+              create_sql: CREATE_TABLE_SQL
+            }, { status: 400 });
+          }
+          return NextResponse.json({ error: insertErr.message }, { status: 400 });
+        }
+        insertedCount = insertedData?.length || toInsert.length;
+      }
+
+      return NextResponse.json({
+        success: true,
+        count: updatedCount + insertedCount,
+        updatedCount,
+        insertedCount
+      });
     }
 
     const payload = mapItemPayload(body);

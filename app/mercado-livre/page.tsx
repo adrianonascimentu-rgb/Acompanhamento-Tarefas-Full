@@ -617,20 +617,22 @@ export default function MercadoLivreResearchPage() {
           console.warn("API POST falhou, salvando localmente:", apiErr);
         }
 
+        const normCode = (val: any) => val !== null && val !== undefined && String(val).trim() !== "" ? (String(val).trim().toLowerCase().replace(/^0+/, "") || "0") : "";
+
         const existingList = JSON.parse(localStorage.getItem("mercado_livre_items") || "[]") as MLItem[];
         const currentItems = existingList.length > 0 ? existingList : [...items];
 
         const itemMap = new Map<string, MLItem>();
         currentItems.forEach(item => {
-          const key = item.codigo ? String(item.codigo).trim().toLowerCase() : item.id;
-          itemMap.set(key, { ...item });
+          const key = item.codigo ? normCode(item.codigo) : item.id;
+          if (key) itemMap.set(key, { ...item });
         });
 
         let updatedCount = 0;
         let insertedCount = 0;
 
         mapped.forEach((newItem, index) => {
-          const codeKey = newItem.codigo ? String(newItem.codigo).trim().toLowerCase() : null;
+          const codeKey = newItem.codigo ? normCode(newItem.codigo) : null;
           if (codeKey && itemMap.has(codeKey)) {
             const existing = itemMap.get(codeKey)!;
             itemMap.set(codeKey, {
