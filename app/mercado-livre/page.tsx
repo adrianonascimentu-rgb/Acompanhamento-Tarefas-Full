@@ -617,14 +617,53 @@ export default function MercadoLivreResearchPage() {
           console.warn("API POST falhou, salvando localmente:", apiErr);
         }
 
-        const existing = JSON.parse(localStorage.getItem("mercado_livre_items") || "[]");
-        const updated = [...mapped, ...existing];
-        localStorage.setItem("mercado_livre_items", JSON.stringify(updated));
-        setItems(updated);
+        const existingList = JSON.parse(localStorage.getItem("mercado_livre_items") || "[]") as MLItem[];
+        const currentItems = existingList.length > 0 ? existingList : [...items];
+
+        const itemMap = new Map<string, MLItem>();
+        currentItems.forEach(item => {
+          const key = item.codigo ? String(item.codigo).trim().toLowerCase() : item.id;
+          itemMap.set(key, { ...item });
+        });
+
+        let updatedCount = 0;
+        let insertedCount = 0;
+
+        mapped.forEach((newItem, index) => {
+          const codeKey = newItem.codigo ? String(newItem.codigo).trim().toLowerCase() : null;
+          if (codeKey && itemMap.has(codeKey)) {
+            const existing = itemMap.get(codeKey)!;
+            itemMap.set(codeKey, {
+              ...existing,
+              ...newItem,
+              id: existing.id,
+              created_at: existing.created_at || new Date().toISOString()
+            });
+            updatedCount++;
+          } else {
+            const newKey = codeKey || `ml_imp_${Date.now()}_${index}`;
+            const fullNewItem = {
+              id: `ml_imp_${Date.now()}_${index}`,
+              created_at: new Date().toISOString(),
+              ...newItem
+            };
+            itemMap.set(newKey, fullNewItem);
+            insertedCount++;
+          }
+        });
+
+        const updatedList = Array.from(itemMap.values());
+        localStorage.setItem("mercado_livre_items", JSON.stringify(updatedList));
+        setItems(updatedList);
 
         setIsImportModalOpen(false);
         setImportFile(null);
-        alert(`Importação concluída com sucesso! ${mapped.length} itens adicionados.`);
+
+        let msg = "Importação concluída com sucesso!\n";
+        if (updatedCount > 0) msg += `• ${updatedCount} registro(s) existente(s) foram atualizados.\n`;
+        if (insertedCount > 0) msg += `• ${insertedCount} novo(s) registro(s) foram incluídos.`;
+        if (updatedCount === 0 && insertedCount === 0) msg += "Nenhum registro foi alterado.";
+        alert(msg);
         fetchItems();
       } catch (err: any) {
         console.error("Erro ao processar arquivo:", err);
