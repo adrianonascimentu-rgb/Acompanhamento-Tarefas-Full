@@ -369,7 +369,7 @@ export default function NewCollaboratorPage() {
         body: JSON.stringify({
           name: cleanName,
           username: cleanUsername,
-          role: formData.role?.trim() || (userRole === 'admin' ? 'Administrador' : userRole === 'vendedor' ? 'Vendedor' : userRole === 'estoque' ? 'Estoque' : 'Colaborador'),
+          role: formData.role?.trim() || (userRole === 'admin' ? 'Administrador' : userRole === 'gerente' ? 'Gerente' : userRole === 'supervisor' ? 'Supervisor' : userRole === 'caixa' ? 'Caixa' : userRole === 'vendedor' ? 'Vendedor' : userRole === 'entregador' ? 'Entregador' : userRole === 'estoque' ? 'Estoquista' : 'Colaborador'),
           email: cleanEmail,
           phone: cleanPhone,
           location: cleanLocation,

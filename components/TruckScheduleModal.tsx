@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -18,7 +18,8 @@ import {
   MessageSquareWarning,
   AlertTriangle,
   Edit2,
-  Save
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { TruckScheduleData, TruckArrivalRecord } from '@/lib/truckSchedule';
 import { useUI } from '@/hooks/useUI';
@@ -30,23 +31,30 @@ interface TruckScheduleModalProps {
   onSave: (newData: {
     next_arrival_date?: string | null;
     last_arrival_date?: string | null;
+    history?: TruckArrivalRecord[];
     newRecord?: {
+      id?: string;
       arrival_date: string;
       driver_name: string;
       assistant_name?: string;
       notes?: string;
       comments?: string;
+      created_at?: string;
     };
     updateRecord?: {
       id: string;
+      arrival_date?: string;
       comments?: string;
       notes?: string;
       driver_name?: string;
       assistant_name?: string;
     };
     deletedRecordId?: string;
-  }) => Promise<void>;
+    deletedRecord?: Partial<TruckArrivalRecord>;
+  }) => Promise<any>;
   isDarkMode?: boolean;
+  initialTab?: 'dates' | 'new_arrival' | 'history';
+  initialEditingRecordId?: string | null;
 }
 
 export function TruckScheduleModal({
@@ -54,15 +62,17 @@ export function TruckScheduleModal({
   onClose,
   data,
   onSave,
-  isDarkMode = false
+  isDarkMode = false,
+  initialTab = 'dates',
+  initialEditingRecordId = null
 }: TruckScheduleModalProps) {
   const { showToast } = useUI();
-  const [activeTab, setActiveTab] = useState<'dates' | 'new_arrival' | 'history'>('dates');
-  
+  const [activeTab, setActiveTab] = useState<'dates' | 'new_arrival' | 'history'>(initialTab);
+
   // States for next and last dates
   const [nextDate, setNextDate] = useState<string>(data.next_arrival_date ? data.next_arrival_date.split('T')[0] : '');
   const [lastDate, setLastDate] = useState<string>(data.last_arrival_date ? data.last_arrival_date.split('T')[0] : '');
-  
+
   // State for registering a completed truck arrival
   const [arrivalDate, setArrivalDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [driverName, setDriverName] = useState<string>('');
@@ -70,21 +80,67 @@ export function TruckScheduleModal({
   const [notes, setNotes] = useState<string>('');
   const [comments, setComments] = useState<string>('');
 
-  // Editing comments in history
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  // Estados locais para lista de histórico (garante atualização imediata e otimista)
+  const [historyList, setHistoryList] = useState<TruckArrivalRecord[]>(data.history || []);
+
+  // Estado para confirmação inline de exclusão (sem popup nativo que trava em iframes)
+  const [recordToDelete, setRecordToDelete] = useState<TruckArrivalRecord | null>(null);
+
+  // Estados para edição completa de caminhões passados no histórico
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(initialEditingRecordId);
+  const [editingDriverName, setEditingDriverName] = useState<string>('');
+  const [editingAssistantName, setEditingAssistantName] = useState<string>('');
+  const [editingArrivalDate, setEditingArrivalDate] = useState<string>('');
   const [editingComments, setEditingComments] = useState<string>('');
+  const [editingNotes, setEditingNotes] = useState<string>('');
 
   const [saving, setSaving] = useState(false);
 
-  // Sync state on open
-  React.useEffect(() => {
+  // 1. Ao abrir o modal, define aba inicial e registro a ser editado
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab || 'dates');
+      setRecordToDelete(null);
+      if (initialEditingRecordId && data.history) {
+        const found = data.history.find(h => String(h.id).trim() === String(initialEditingRecordId).trim());
+        if (found) {
+          handleStartEdit(found);
+        }
+      } else {
+        handleCancelEdit();
+      }
+    }
+  }, [isOpen, initialTab, initialEditingRecordId]);
+
+  // 2. Sincronizar dados vindos de props sem mudar a aba ativa do usuário
+  useEffect(() => {
     if (isOpen) {
       setNextDate(data.next_arrival_date ? data.next_arrival_date.split('T')[0] : '');
       setLastDate(data.last_arrival_date ? data.last_arrival_date.split('T')[0] : '');
+      setHistoryList(data.history || []);
     }
   }, [isOpen, data]);
 
   if (!isOpen) return null;
+
+  const handleStartEdit = (record: TruckArrivalRecord) => {
+    setEditingRecordId(record.id);
+    setRecordToDelete(null); // Fecha confirmação de delete se aberta
+    setEditingDriverName(record.driver_name || '');
+    setEditingAssistantName(record.assistant_name || '');
+    setEditingArrivalDate(record.arrival_date ? record.arrival_date.split('T')[0] : '');
+    setEditingComments(record.comments || '');
+    setEditingNotes(record.notes || '');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRecordId(null);
+    setEditingDriverName('');
+    setEditingAssistantName('');
+    setEditingArrivalDate('');
+    setEditingComments('');
+    setEditingNotes('');
+  };
 
   const handleSaveDates = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,9 +172,29 @@ export function TruckScheduleModal({
 
     setSaving(true);
     try {
-      await onSave({
+      const generatedId = `truck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const newEntry: TruckArrivalRecord = {
+        id: generatedId,
+        arrival_date: arrivalDate,
+        driver_name: driverName.trim(),
+        assistant_name: assistantName.trim() || undefined,
+        notes: notes.trim() || undefined,
+        comments: comments.trim() || undefined,
+        created_at: new Date().toISOString()
+      };
+
+      // Atualização otimista local
+      const updatedList = [newEntry, ...historyList].sort((a, b) => 
+        new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime()
+      );
+      setHistoryList(updatedList);
+      setLastDate(updatedList[0].arrival_date);
+
+      const res = await onSave({
         last_arrival_date: arrivalDate,
+        history: updatedList,
         newRecord: {
+          id: generatedId,
           arrival_date: arrivalDate,
           driver_name: driverName.trim(),
           assistant_name: assistantName.trim() || undefined,
@@ -126,6 +202,10 @@ export function TruckScheduleModal({
           comments: comments.trim() || undefined
         }
       });
+
+      if (res && res.data && Array.isArray(res.data.history)) {
+        setHistoryList(res.data.history);
+      }
 
       showToast('Chegada do caminhão registrada no histórico com sucesso!', 'success');
       setDriverName('');
@@ -135,46 +215,125 @@ export function TruckScheduleModal({
       setActiveTab('history');
     } catch (err: any) {
       showToast(err?.message || 'Erro ao registrar chegada.', 'error');
+      setHistoryList(data.history || []);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSaveEditComments = async (recordId: string) => {
+  const handleSaveEditRecord = async (recordId: string) => {
+    if (!editingDriverName.trim()) {
+      showToast('O nome do motorista é obrigatório.', 'warning');
+      return;
+    }
+
     setSaving(true);
     try {
-      await onSave({
+      // Atualização otimista na lista local
+      const updatedList = historyList.map(h => {
+        if (String(h.id).trim() === String(recordId).trim()) {
+          return {
+            ...h,
+            driver_name: editingDriverName.trim(),
+            assistant_name: editingAssistantName.trim() || '',
+            arrival_date: editingArrivalDate || h.arrival_date,
+            comments: editingComments.trim() || '',
+            notes: editingNotes.trim() || ''
+          };
+        }
+        return h;
+      }).sort((a, b) => new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime());
+
+      setHistoryList(updatedList);
+      if (updatedList.length > 0) {
+        setLastDate(updatedList[0].arrival_date);
+      }
+
+      const res = await onSave({
+        history: updatedList,
         updateRecord: {
           id: recordId,
-          comments: editingComments.trim()
+          driver_name: editingDriverName.trim(),
+          assistant_name: editingAssistantName.trim() || '',
+          arrival_date: editingArrivalDate || undefined,
+          comments: editingComments.trim() || '',
+          notes: editingNotes.trim() || ''
         }
       });
+
+      if (res && res.data && Array.isArray(res.data.history)) {
+        setHistoryList(res.data.history);
+      }
+
       setEditingRecordId(null);
-      showToast('Comentários e ocorrências atualizados!', 'success');
+      showToast('Informações do caminhão atualizadas com sucesso!', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Erro ao salvar comentários.', 'error');
+      showToast(err?.message || 'Erro ao salvar alterações.', 'error');
+      setHistoryList(data.history || []);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteHistory = async (id: string, recordDate: string) => {
-    if (confirm(`Deseja remover o registro de chegada de ${new Date(recordDate + 'T00:00:00').toLocaleDateString('pt-BR')}?`)) {
-      setSaving(true);
-      try {
-        await onSave({ deletedRecordId: id });
-        showToast('Registro removido.', 'info');
-      } catch (err: any) {
-        showToast('Erro ao remover registro.', 'error');
-      } finally {
-        setSaving(false);
+  // Exclusão definitiva de registro de histórico com feedback visual imediato
+  const handleConfirmDelete = async (record: TruckArrivalRecord) => {
+    const targetId = record.id;
+    setSaving(true);
+    
+    // 1. Atualização otimista imediata na UI
+    const updatedLocal = historyList.filter(r => {
+      if (targetId && String(r.id).trim() === String(targetId).trim()) return false;
+      if (r.arrival_date === record.arrival_date && 
+          r.driver_name?.trim().toLowerCase() === record.driver_name?.trim().toLowerCase()) {
+        return false;
       }
+      return true;
+    });
+
+    setHistoryList(updatedLocal);
+    setRecordToDelete(null);
+
+    if (editingRecordId && String(editingRecordId).trim() === String(targetId).trim()) {
+      handleCancelEdit();
+    }
+
+    // Recalcular data do último carro imediatamente
+    if (updatedLocal.length > 0) {
+      setLastDate(updatedLocal[0].arrival_date ? updatedLocal[0].arrival_date.split('T')[0] : '');
+    } else {
+      setLastDate('');
+    }
+
+    try {
+      const res = await onSave({ 
+        deletedRecordId: targetId,
+        deletedRecord: {
+          id: record.id,
+          arrival_date: record.arrival_date,
+          driver_name: record.driver_name
+        },
+        history: updatedLocal
+      });
+
+      if (res && res.data) {
+        setHistoryList(res.data.history || []);
+        if (res.data.last_arrival_date !== undefined) {
+          setLastDate(res.data.last_arrival_date ? res.data.last_arrival_date.split('T')[0] : '');
+        }
+      }
+      showToast('Registro de caminhão excluído com sucesso!', 'success');
+    } catch (err: any) {
+      // Reverter se falhar
+      setHistoryList(data.history || []);
+      showToast(err?.message || 'Erro ao remover registro.', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
         <motion.div
           initial={{ opacity: 0, scale: 0.96, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -193,7 +352,7 @@ export function TruckScheduleModal({
               </div>
               <div>
                 <h3 className="text-base font-black tracking-tight">Gestão de Caminhão de Reposição</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Controle de datas, motoristas, avarias e divergências de carga</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Controle de datas, motoristas, ajudantes e ocorrências de carga</p>
               </div>
             </div>
             <button 
@@ -244,7 +403,7 @@ export function TruckScheduleModal({
             >
               Histórico
               <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 font-black">
-                {data.history?.length || 0}
+                {historyList.length}
               </span>
               {activeTab === 'history' && (
                 <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 dark:bg-blue-400 rounded-full" />
@@ -282,12 +441,12 @@ export function TruckScheduleModal({
                       />
                       <Calendar className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">Exibido em destaque no topo do balão</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Exibido em destaque no card principal da barra superior</p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-1.5">
-                      🚚 Data do Último Carro que Chegou
+                      📦 Data em que Chegou o Último Carro
                     </label>
                     <div className="relative">
                       <input
@@ -326,7 +485,7 @@ export function TruckScheduleModal({
               </form>
             )}
 
-            {/* TAB 2: REGISTRAR CHEGADA (COM MOTORISTA, AJUDANTE E CAMPO DE COMENTÁRIOS / OCORRÊNCIAS) */}
+            {/* TAB 2: REGISTRAR CHEGADA */}
             {activeTab === 'new_arrival' && (
               <form onSubmit={handleRegisterArrival} className="space-y-4">
                 <div>
@@ -381,7 +540,7 @@ export function TruckScheduleModal({
                   </div>
                 </div>
 
-                {/* CAMPO DEDICADO PARA COMENTÁRIOS E DIVERGÊNCIAS (AVARIAS, DIVERGÊNCIAS DE NF, FALTAS/SOBRAS) */}
+                {/* Comentários e Ocorrências */}
                 <div className={`p-4 rounded-2xl border ${
                   isDarkMode ? 'bg-amber-950/20 border-amber-900/40' : 'bg-amber-50/70 border-amber-200/80'
                 }`}>
@@ -438,12 +597,12 @@ export function TruckScheduleModal({
               </form>
             )}
 
-            {/* TAB 3: HISTÓRICO COMPLETO */}
+            {/* TAB 3: HISTÓRICO COMPLETO COM EDIÇÃO E EXCLUSÃO SEGURO */}
             {activeTab === 'history' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    Histórico de Caminhões Recebidos ({data.history?.length || 0})
+                    Histórico de Caminhões Recebidos ({historyList.length})
                   </span>
                   <button
                     onClick={() => setActiveTab('new_arrival')}
@@ -453,33 +612,32 @@ export function TruckScheduleModal({
                   </button>
                 </div>
 
-                {!data.history || data.history.length === 0 ? (
+                {historyList.length === 0 ? (
                   <div className="text-center py-10 px-4 border border-dashed rounded-3xl border-slate-200 dark:border-slate-800">
                     <Truck size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Nenhum histórico registrado</p>
                     <p className="text-xs text-slate-400 mt-0.5">Registre as chegadas de caminhões para manter o relatório atualizado.</p>
-                    <button
-                      onClick={() => setActiveTab('new_arrival')}
-                      className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5"
-                    >
-                      <Plus size={14} /> Registrar Primeiro Carro
-                    </button>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {data.history.map((record, index) => {
+                    {historyList.map((record, index) => {
                       const recDate = new Date(record.arrival_date + 'T00:00:00');
                       const formattedDate = !isNaN(recDate.getTime())
                         ? recDate.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })
                         : record.arrival_date;
 
                       const isEditingThis = editingRecordId === record.id;
+                      const isConfirmingDelete = recordToDelete?.id === record.id;
 
                       return (
                         <div
                           key={record.id || index}
                           className={`p-4 rounded-2xl border transition-all ${
-                            isDarkMode 
+                            isConfirmingDelete
+                              ? 'border-2 border-rose-500 bg-rose-50/20 dark:bg-rose-950/20 shadow-md'
+                              : isEditingThis
+                              ? 'border-2 border-blue-500 bg-blue-50/30 dark:bg-slate-900/90 shadow-md'
+                              : isDarkMode 
                               ? 'bg-slate-950/60 border-slate-800 hover:border-slate-700' 
                               : 'bg-slate-50 border-slate-200/80 hover:border-slate-300'
                           }`}
@@ -493,27 +651,38 @@ export function TruckScheduleModal({
                                 <h4 className="text-sm font-black capitalize">{formattedDate}</h4>
                                 <p className="text-[11px] text-slate-500">
                                   {index === 0 && <span className="text-emerald-500 font-bold mr-1.5">● Mais recente</span>}
+                                  {record.created_by && <span>Registrado por: {record.created_by}</span>}
                                 </p>
                               </div>
                             </div>
+
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => {
                                   if (isEditingThis) {
-                                    setEditingRecordId(null);
+                                    handleCancelEdit();
                                   } else {
-                                    setEditingRecordId(record.id);
-                                    setEditingComments(record.comments || '');
+                                    handleStartEdit(record);
                                   }
                                 }}
-                                className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-                                title="Editar comentários/avarias"
+                                className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold ${
+                                  isEditingThis
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/50'
+                                }`}
+                                title="Editar motorista, ajudante e detalhes deste caminhão"
                               >
                                 <Edit2 size={14} />
+                                {isEditingThis && <span>Editando</span>}
                               </button>
+
                               <button
-                                onClick={() => handleDeleteHistory(record.id, record.arrival_date)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                                onClick={() => setRecordToDelete(isConfirmingDelete ? null : record)}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  isConfirmingDelete
+                                    ? 'bg-rose-600 text-white'
+                                    : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50'
+                                }`}
                                 title="Excluir do histórico"
                               >
                                 <Trash2 size={14} />
@@ -521,72 +690,184 @@ export function TruckScheduleModal({
                             </div>
                           </div>
 
-                          <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <div className="flex items-center gap-1.5">
-                              <User size={13} className="text-slate-400 shrink-0" />
-                              <span className="text-slate-500">Motorista:</span>
-                              <strong className="font-bold text-slate-800 dark:text-slate-200 truncate">{record.driver_name}</strong>
-                            </div>
-
-                            <div className="flex items-center gap-1.5">
-                              <Users size={13} className="text-slate-400 shrink-0" />
-                              <span className="text-slate-500">Ajudante:</span>
-                              <strong className="font-bold text-slate-800 dark:text-slate-200 truncate">
-                                {record.assistant_name || 'Nenhum'}
-                              </strong>
-                            </div>
-                          </div>
-
-                          {/* Seção de Comentários / Ocorrências (Avarias, Falta/Sobra, NF) */}
-                          {isEditingThis ? (
-                            <div className="mt-3 p-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/30 space-y-2">
-                              <label className="text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1">
-                                <MessageSquareWarning size={13} /> Editar Comentários & Ocorrências:
-                              </label>
-                              <textarea
-                                rows={2}
-                                value={editingComments}
-                                onChange={(e) => setEditingComments(e.target.value)}
-                                placeholder="Avarias, divergência de NF, falta de peças..."
-                                className={`w-full p-2.5 rounded-lg border text-xs outline-none ${
-                                  isDarkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-                                }`}
-                              />
-                              <div className="flex justify-end gap-2">
+                          {/* CONFIRMAÇÃO INLINE DE EXCLUSÃO (100% FUNCIONAL SEM CONFIRM DO BROWSER) */}
+                          {isConfirmingDelete && (
+                            <div className="mt-3 p-3.5 rounded-xl border border-rose-300 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/50 text-rose-900 dark:text-rose-200 space-y-2 animate-in fade-in duration-150">
+                              <div className="flex items-center gap-2 font-bold text-xs">
+                                <AlertTriangle size={15} className="text-rose-600 dark:text-rose-400 shrink-0" />
+                                <span>Confirmar exclusão deste caminhão ({formattedDate})?</span>
+                              </div>
+                              <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                                O registro do motorista <strong>{record.driver_name}</strong> será apagado permanentemente.
+                              </p>
+                              <div className="flex items-center justify-end gap-2 pt-1">
                                 <button
                                   type="button"
-                                  onClick={() => setEditingRecordId(null)}
-                                  className="px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-700"
+                                  onClick={() => setRecordToDelete(null)}
+                                  disabled={saving}
+                                  className="px-3 py-1 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 transition-colors"
                                 >
                                   Cancelar
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleSaveEditComments(record.id)}
+                                  onClick={() => handleConfirmDelete(record)}
                                   disabled={saving}
-                                  className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1"
+                                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
                                 >
-                                  <Save size={12} /> Salvar
+                                  <Trash2 size={13} />
+                                  <span>{saving ? 'Excluindo...' : 'Sim, Excluir'}</span>
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Se este registro está sendo editado */}
+                          {isEditingThis ? (
+                            <div className="mt-3 pt-3 border-t border-blue-200/60 dark:border-blue-900/60 space-y-3 animate-in fade-in duration-150">
+                              <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5">
+                                <Edit2 size={13} />
+                                <span>Edição de Informações: Motorista, Ajudante e Carga</span>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                {/* Motorista */}
+                                <div>
+                                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
+                                    <User size={12} className="text-blue-500" /> Motorista *
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editingDriverName}
+                                    onChange={(e) => setEditingDriverName(e.target.value)}
+                                    placeholder="Nome do Motorista"
+                                    required
+                                    className={`w-full p-2.5 rounded-xl border text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500 ${
+                                      isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                    }`}
+                                  />
+                                </div>
+
+                                {/* Ajudante */}
+                                <div>
+                                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
+                                    <Users size={12} className="text-indigo-500" /> Ajudante de Carga
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editingAssistantName}
+                                    onChange={(e) => setEditingAssistantName(e.target.value)}
+                                    placeholder="Nome do Ajudante (ou vazio)"
+                                    className={`w-full p-2.5 rounded-xl border text-xs outline-none focus:ring-2 focus:ring-blue-500 ${
+                                      isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                    }`}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Data de Chegada */}
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 mb-1">
+                                  <Calendar size={12} className="text-emerald-500" /> Data de Chegada do Caminhão
+                                </label>
+                                <input
+                                  type="date"
+                                  value={editingArrivalDate}
+                                  onChange={(e) => setEditingArrivalDate(e.target.value)}
+                                  className={`w-full p-2 rounded-xl border text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Comentários / Ocorrências */}
+                              <div>
+                                <label className="text-[11px] font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1">
+                                  <MessageSquareWarning size={12} className="text-amber-500" /> Comentários, Avarias & Ocorrências
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={editingComments}
+                                  onChange={(e) => setEditingComments(e.target.value)}
+                                  placeholder="Avarias, divergência de NF, falta de peças..."
+                                  className={`w-full p-2.5 rounded-xl border text-xs outline-none focus:ring-2 focus:ring-amber-500 ${
+                                    isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Observações Gerais */}
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1 mb-1">
+                                  <FileText size={12} className="text-slate-400" /> Outras Observações Gerais
+                                </label>
+                                <input
+                                  type="text"
+                                  value={editingNotes}
+                                  onChange={(e) => setEditingNotes(e.target.value)}
+                                  placeholder="Observações complementares..."
+                                  className={`w-full p-2.5 rounded-xl border text-xs outline-none focus:ring-2 focus:ring-blue-500 ${
+                                    isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
+                                  }`}
+                                />
+                              </div>
+
+                              {/* Ações Salvar / Cancelar */}
+                              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200/60 dark:border-slate-800">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEdit}
+                                  disabled={saving}
+                                  className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditRecord(record.id)}
+                                  disabled={saving}
+                                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/20 active:scale-95 transition-all"
+                                >
+                                  <Save size={13} />
+                                  <span>{saving ? 'Salvando...' : 'Salvar Alterações'}</span>
                                 </button>
                               </div>
                             </div>
                           ) : (
-                            record.comments && (
-                              <div className="mt-2.5 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/40 text-xs">
-                                <span className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 text-[10px] uppercase tracking-wider mb-0.5">
-                                  <MessageSquareWarning size={12} /> Comentários & Ocorrências:
-                                </span>
-                                <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
-                                  {record.comments}
-                                </p>
+                            /* Visualização Normal */
+                            <>
+                              <div className="mt-3 pt-3 border-t border-slate-200/60 dark:border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                <div className="flex items-center gap-1.5">
+                                  <User size={13} className="text-blue-500 shrink-0" />
+                                  <span className="text-slate-500">Motorista:</span>
+                                  <strong className="font-bold text-slate-800 dark:text-slate-200 truncate">{record.driver_name}</strong>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Users size={13} className="text-indigo-500 shrink-0" />
+                                  <span className="text-slate-500">Ajudante:</span>
+                                  <strong className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                                    {record.assistant_name || <span className="text-slate-400 font-normal italic">Nenhum</span>}
+                                  </strong>
+                                </div>
                               </div>
-                            )
-                          )}
 
-                          {record.notes && (
-                            <p className="mt-2 text-xs italic text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200/40 dark:border-slate-800/40">
-                              &quot;{record.notes}&quot;
-                            </p>
+                              {record.comments && (
+                                <div className="mt-2.5 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/40 text-xs">
+                                  <span className="font-bold text-amber-700 dark:text-amber-400 flex items-center gap-1 text-[10px] uppercase tracking-wider mb-0.5">
+                                    <MessageSquareWarning size={12} /> Comentários & Ocorrências:
+                                  </span>
+                                  <p className="text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
+                                    {record.comments}
+                                  </p>
+                                </div>
+                              )}
+
+                              {record.notes && (
+                                <p className="mt-2 text-xs italic text-slate-600 dark:text-slate-400 bg-white/60 dark:bg-slate-900/60 p-2 rounded-xl border border-slate-200/40 dark:border-slate-800/40">
+                                  &quot;{record.notes}&quot;
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
                       );

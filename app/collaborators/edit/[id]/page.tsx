@@ -133,7 +133,25 @@ export default function EditCollaboratorPage() {
           password: profile.password || ''
         });
         setInitialPassword(profile.password || '');
-        setUserRole(profile.type || 'user');
+        let derivedRole = 'user';
+        const pRole = (profile.role || '').toLowerCase();
+        const pType = (profile.type || '').toLowerCase();
+        if (pType === 'admin' || pRole.includes('admin') || pRole.includes('administrador')) {
+          derivedRole = 'admin';
+        } else if (pRole.includes('gerente')) {
+          derivedRole = 'gerente';
+        } else if (pRole.includes('supervisor')) {
+          derivedRole = 'supervisor';
+        } else if (pRole.includes('caixa')) {
+          derivedRole = 'caixa';
+        } else if (pRole.includes('vendedor')) {
+          derivedRole = 'vendedor';
+        } else if (pRole.includes('entregador') || pRole.includes('entrega')) {
+          derivedRole = 'entregador';
+        } else if (pRole.includes('estoque') || pRole.includes('estoquista')) {
+          derivedRole = 'estoque';
+        }
+        setUserRole(derivedRole);
         const isInactive = getInactiveCollaboratorIds().includes(id as string) || profile.status === 'Inativo';
         setStatus(isInactive ? 'Inativo' : 'Ativo');
         setSubmodules({
@@ -384,7 +402,7 @@ export default function EditCollaboratorPage() {
             id,
             name: cleanName,
             username: cleanUsername,
-            role: formData.role?.trim() || (userRole === 'admin' ? 'Administrador' : userRole === 'vendedor' ? 'Vendedor' : userRole === 'estoque' ? 'Estoque' : 'Colaborador'),
+            role: formData.role?.trim() || (userRole === 'admin' ? 'Administrador' : userRole === 'gerente' ? 'Gerente' : userRole === 'supervisor' ? 'Supervisor' : userRole === 'caixa' ? 'Caixa' : userRole === 'vendedor' ? 'Vendedor' : userRole === 'entregador' ? 'Entregador' : userRole === 'estoque' ? 'Estoquista' : 'Colaborador'),
             email: cleanEmail,
             phone: cleanPhone,
             location: cleanLocation,

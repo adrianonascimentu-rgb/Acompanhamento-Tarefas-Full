@@ -105,9 +105,10 @@ export function TopTruckBanner() {
       ...newData,
       updated_by_name: user?.name || (isAdmin ? 'Administrador' : role)
     });
-    if (res.success) {
+    if (res.success && res.data) {
       setScheduleData(res.data);
     }
+    return res;
   };
 
   // Calcular a diferença em dias entre a data do próximo carro e a data atual

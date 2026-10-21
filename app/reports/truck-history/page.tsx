@@ -49,6 +49,7 @@ export default function TruckHistoryReportPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [recordToEdit, setRecordToEdit] = useState<TruckArrivalRecord | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -80,13 +81,66 @@ export default function TruckHistoryReportPage() {
     };
   }, [loadData]);
 
+  const [tableRecordToDelete, setTableRecordToDelete] = useState<TruckArrivalRecord | null>(null);
+
+  const handleOpenEditRecord = (rec: TruckArrivalRecord) => {
+    setRecordToEdit(rec);
+    setIsModalOpen(true);
+  };
+
   const handleSaveData = async (newData: any) => {
     const res = await updateTruckSchedule({
       ...newData,
       updated_by_name: user?.name || (isAdmin ? 'Administrador' : role)
     });
-    if (res.success) {
+    if (res.success && res.data) {
       setScheduleData(res.data);
+    }
+    return res;
+  };
+
+  const handleDeleteFromTable = async (rec: TruckArrivalRecord) => {
+    try {
+      const targetId = rec.id;
+      const currentList = scheduleData.history || [];
+      const updatedList = currentList.filter(r => {
+        if (targetId && String(r.id).trim() === String(targetId).trim()) return false;
+        if (r.arrival_date === rec.arrival_date && 
+            r.driver_name?.trim().toLowerCase() === rec.driver_name?.trim().toLowerCase()) {
+          return false;
+        }
+        return true;
+      });
+
+      setScheduleData(prev => ({
+        ...prev,
+        history: updatedList,
+        last_arrival_date: updatedList.length > 0 ? updatedList[0].arrival_date : null
+      }));
+      setTableRecordToDelete(null);
+
+      if (recordToEdit && (recordToEdit.id === targetId || recordToEdit.arrival_date === rec.arrival_date)) {
+        setRecordToEdit(null);
+      }
+
+      const res = await updateTruckSchedule({
+        deletedRecordId: targetId,
+        deletedRecord: {
+          id: rec.id,
+          arrival_date: rec.arrival_date,
+          driver_name: rec.driver_name
+        },
+        history: updatedList,
+        updated_by_name: user?.name || (isAdmin ? 'Administrador' : role)
+      });
+
+      if (res.success && res.data) {
+        setScheduleData(res.data);
+      }
+      showToast('Registro de caminhão excluído com sucesso!', 'success');
+    } catch (err: any) {
+      showToast(err?.message || 'Erro ao excluir registro.', 'error');
+      loadData();
     }
   };
 
@@ -308,6 +362,7 @@ export default function TruckHistoryReportPage() {
                     <th className="py-3.5 px-6 min-w-[260px]">Comentários & Ocorrências (Avarias / Faltas / NF)</th>
                     <th className="py-3.5 px-6">Observações Gerais</th>
                     <th className="py-3.5 px-6">Registrado Por</th>
+                    {canEdit && <th className="py-3.5 px-6 text-center">Ações</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs font-medium">
@@ -367,6 +422,47 @@ export default function TruckHistoryReportPage() {
                         <td className="py-4 px-6 whitespace-nowrap text-slate-400 text-[11px]">
                           {rec.created_by || 'Sistema'}
                         </td>
+                        {canEdit && (
+                          <td className="py-4 px-6 text-center whitespace-nowrap">
+                            {tableRecordToDelete?.id === rec.id ? (
+                              <div className="inline-flex items-center gap-1.5 p-1 bg-rose-50 dark:bg-rose-950/70 rounded-xl border border-rose-300 dark:border-rose-900 animate-in fade-in duration-150">
+                                <span className="text-[11px] font-bold text-rose-700 dark:text-rose-300 px-1">Excluir?</span>
+                                <button
+                                  onClick={() => handleDeleteFromTable(rec)}
+                                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold shadow-xs active:scale-95 cursor-pointer"
+                                  title="Confirmar exclusão definitiva"
+                                >
+                                  Sim
+                                </button>
+                                <button
+                                  onClick={() => setTableRecordToDelete(null)}
+                                  className="px-2.5 py-1 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold hover:bg-slate-300 dark:hover:bg-slate-700 cursor-pointer"
+                                >
+                                  Não
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => handleOpenEditRecord(rec)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200/60 dark:border-blue-800 transition-all active:scale-95 shadow-xs cursor-pointer"
+                                  title="Editar motorista, ajudante e detalhes"
+                                >
+                                  <Edit3 size={13} />
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  onClick={() => setTableRecordToDelete(rec)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 border border-rose-200/60 dark:border-rose-800 transition-all active:scale-95 shadow-xs cursor-pointer"
+                                  title="Excluir do histórico de caminhão"
+                                >
+                                  <Trash2 size={13} />
+                                  <span>Excluir</span>
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
@@ -381,10 +477,15 @@ export default function TruckHistoryReportPage() {
       {canEdit && (
         <TruckScheduleModal
           isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
+          onClose={() => {
+            setIsModalOpen(false);
+            setRecordToEdit(null);
+          }}
           data={scheduleData}
           onSave={handleSaveData}
           isDarkMode={isDarkMode}
+          initialTab={recordToEdit ? 'history' : 'dates'}
+          initialEditingRecordId={recordToEdit ? recordToEdit.id : null}
         />
       )}
     </div>

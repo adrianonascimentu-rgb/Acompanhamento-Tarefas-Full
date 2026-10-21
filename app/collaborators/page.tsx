@@ -9,7 +9,7 @@ import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
 import { useUI } from '@/hooks/useUI';
 import { LoginForm } from '@/components/auth/LoginForm';
-import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, isSupabaseConfigured, handleSupabaseAuthError } from '@/lib/supabase';
 import { applyStatusToProfiles } from '@/lib/collaboratorStatus';
 import { useDataPrefetch } from '@/hooks/useDataPrefetch';
 import { authFetch } from '@/lib/authFetch';
@@ -166,8 +166,11 @@ export default function CollaboratorsPage() {
       let { data, error } = await query;
       
       if (error) {
-        if (error.code === '42P17' || error.message?.includes('infinite recursion')) {
-          console.warn('Política recursiva (42P17) em profiles detectada. Ativando rota de contingência /api/collaborators...');
+        if (error.code === '42P17' || error.message?.includes('infinite recursion') || error.code === 'PGRST303' || error.message?.includes('JWT expired') || error.message?.includes('jwt expired')) {
+          if (error.code === 'PGRST303' || error.message?.includes('JWT expired') || error.message?.includes('jwt expired')) {
+            await handleSupabaseAuthError(error);
+          }
+          console.warn('Erro ou JWT expirado em profiles. Ativando rota de contingência /api/collaborators...');
           try {
             const res = await authFetch('/api/collaborators');
             const json = await res.json();

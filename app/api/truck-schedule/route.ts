@@ -5,23 +5,19 @@ import { DEFAULT_TRUCK_SCHEDULE, TruckScheduleData, TruckArrivalRecord } from '@
 
 function getAdminClient() {
   const { isConfigured, supabaseUrl, supabaseServiceKey, supabaseAnonKey } = getSafeSupabaseConfig();
-
   if (!isConfigured) {
     return null;
   }
-
   if (supabaseServiceKey && supabaseServiceKey !== 'placeholder-key') {
     return createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false }
     });
   }
-
   if (supabaseAnonKey && supabaseAnonKey !== 'placeholder-key') {
     return createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false }
     });
   }
-
   return null;
 }
 
@@ -101,49 +97,79 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let updatedHistory = [...(current.history || [])];
+    let updatedHistory: TruckArrivalRecord[] = [...(current.history || [])];
 
-    if (body.deletedRecordId) {
-      updatedHistory = updatedHistory.filter(h => h.id !== body.deletedRecordId);
+    // Se a lista de histórico higienizada já foi fornecida diretamente pelo cliente
+    if (Array.isArray(body.history)) {
+      updatedHistory = [...body.history];
+    } else {
+      // Exclusão por ID ou dados do registro
+      if (body.deletedRecordId || body.deletedRecord) {
+        const targetId = body.deletedRecordId ? String(body.deletedRecordId).trim() : '';
+        const delRec = body.deletedRecord;
+
+        updatedHistory = updatedHistory.filter(h => {
+          // 1. Se o ID for idêntico
+          if (targetId && String(h.id).trim() === targetId) return false;
+          // 2. Se foi passado o objeto delRec com ID
+          if (delRec?.id && String(h.id).trim() === String(delRec.id).trim()) return false;
+          // 3. Fallback de segurança se os IDs diferirem: conferir data de chegada e motorista
+          if (delRec?.arrival_date && delRec?.driver_name &&
+              String(h.arrival_date).trim() === String(delRec.arrival_date).trim() &&
+              String(h.driver_name).trim().toLowerCase() === String(delRec.driver_name).trim().toLowerCase()) {
+            return false;
+          }
+          return true;
+        });
+      }
+
+      // Edição de registro existente
+      if (body.updateRecord) {
+        const editId = String(body.updateRecord.id).trim();
+        updatedHistory = updatedHistory.map(h => {
+          if (String(h.id).trim() === editId) {
+            return {
+              ...h,
+              ...(body.updateRecord.arrival_date !== undefined ? { arrival_date: body.updateRecord.arrival_date } : {}),
+              ...(body.updateRecord.comments !== undefined ? { comments: body.updateRecord.comments } : {}),
+              ...(body.updateRecord.notes !== undefined ? { notes: body.updateRecord.notes } : {}),
+              ...(body.updateRecord.driver_name !== undefined ? { driver_name: body.updateRecord.driver_name } : {}),
+              ...(body.updateRecord.assistant_name !== undefined ? { assistant_name: body.updateRecord.assistant_name } : {}),
+            };
+          }
+          return h;
+        });
+      }
+
+      // Inclusão de novo registro
+      if (body.newRecord) {
+        const newEntry: TruckArrivalRecord = {
+          id: body.newRecord.id || `truck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          arrival_date: body.newRecord.arrival_date,
+          driver_name: body.newRecord.driver_name,
+          assistant_name: body.newRecord.assistant_name || '',
+          notes: body.newRecord.notes || '',
+          comments: body.newRecord.comments || '',
+          created_at: body.newRecord.created_at || new Date().toISOString(),
+          created_by: body.updated_by_name || 'Usuário'
+        };
+        updatedHistory = [newEntry, ...updatedHistory];
+      }
     }
 
-    if (body.updateRecord) {
-      updatedHistory = updatedHistory.map(h => {
-        if (h.id === body.updateRecord?.id) {
-          return {
-            ...h,
-            ...(body.updateRecord.comments !== undefined ? { comments: body.updateRecord.comments } : {}),
-            ...(body.updateRecord.notes !== undefined ? { notes: body.updateRecord.notes } : {}),
-            ...(body.updateRecord.driver_name !== undefined ? { driver_name: body.updateRecord.driver_name } : {}),
-            ...(body.updateRecord.assistant_name !== undefined ? { assistant_name: body.updateRecord.assistant_name } : {}),
-          };
-        }
-        return h;
-      });
-    }
+    // Ordenar sempre por data de chegada decrescente
+    updatedHistory.sort((a, b) => new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime());
 
-    if (body.newRecord) {
-      const newEntry: TruckArrivalRecord = {
-        id: `truck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        arrival_date: body.newRecord.arrival_date,
-        driver_name: body.newRecord.driver_name,
-        assistant_name: body.newRecord.assistant_name || '',
-        notes: body.newRecord.notes || '',
-        comments: body.newRecord.comments || '',
-        created_at: new Date().toISOString(),
-        created_by: body.updated_by_name || 'Usuário'
-      };
-
-      updatedHistory = [newEntry, ...updatedHistory].sort((a, b) => 
-        new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime()
-      );
-    }
-
+    // Recalcular com precisão o last_arrival_date:
+    // Deve refletir a data do caminhão mais recente que restou no histórico
     const nextDate = body.next_arrival_date !== undefined ? body.next_arrival_date : current.next_arrival_date;
-    let lastDate = body.last_arrival_date !== undefined ? body.last_arrival_date : current.last_arrival_date;
-
-    if (body.newRecord && (!lastDate || new Date(body.newRecord.arrival_date).getTime() >= new Date(lastDate).getTime())) {
-      lastDate = body.newRecord.arrival_date;
+    let lastDate: string | null = null;
+    if (updatedHistory.length > 0) {
+      lastDate = updatedHistory[0].arrival_date;
+    } else if (body.last_arrival_date !== undefined) {
+      lastDate = body.last_arrival_date;
+    } else {
+      lastDate = null;
     }
 
     const payload: TruckScheduleData = {

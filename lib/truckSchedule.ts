@@ -28,7 +28,7 @@ export const DEFAULT_TRUCK_SCHEDULE: TruckScheduleData = {
   last_arrival_date: '2026-10-08',
   history: [
     {
-      id: 'truck_default_1',
+      id: 'truck_rec_20261008',
       arrival_date: '2026-10-08',
       driver_name: 'Carlos Eduardo',
       assistant_name: 'Marcos Souza',
@@ -140,21 +140,26 @@ export async function fetchTruckSchedule(): Promise<TruckScheduleData> {
 export async function updateTruckSchedule(newData: {
   next_arrival_date?: string | null;
   last_arrival_date?: string | null;
+  history?: TruckArrivalRecord[];
   newRecord?: {
+    id?: string;
     arrival_date: string;
     driver_name: string;
     assistant_name?: string;
     notes?: string;
     comments?: string;
+    created_at?: string;
   };
   updateRecord?: {
     id: string;
+    arrival_date?: string;
     comments?: string;
     notes?: string;
     driver_name?: string;
     assistant_name?: string;
   };
   deletedRecordId?: string;
+  deletedRecord?: Partial<TruckArrivalRecord>;
   updated_by_name?: string;
 }): Promise<{ success: boolean; data: TruckScheduleData; message?: string }> {
   try {
@@ -185,49 +190,71 @@ export async function updateTruckSchedule(newData: {
 
     // 2. Fallback local e direto no Supabase caso a API falhe
     const current = await fetchTruckSchedule();
-    let updatedHistory = [...(current.history || [])];
+    let updatedHistory: TruckArrivalRecord[] = [...(current.history || [])];
 
-    if (newData.deletedRecordId) {
-      updatedHistory = updatedHistory.filter(h => h.id !== newData.deletedRecordId);
+    if (Array.isArray(newData.history)) {
+      updatedHistory = [...newData.history];
+    } else {
+      if (newData.deletedRecordId || newData.deletedRecord) {
+        const targetId = newData.deletedRecordId ? String(newData.deletedRecordId).trim() : '';
+        const delRec = newData.deletedRecord;
+
+        updatedHistory = updatedHistory.filter(h => {
+          if (targetId && String(h.id).trim() === targetId) return false;
+          if (delRec?.id && String(h.id).trim() === String(delRec.id).trim()) return false;
+          if (delRec?.arrival_date && delRec?.driver_name &&
+              String(h.arrival_date).trim() === String(delRec.arrival_date).trim() &&
+              String(h.driver_name).trim().toLowerCase() === String(delRec.driver_name).trim().toLowerCase()) {
+            return false;
+          }
+          return true;
+        });
+      }
+
+      if (newData.updateRecord) {
+        const editId = String(newData.updateRecord.id).trim();
+        updatedHistory = updatedHistory.map(h => {
+          if (String(h.id).trim() === editId) {
+            return {
+              ...h,
+              ...(newData.updateRecord?.arrival_date !== undefined ? { arrival_date: newData.updateRecord.arrival_date } : {}),
+              ...(newData.updateRecord?.comments !== undefined ? { comments: newData.updateRecord.comments } : {}),
+              ...(newData.updateRecord?.notes !== undefined ? { notes: newData.updateRecord.notes } : {}),
+              ...(newData.updateRecord?.driver_name !== undefined ? { driver_name: newData.updateRecord.driver_name } : {}),
+              ...(newData.updateRecord?.assistant_name !== undefined ? { assistant_name: newData.updateRecord.assistant_name } : {}),
+            };
+          }
+          return h;
+        });
+      }
+
+      if (newData.newRecord) {
+        const newEntry: TruckArrivalRecord = {
+          id: newData.newRecord.id || `truck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          arrival_date: newData.newRecord.arrival_date,
+          driver_name: newData.newRecord.driver_name,
+          assistant_name: newData.newRecord.assistant_name || '',
+          notes: newData.newRecord.notes || '',
+          comments: newData.newRecord.comments || '',
+          created_at: newData.newRecord.created_at || new Date().toISOString(),
+          created_by: newData.updated_by_name || 'Usuário'
+        };
+        updatedHistory = [newEntry, ...updatedHistory];
+      }
     }
 
-    if (newData.updateRecord) {
-      updatedHistory = updatedHistory.map(h => {
-        if (h.id === newData.updateRecord?.id) {
-          return {
-            ...h,
-            ...(newData.updateRecord.comments !== undefined ? { comments: newData.updateRecord.comments } : {}),
-            ...(newData.updateRecord.notes !== undefined ? { notes: newData.updateRecord.notes } : {}),
-            ...(newData.updateRecord.driver_name !== undefined ? { driver_name: newData.updateRecord.driver_name } : {}),
-            ...(newData.updateRecord.assistant_name !== undefined ? { assistant_name: newData.updateRecord.assistant_name } : {}),
-          };
-        }
-        return h;
-      });
-    }
-
-    if (newData.newRecord) {
-      const newEntry: TruckArrivalRecord = {
-        id: `truck_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        arrival_date: newData.newRecord.arrival_date,
-        driver_name: newData.newRecord.driver_name,
-        assistant_name: newData.newRecord.assistant_name || '',
-        notes: newData.newRecord.notes || '',
-        comments: newData.newRecord.comments || '',
-        created_at: new Date().toISOString(),
-        created_by: newData.updated_by_name || 'Usuário'
-      };
-
-      updatedHistory = [newEntry, ...updatedHistory].sort((a, b) => 
-        new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime()
-      );
-    }
+    updatedHistory.sort((a, b) => 
+      new Date(b.arrival_date).getTime() - new Date(a.arrival_date).getTime()
+    );
 
     const nextDate = newData.next_arrival_date !== undefined ? newData.next_arrival_date : current.next_arrival_date;
-    let lastDate = newData.last_arrival_date !== undefined ? newData.last_arrival_date : current.last_arrival_date;
-
-    if (newData.newRecord && (!lastDate || new Date(newData.newRecord.arrival_date).getTime() >= new Date(lastDate).getTime())) {
-      lastDate = newData.newRecord.arrival_date;
+    let lastDate: string | null = null;
+    if (updatedHistory.length > 0) {
+      lastDate = updatedHistory[0].arrival_date;
+    } else if (newData.last_arrival_date !== undefined) {
+      lastDate = newData.last_arrival_date;
+    } else {
+      lastDate = null;
     }
 
     const payload: TruckScheduleData = {

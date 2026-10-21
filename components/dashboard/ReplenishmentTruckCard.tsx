@@ -165,9 +165,10 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
               ...newData,
               updated_by_name: user?.name || (isAdmin ? 'Administrador' : role)
             });
-            if (res.success) {
+            if (res.success && res.data) {
               setScheduleData(res.data);
             }
+            return res;
           }}
           isDarkMode={isDarkMode}
         />
