@@ -59,15 +59,16 @@ FOR DELETE TO authenticated, anon USING (true);
 
 NOTIFY pgrst, 'reload schema';`;
 
+const parseStr = (val: any) => (val !== null && val !== undefined && String(val).trim() !== '' ? String(val).trim() : null);
 const parseNum = (val: any) => (val !== '' && val !== null && val !== undefined ? parseFloat(String(val).replace(',', '.')) : null);
 const parseIntVal = (val: any) => (val !== '' && val !== null && val !== undefined ? parseInt(String(val), 10) : 0);
 
 function mapItemPayload(item: any) {
   return {
-    segmento_ml: item.segmento_ml?.trim() || null,
-    codigo: item.codigo?.trim() || null,
-    nome: item.nome?.trim() || null,
-    cod_adicional_1: item.cod_adicional_1?.trim() || null,
+    segmento_ml: parseStr(item.segmento_ml),
+    codigo: parseStr(item.codigo),
+    nome: parseStr(item.nome),
+    cod_adicional_1: parseStr(item.cod_adicional_1),
     estoque: parseIntVal(item.estoque),
     vds_6m: parseIntVal(item.vds_6m),
     a_vista_cp: parseNum(item.a_vista_cp),
@@ -77,14 +78,14 @@ function mapItemPayload(item: any) {
     liq_ml_full: parseNum(item.liq_ml_full),
     full_price: parseNum(item.full_price),
     segundo_preco: parseNum(item.segundo_preco),
-    cod_adicional_2: item.cod_adicional_2?.trim() || null,
-    cod_adicional_3: item.cod_adicional_3?.trim() || null,
-    cod_adicional_4: item.cod_adicional_4?.trim() || null,
-    cod_adicional_5: item.cod_adicional_5?.trim() || null,
-    codigo_barras: item.codigo_barras?.trim() || null,
-    nome_fabricante: item.nome_fabricante?.trim() || null,
-    link_campos: item.link_campos?.trim() || null,
-    link_vd_mais: item.link_vd_mais?.trim() || null,
+    cod_adicional_2: parseStr(item.cod_adicional_2),
+    cod_adicional_3: parseStr(item.cod_adicional_3),
+    cod_adicional_4: parseStr(item.cod_adicional_4),
+    cod_adicional_5: parseStr(item.cod_adicional_5),
+    codigo_barras: parseStr(item.codigo_barras),
+    nome_fabricante: parseStr(item.nome_fabricante),
+    link_campos: parseStr(item.link_campos),
+    link_vd_mais: parseStr(item.link_vd_mais),
     vd_mais_segundo_pr: parseNum(item.vd_mais_segundo_pr),
     company_id: item.company_id || null,
     created_by: item.created_by || null,
@@ -187,10 +188,10 @@ export async function PUT(request: Request) {
     }
 
     const payload: Record<string, any> = {};
-    if (updateFields.segmento_ml !== undefined) payload.segmento_ml = updateFields.segmento_ml?.trim() || null;
-    if (updateFields.codigo !== undefined) payload.codigo = updateFields.codigo?.trim() || null;
-    if (updateFields.nome !== undefined) payload.nome = updateFields.nome?.trim() || null;
-    if (updateFields.cod_adicional_1 !== undefined) payload.cod_adicional_1 = updateFields.cod_adicional_1?.trim() || null;
+    if (updateFields.segmento_ml !== undefined) payload.segmento_ml = parseStr(updateFields.segmento_ml);
+    if (updateFields.codigo !== undefined) payload.codigo = parseStr(updateFields.codigo);
+    if (updateFields.nome !== undefined) payload.nome = parseStr(updateFields.nome);
+    if (updateFields.cod_adicional_1 !== undefined) payload.cod_adicional_1 = parseStr(updateFields.cod_adicional_1);
     if (updateFields.estoque !== undefined) payload.estoque = parseIntVal(updateFields.estoque);
     if (updateFields.vds_6m !== undefined) payload.vds_6m = parseIntVal(updateFields.vds_6m);
     if (updateFields.a_vista_cp !== undefined) payload.a_vista_cp = parseNum(updateFields.a_vista_cp);
@@ -200,14 +201,14 @@ export async function PUT(request: Request) {
     if (updateFields.liq_ml_full !== undefined) payload.liq_ml_full = parseNum(updateFields.liq_ml_full);
     if (updateFields.full_price !== undefined) payload.full_price = parseNum(updateFields.full_price);
     if (updateFields.segundo_preco !== undefined) payload.segundo_preco = parseNum(updateFields.segundo_preco);
-    if (updateFields.cod_adicional_2 !== undefined) payload.cod_adicional_2 = updateFields.cod_adicional_2?.trim() || null;
-    if (updateFields.cod_adicional_3 !== undefined) payload.cod_adicional_3 = updateFields.cod_adicional_3?.trim() || null;
-    if (updateFields.cod_adicional_4 !== undefined) payload.cod_adicional_4 = updateFields.cod_adicional_4?.trim() || null;
-    if (updateFields.cod_adicional_5 !== undefined) payload.cod_adicional_5 = updateFields.cod_adicional_5?.trim() || null;
-    if (updateFields.codigo_barras !== undefined) payload.codigo_barras = updateFields.codigo_barras?.trim() || null;
-    if (updateFields.nome_fabricante !== undefined) payload.nome_fabricante = updateFields.nome_fabricante?.trim() || null;
-    if (updateFields.link_campos !== undefined) payload.link_campos = updateFields.link_campos?.trim() || null;
-    if (updateFields.link_vd_mais !== undefined) payload.link_vd_mais = updateFields.link_vd_mais?.trim() || null;
+    if (updateFields.cod_adicional_2 !== undefined) payload.cod_adicional_2 = parseStr(updateFields.cod_adicional_2);
+    if (updateFields.cod_adicional_3 !== undefined) payload.cod_adicional_3 = parseStr(updateFields.cod_adicional_3);
+    if (updateFields.cod_adicional_4 !== undefined) payload.cod_adicional_4 = parseStr(updateFields.cod_adicional_4);
+    if (updateFields.cod_adicional_5 !== undefined) payload.cod_adicional_5 = parseStr(updateFields.cod_adicional_5);
+    if (updateFields.codigo_barras !== undefined) payload.codigo_barras = parseStr(updateFields.codigo_barras);
+    if (updateFields.nome_fabricante !== undefined) payload.nome_fabricante = parseStr(updateFields.nome_fabricante);
+    if (updateFields.link_campos !== undefined) payload.link_campos = parseStr(updateFields.link_campos);
+    if (updateFields.link_vd_mais !== undefined) payload.link_vd_mais = parseStr(updateFields.link_vd_mais);
     if (updateFields.vd_mais_segundo_pr !== undefined) payload.vd_mais_segundo_pr = parseNum(updateFields.vd_mais_segundo_pr);
 
     const { data, error } = await supabase

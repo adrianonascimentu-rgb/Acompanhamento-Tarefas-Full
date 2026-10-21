@@ -488,11 +488,11 @@ export default function MercadoLivreResearchPage() {
     return items.filter(item => {
       const q = search.toLowerCase().trim();
       const matchesSearch = !q || 
-        (item.nome && item.nome.toLowerCase().includes(q)) ||
-        (item.codigo && item.codigo.toLowerCase().includes(q)) ||
-        (item.segmento_ml && item.segmento_ml.toLowerCase().includes(q)) ||
-        (item.codigo_barras && item.codigo_barras.toLowerCase().includes(q)) ||
-        (item.cod_adicional_1 && item.cod_adicional_1.toLowerCase().includes(q));
+        (item.nome && String(item.nome).toLowerCase().includes(q)) ||
+        (item.codigo && String(item.codigo).toLowerCase().includes(q)) ||
+        (item.segmento_ml && String(item.segmento_ml).toLowerCase().includes(q)) ||
+        (item.codigo_barras && String(item.codigo_barras).toLowerCase().includes(q)) ||
+        (item.cod_adicional_1 && String(item.cod_adicional_1).toLowerCase().includes(q));
 
       const matchesSegment = segmentFilter === 'ALL' || item.segmento_ml === segmentFilter;
 
@@ -502,7 +502,7 @@ export default function MercadoLivreResearchPage() {
 
   const uniqueSegments = useMemo(() => {
     const set = new Set<string>();
-    items.forEach(i => { if (i.segmento_ml) set.add(i.segmento_ml); });
+    items.forEach(i => { if (i.segmento_ml) set.add(String(i.segmento_ml)); });
     return Array.from(set).sort();
   }, [items]);
 
