@@ -158,3 +158,18 @@
 .balao-flutuante-informativo {
   animation: balao-fade-in-vibracao 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* Real-time CEP input border validation styles */
+#shipping-calculator-form .cep-input.border-error,
+#shipping-calculator-form.cep-input.border-error,
+.cep-input.border-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
+}
+
+#shipping-calculator-form .cep-input.border-success,
+#shipping-calculator-form.cep-input.border-success,
+.cep-input.border-success {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.25) !important;
+}
