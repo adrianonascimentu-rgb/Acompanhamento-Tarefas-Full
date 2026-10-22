@@ -31,10 +31,37 @@ export interface MLResearchRecord {
   _has_vds_6m?: boolean;
 }
 
+export type MLFieldKey = keyof Omit<
+  MLResearchRecord,
+  'id' | 'created_at' | 'company_id' | 'created_by' | '_has_estoque' | '_has_vds_6m'
+>;
+
+export function fixMojibake(str: string): string {
+  if (!str) return '';
+  if (!/Ã.|Â.|\uFFFD/.test(str)) return str;
+  try {
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) {
+      bytes[i] = str.charCodeAt(i) & 0xff;
+    }
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return decoded;
+  } catch {
+    return str
+      .replace(/CÃ³d/gi, 'Cod')
+      .replace(/C\uFFFDd/gi, 'Cod')
+      .replace(/Ã\x80/g, 'A')
+      .replace(/Âº/g, 'o')
+      .replace(/PreÃ§o/gi, 'Preco')
+      .replace(/Pre\uFFFDo/gi, 'Preco');
+  }
+}
+
 export function normalizeHeaderKey(str: any): string {
-  return String(str ?? '')
+  const fixed = fixMojibake(String(str ?? ''));
+  return fixed
     .replace(/\+/g, 'mais')
-    .replace(/[º°]/g, 'o')
+    .replace(/[º°ª]/g, 'o')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -43,7 +70,7 @@ export function normalizeHeaderKey(str: any): string {
 
 export function normCode(val: any): string {
   if (val === null || val === undefined) return '';
-  const s = String(val).trim();
+  const s = fixMojibake(String(val)).trim();
   if (!s || s === '-' || s.includes('#')) return '';
   if (/^\d+$/.test(s)) {
     return s.replace(/^0+/, '') || '0';
@@ -53,7 +80,7 @@ export function normCode(val: any): string {
 
 export function normName(val: any): string {
   if (val === null || val === undefined) return '';
-  return String(val)
+  return fixMojibake(String(val))
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
@@ -63,8 +90,8 @@ export function normName(val: any): string {
 
 export function parseStr(val: any): string | null {
   if (val === null || val === undefined) return null;
-  const s = String(val).trim();
-  if (!s || s === '-' || s.includes('####')) return null;
+  const s = fixMojibake(String(val)).trim();
+  if (!s || s === '-' || s.includes('####') || /^r\$\s*-?$/i.test(s)) return null;
   return s;
 }
 
@@ -82,7 +109,7 @@ export function parseNum(val: any): number | null {
   if (typeof val === 'number') {
     return Number.isFinite(val) ? Math.round(val * 100) / 100 : null;
   }
-  const raw = String(val).trim();
+  const raw = fixMojibake(String(val)).trim();
   if (!raw || raw === '-' || raw.includes('#') || /^r\$\s*-?$/i.test(raw)) {
     return null;
   }
@@ -117,7 +144,7 @@ export function parseOptionalInt(val: any): number | null {
   if (typeof val === 'number') {
     return Number.isFinite(val) ? Math.round(val) : null;
   }
-  const raw = String(val).trim();
+  const raw = fixMojibake(String(val)).trim();
   if (!raw || raw === '-' || raw.includes('#')) return null;
   if (/[a-zA-Z]/.test(raw)) return null;
   const cleaned = raw.replace(/\./g, '').replace(',', '.');
@@ -134,13 +161,11 @@ export function isScientificOrGenericCode(
   const s = String(code).trim();
   if (!s || s === '-' || s.includes('#')) return true;
   if (/^(item-\d+|sample_\d+)/i.test(s)) return true;
-  // Matches Excel scientific notation like "2E+05", "3E+05", "1.5E+05"
   if (/^\d+([.,]\d+)?e[+-]?\d+$/i.test(s)) return true;
 
   const nc = normCode(s);
   if (!nc) return true;
 
-  // Check if Excel exported "2E+05" and a parser turned it into "200000" or "300000" across multiple distinct items
   if (codeFrequencyMap && /^[1-9]00000$/.test(nc) && (codeFrequencyMap.get(nc) || 0) > 1) {
     return true;
   }
@@ -166,54 +191,85 @@ export function buildCodeFrequencyMap(items: any[]): Map<string, number> {
   return freq;
 }
 
-const HEADER_ALIASES: Record<keyof Omit<MLResearchRecord, 'id' | 'created_at' | 'company_id' | 'created_by' | '_has_estoque' | '_has_vds_6m'>, string[]> = {
-  segmento_ml: ['segmentoml', 'segmento', 'categoria'],
-  codigo: ['codigo', 'cod', 'sku', 'codigoproduto', 'codproduto', 'coditem'],
-  nome: ['nome', 'nomedoproduto', 'nomeproduto', 'produto', 'descricao', 'descricaoproduto'],
-  cod_adicional_1: ['codadicional1', 'codadic1', 'codigoadicional1', 'referencia', 'ref'],
+const HEADER_ALIASES: Record<MLFieldKey, string[]> = {
+  segmento_ml: ['segmentoml', 'segmento', 'categoria', 'linha', 'marca'],
+  codigo: ['codigo', 'cdigo', 'cadigo', 'cod', 'sku', 'codigoproduto', 'codproduto', 'coditem', 'codigoitem'],
+  nome: ['nome', 'nomedoproduto', 'nomeproduto', 'produto', 'descricao', 'descricaoproduto', 'desc', 'titulo'],
+  cod_adicional_1: ['codadicional1', 'cdadicional1', 'cadadicional1', 'codadic1', 'cdadic1', 'codigoadicional1', 'referencia', 'ref'],
   estoque: ['estoque', 'qtd', 'quantidade', 'saldo', 'est'],
-  vds_6m: ['vds6m', 'vendas6m', 'vds6meses', 'vendas6meses'],
-  a_vista_cp: ['avistacp', 'avista', 'precoavista', 'pravista', 'valoravista'],
-  liq_ml_envios: ['liqmlenvios', 'liquidoenvios', 'liqenvios', 'liquidomlenvios'],
+  vds_6m: ['vds6m', 'vendas6m', 'vds6meses', 'vendas6meses', 'vds'],
+  a_vista_cp: ['avistacp', 'vistacp', 'avista', 'vista', 'precoavista', 'pravista', 'valoravista'],
+  liq_ml_envios: ['liqmlenvios', 'liquidomlenvios', 'liquidoenvios', 'liqenvios'],
   pr_cp_ml: ['prcpml', 'cp', 'precocp', 'prcp', 'precocpml', 'cpml'],
   pr_vende_mais: ['prvendemais', 'prvende', 'vendemais', 'precovendemais', 'precovende'],
-  liq_ml_full: ['liqmlfull', 'liquidofull', 'liqfull', 'liquidomlfull'],
+  liq_ml_full: ['liqmlfull', 'liquidomlfull', 'liquidofull', 'liqfull'],
   full_price: ['full', 'fullprice', 'precofull', 'prfull'],
-  segundo_preco: ['2opreco', '2preco', 'segundopreco', 'preco2'],
-  cod_adicional_2: ['codadicional2', 'codadic2', 'codigoadicional2'],
-  cod_adicional_3: ['codadicional3', 'codadic3', 'codigoadicional3'],
-  cod_adicional_4: ['codadicional4', 'codadic4', 'codigoadicional4'],
-  cod_adicional_5: ['codadicional5', 'codadic5', 'codigoadicional5'],
-  codigo_barras: ['codigobarras', 'codigodebarras', 'codbarras', 'ean', 'gtin'],
-  nome_fabricante: ['nomefabricante', 'fabricante', 'marca'],
-  link_campos: ['linkcampos', 'urlcampos', 'linkmercadolivre'],
+  segundo_preco: ['2opreco', '2preco', '2preo', '2opreo', '2aopreaao', 'segundopreco', 'preco2'],
+  cod_adicional_2: ['codadicional2', 'cdadicional2', 'cadadicional2', 'codadic2', 'cdadic2', 'codigoadicional2'],
+  cod_adicional_3: ['codadicional3', 'cdadicional3', 'cadadicional3', 'codadic3', 'cdadic3', 'codigoadicional3'],
+  cod_adicional_4: ['codadicional4', 'cdadicional4', 'cadadicional4', 'codadic4', 'cdadic4', 'codigoadicional4'],
+  cod_adicional_5: ['codadicional5', 'cdadicional5', 'cadadicional5', 'codadic5', 'cdadic5', 'codigoadicional5'],
+  codigo_barras: ['codigobarras', 'cdigobarras', 'cadigobarras', 'codigodebarras', 'codbarras', 'ean', 'gtin'],
+  nome_fabricante: ['nomefabricante', 'fabricante', 'fornecedor'],
+  link_campos: ['linkcampos', 'urlcampos', 'linkmercadolivre', 'linkml'],
   link_vd_mais: ['linkvdmais', 'linkvd', 'linkvendemais', 'linkvende'],
-  vd_mais_segundo_pr: ['vdmais2opr', 'vd2opr', 'vd2pr', 'vdmaissegundopr', 'vdmais2opreco', 'vd2preco'],
+  vd_mais_segundo_pr: ['vdmais2opr', 'vd2opr', 'vd2pr', 'vdmaissegundopr', 'vdmais2opreco', 'vd2preco', 'vdmais2preo'],
 };
 
-export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
-  if (!wb.SheetNames || wb.SheetNames.length === 0) return [];
+export function matchHeaderToField(rawCell: any): MLFieldKey | null {
+  const nk = normalizeHeaderKey(rawCell);
+  if (!nk) return null;
 
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  if (!ws) return [];
+  // Tier 1: Exact alias match
+  for (const [field, aliases] of Object.entries(HEADER_ALIASES) as Array<[MLFieldKey, string[]]>) {
+    if (aliases.includes(nk)) {
+      return field;
+    }
+  }
 
-  const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '', raw: true });
-  const fmtRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, defval: '', raw: false });
+  // Tier 2: Fuzzy / substring match (order matters to avoid collisions)
+  if (nk.includes('segmento')) return 'segmento_ml';
+  if ((nk.includes('adicional') || nk.includes('adic')) && nk.includes('1')) return 'cod_adicional_1';
+  if ((nk.includes('adicional') || nk.includes('adic')) && nk.includes('2')) return 'cod_adicional_2';
+  if ((nk.includes('adicional') || nk.includes('adic')) && nk.includes('3')) return 'cod_adicional_3';
+  if ((nk.includes('adicional') || nk.includes('adic')) && nk.includes('4')) return 'cod_adicional_4';
+  if ((nk.includes('adicional') || nk.includes('adic')) && nk.includes('5')) return 'cod_adicional_5';
+  if (nk.includes('barra') || nk.includes('ean') || nk.includes('gtin')) return 'codigo_barras';
+  if (nk.includes('fabricante')) return 'nome_fabricante';
+  if ((nk.includes('vd') || nk.includes('vende')) && (nk.includes('2') || nk.includes('seg')) && !nk.includes('link')) {
+    return 'vd_mais_segundo_pr';
+  }
+  if (nk.includes('link') && (nk.includes('vd') || nk.includes('vende'))) return 'link_vd_mais';
+  if (nk.includes('link') || nk.includes('campos')) return 'link_campos';
+  if ((nk.includes('vende') || nk.includes('vdmais')) && !nk.includes('link')) return 'pr_vende_mais';
+  if (nk.includes('vista')) return 'a_vista_cp';
+  if (nk.includes('liq') && nk.includes('env')) return 'liq_ml_envios';
+  if (nk.includes('liq') && nk.includes('full')) return 'liq_ml_full';
+  if (nk.includes('full')) return 'full_price';
+  if (nk === 'cp' || (nk.includes('cp') && (nk.includes('pr') || nk.includes('ml')))) return 'pr_cp_ml';
+  if ((nk.includes('2') || nk.includes('seg')) && (nk.includes('pr') || nk.includes('pre'))) return 'segundo_preco';
+  if (nk.includes('estoque') || nk.includes('quant') || nk.includes('qtd')) return 'estoque';
+  if (nk.includes('vds') || nk.includes('6m') || nk.includes('venda')) return 'vds_6m';
+  if (nk.includes('cod') || nk.includes('cdig') || nk.includes('cadig') || nk.includes('sku')) return 'codigo';
+  if (nk.includes('nome') || nk.includes('prod') || nk.includes('desc')) return 'nome';
 
+  return null;
+}
+
+function parseSheetRowsToMLItems(rawRows: any[][], fmtRows: any[][]): MLResearchRecord[] {
   if (!rawRows || rawRows.length === 0) return [];
 
-  // Find the header row within the first 20 rows
-  let headerRowIdx = 0;
-  let bestScore = -1;
+  let headerRowIdx = -1;
+  let bestScore = 0;
 
-  const allKnownHeaders = new Set(Object.values(HEADER_ALIASES).flat());
-
-  for (let r = 0; r < Math.min(20, rawRows.length); r++) {
+  for (let r = 0; r < Math.min(30, rawRows.length); r++) {
     const row = fmtRows[r] || rawRows[r] || [];
     let score = 0;
+    const matchedFields = new Set<string>();
     for (const cell of row) {
-      const nk = normalizeHeaderKey(cell);
-      if (nk && allKnownHeaders.has(nk)) {
+      const matched = matchHeaderToField(cell);
+      if (matched && !matchedFields.has(matched)) {
+        matchedFields.add(matched);
         score++;
       }
     }
@@ -223,39 +279,84 @@ export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
     }
   }
 
-  const headerRow = fmtRows[headerRowIdx] || rawRows[headerRowIdx] || [];
-  const colIndexByField: Partial<Record<keyof typeof HEADER_ALIASES, number>> = {};
+  const colIndexByField: Partial<Record<MLFieldKey, number>> = {};
+  let dataStartRow = 0;
 
-  headerRow.forEach((cell: any, colIdx: number) => {
-    const nk = normalizeHeaderKey(cell);
-    if (!nk) return;
-
-    for (const [field, aliases] of Object.entries(HEADER_ALIASES) as Array<[keyof typeof HEADER_ALIASES, string[]]>) {
-      if (colIndexByField[field] !== undefined) continue;
-      if (aliases.includes(nk)) {
+  if (bestScore >= 2 && headerRowIdx >= 0) {
+    dataStartRow = headerRowIdx + 1;
+    const headerRow = fmtRows[headerRowIdx] || rawRows[headerRowIdx] || [];
+    headerRow.forEach((cell: any, colIdx: number) => {
+      const field = matchHeaderToField(cell);
+      if (field && colIndexByField[field] === undefined) {
         colIndexByField[field] = colIdx;
-        break;
       }
+    });
+  } else {
+    // Fallback positional mapping if spreadsheet has no header row
+    dataStartRow = 0;
+    const sampleRow = rawRows.find(r => r && r.filter(c => String(c ?? '').trim() !== '').length >= 3) || [];
+    if (sampleRow.length >= 20) {
+      // 22-column full layout
+      colIndexByField.segmento_ml = 0;
+      colIndexByField.codigo = 1;
+      colIndexByField.nome = 2;
+      colIndexByField.cod_adicional_1 = 3;
+      colIndexByField.estoque = 4;
+      colIndexByField.vds_6m = 5;
+      colIndexByField.a_vista_cp = 6;
+      colIndexByField.liq_ml_envios = 7;
+      colIndexByField.pr_cp_ml = 8;
+      colIndexByField.pr_vende_mais = 9;
+      colIndexByField.liq_ml_full = 10;
+      colIndexByField.full_price = 11;
+      colIndexByField.segundo_preco = 12;
+      colIndexByField.cod_adicional_2 = 13;
+      colIndexByField.cod_adicional_3 = 14;
+      colIndexByField.cod_adicional_4 = 15;
+      colIndexByField.cod_adicional_5 = 16;
+      colIndexByField.codigo_barras = 17;
+      colIndexByField.nome_fabricante = 18;
+      colIndexByField.link_campos = 19;
+      colIndexByField.link_vd_mais = 20;
+      colIndexByField.vd_mais_segundo_pr = 21;
+    } else {
+      // 18-column compact layout (from Analise_Valores_Produtos_ML)
+      colIndexByField.segmento_ml = 0;
+      colIndexByField.codigo = 1;
+      colIndexByField.nome = 2;
+      colIndexByField.cod_adicional_1 = 3;
+      colIndexByField.estoque = 4;
+      colIndexByField.vds_6m = 5;
+      colIndexByField.a_vista_cp = 6;
+      colIndexByField.pr_vende_mais = 7;
+      colIndexByField.segundo_preco = 8;
+      colIndexByField.cod_adicional_2 = 9;
+      colIndexByField.cod_adicional_3 = 10;
+      colIndexByField.cod_adicional_4 = 11;
+      colIndexByField.cod_adicional_5 = 12;
+      colIndexByField.codigo_barras = 13;
+      colIndexByField.nome_fabricante = 14;
+      colIndexByField.link_campos = 15;
+      colIndexByField.link_vd_mais = 16;
+      colIndexByField.vd_mais_segundo_pr = 17;
     }
-  });
+  }
 
   const results: MLResearchRecord[] = [];
 
-  for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
+  for (let r = dataStartRow; r < rawRows.length; r++) {
     const rawRow = rawRows[r] || [];
-    const fmtRow = fmtRows[r] || [];
+    const fmtRow = fmtRows[r] || rawRow;
 
-    const getCell = (field: keyof typeof HEADER_ALIASES): { raw: any; fmt: any } => {
+    const getCell = (field: MLFieldKey): { raw: any; fmt: any } => {
       const idx = colIndexByField[field];
       if (idx === undefined) return { raw: null, fmt: null };
       return { raw: rawRow[idx], fmt: fmtRow[idx] };
     };
 
-    // Extract codigo carefully: if raw is a real integer (e.g. 212445) while fmt was "2E+05", prefer the full raw number!
-    // If fmt is "2E+05" and raw is 200000 (from CSV), keep "2E+05" so we know it was scientific notation.
     const codCell = getCell('codigo');
     let codigoVal: string | null = null;
-    const fmtCodStr = String(codCell.fmt ?? '').trim();
+    const fmtCodStr = fixMojibake(String(codCell.fmt ?? '')).trim();
     const rawCod = codCell.raw;
 
     if (typeof rawCod === 'number' && Number.isFinite(rawCod)) {
@@ -268,7 +369,7 @@ export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
       codigoVal = parseStr(fmtCodStr || rawCod);
     }
 
-    const getBestVal = (field: keyof typeof HEADER_ALIASES): any => {
+    const getBestVal = (field: MLFieldKey): any => {
       const { raw, fmt } = getCell(field);
       if (typeof raw === 'number' && Number.isFinite(raw)) {
         return raw;
@@ -279,20 +380,48 @@ export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
       return fmt;
     };
 
-    const getBestStr = (field: keyof typeof HEADER_ALIASES): string | null => {
+    const getBestStr = (field: MLFieldKey): string | null => {
       const { raw, fmt } = getCell(field);
-      // Avoid scientific notation for barcodes/additional codes if raw is an exact number
       if (typeof raw === 'number' && Number.isFinite(raw)) {
         return String(Math.trunc(raw));
       }
       return parseStr(fmt ?? raw);
     };
 
-    const nomeVal = parseStr(getBestVal('nome'));
-    const codAdic1Val = getBestStr('cod_adicional_1');
+    let nomeVal = parseStr(getBestVal('nome'));
+    let codAdic1Val = getBestStr('cod_adicional_1');
 
-    // Skip completely empty rows
+    // Fallback if codigo and nome weren't in mapped columns but row has data
     if (!codigoVal && !nomeVal && !codAdic1Val) {
+      const nonEmptyCells = rawRow
+        .map((c, idx) => ({ val: parseStr(fmtRow[idx] ?? c), raw: c, idx }))
+        .filter(x => x.val !== null);
+      if (nonEmptyCells.length < 2) {
+        continue;
+      }
+      // Check if it's a repeated header row
+      let headerMatchCount = 0;
+      for (const cell of nonEmptyCells) {
+        if (matchHeaderToField(cell.val)) headerMatchCount++;
+      }
+      if (headerMatchCount >= 2) continue;
+
+      if (colIndexByField.codigo === undefined && rawRow.length >= 3) {
+        codigoVal = parseStr(fmtRow[1] ?? rawRow[1]);
+        nomeVal = parseStr(fmtRow[2] ?? rawRow[2]);
+        codAdic1Val = parseStr(fmtRow[3] ?? rawRow[3]);
+      }
+    }
+
+    if (!codigoVal && !nomeVal && !codAdic1Val) {
+      continue;
+    }
+
+    // Skip if row is just a duplicate header row inside the sheet
+    if (
+      normalizeHeaderKey(codigoVal) === 'codigo' &&
+      normalizeHeaderKey(nomeVal) === 'nome'
+    ) {
       continue;
     }
 
@@ -300,6 +429,17 @@ export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
     const rawVds6m = getBestVal('vds_6m');
     const parsedEstoque = parseOptionalInt(rawEstoque);
     const parsedVds6m = parseOptionalInt(rawVds6m);
+
+    // Also auto-detect links if link columns were shifted
+    let linkCamposVal = parseLinkStr(getBestVal('link_campos'));
+    let linkVdMaisVal = parseLinkStr(getBestVal('link_vd_mais'));
+    if (!linkCamposVal && !linkVdMaisVal) {
+      const urlCells = rawRow
+        .map((c, idx) => parseLinkStr(fmtRow[idx] ?? c))
+        .filter((s): s is string => Boolean(s && /^https?:\/\//i.test(s)));
+      if (urlCells.length >= 1) linkCamposVal = urlCells[0];
+      if (urlCells.length >= 2) linkVdMaisVal = urlCells[1];
+    }
 
     results.push({
       segmento_ml: parseStr(getBestVal('segmento_ml')),
@@ -321,8 +461,8 @@ export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
       cod_adicional_5: getBestStr('cod_adicional_5'),
       codigo_barras: getBestStr('codigo_barras'),
       nome_fabricante: parseStr(getBestVal('nome_fabricante')),
-      link_campos: parseLinkStr(getBestVal('link_campos')),
-      link_vd_mais: parseLinkStr(getBestVal('link_vd_mais')),
+      link_campos: linkCamposVal,
+      link_vd_mais: linkVdMaisVal,
       vd_mais_segundo_pr: parseNum(getBestVal('vd_mais_segundo_pr')),
       _has_estoque: parsedEstoque !== null,
       _has_vds_6m: parsedVds6m !== null,
@@ -330,6 +470,37 @@ export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
   }
 
   return results;
+}
+
+export function parseWorkbookToMLItems(wb: XLSX.WorkBook): MLResearchRecord[] {
+  if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) return [];
+
+  const allItems: MLResearchRecord[] = [];
+
+  for (const sheetName of wb.SheetNames) {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) continue;
+
+    const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, {
+      header: 1,
+      defval: '',
+      raw: true,
+      blankrows: false,
+    });
+    const fmtRows = XLSX.utils.sheet_to_json<any[]>(ws, {
+      header: 1,
+      defval: '',
+      raw: false,
+      blankrows: false,
+    });
+
+    const sheetItems = parseSheetRowsToMLItems(rawRows, fmtRows);
+    if (sheetItems.length > 0) {
+      allItems.push(...sheetItems);
+    }
+  }
+
+  return allItems;
 }
 
 export function sanitizeIncomingItem(item: any): MLResearchRecord {
@@ -543,7 +714,6 @@ export function reconcileMercadoLivreItems(
       canonicalList.push(rec);
       indexRecord(rec, false);
     } else {
-      // Absorb any missing fields from the duplicate record into existingMatch
       if (isGen(existingMatch.codigo, false) && !isGen(rec.codigo, false)) {
         existingMatch.codigo = rec.codigo;
       }
@@ -588,14 +758,12 @@ export function reconcileMercadoLivreItems(
     const match = findMatch(inc, true);
 
     if (match) {
-      // Update codigo if incoming has a real specific code, or if match didn't have one
       if (!isGen(inc.codigo, true)) {
         match.codigo = inc.codigo;
       } else if (!match.codigo && inc.codigo) {
         match.codigo = inc.codigo;
       }
 
-      // Update string fields when incoming provides a non-empty value
       for (const f of STRING_FIELDS) {
         const val = inc[f] as string | null;
         if (val !== null && val !== undefined && val.trim() !== '') {
@@ -603,7 +771,6 @@ export function reconcileMercadoLivreItems(
         }
       }
 
-      // Update integer fields if present in spreadsheet
       if (inc._has_estoque && inc.estoque !== null) {
         match.estoque = inc.estoque;
       }
@@ -611,7 +778,6 @@ export function reconcileMercadoLivreItems(
         match.vds_6m = inc.vds_6m;
       }
 
-      // Update numeric price fields when incoming provides a valid number
       for (const f of NUM_FIELDS) {
         const val = inc[f] as number | null;
         if (val !== null && val !== undefined && Number.isFinite(val)) {
@@ -624,7 +790,6 @@ export function reconcileMercadoLivreItems(
         touchedExistingIds.add(match.id);
       }
     } else {
-      // Brand new item code
       const newRec: MLResearchRecord = {
         ...inc,
         id: inc.id && !existingIdSet.has(inc.id) ? inc.id : `ml_imp_${Date.now()}_${idx}`,

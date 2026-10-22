@@ -392,136 +392,151 @@ export default function MercadoLivreResearchPage() {
     fileInputRef.current?.click();
   };
 
-  const processSpreadsheetFile = async (file: File) => {
+  const processSpreadsheetFile = async (file: File, inputEl?: HTMLInputElement | null) => {
     setImporting(true);
     setLoading(true);
 
-    const reader = new FileReader();
-    reader.onerror = (error) => {
-      console.error('FileReader error:', error);
-      showToast('Erro ao ler o arquivo selecionado.', 'error');
-      setImporting(false);
-      setLoading(false);
-    };
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+        showToast('Não foi possível ler o conteúdo do arquivo.', 'error');
+        return;
+      }
 
-    reader.onload = async (evt) => {
-      try {
-        const arrayBuffer = evt.target?.result as ArrayBuffer;
-        if (!arrayBuffer) {
-          showToast('Não foi possível ler o conteúdo do arquivo.', 'error');
-          setImporting(false);
-          setLoading(false);
-          return;
-        }
+      const data = new Uint8Array(arrayBuffer);
+      const isPdf =
+        file.name.toLowerCase().endsWith('.pdf') ||
+        (data.length >= 4 &&
+          data[0] === 0x25 &&
+          data[1] === 0x50 &&
+          data[2] === 0x44 &&
+          data[3] === 0x46);
 
-        const data = new Uint8Array(arrayBuffer);
-        const wb = XLSX.read(data, { type: 'array' });
+      let parsedItems: any[] = [];
 
-        if (!wb.SheetNames || wb.SheetNames.length === 0) {
-          showToast('O arquivo Excel/CSV não possui planilhas válidas.', 'error');
-          setImporting(false);
-          setLoading(false);
-          return;
-        }
-
-        const parsedItems = parseWorkbookToMLItems(wb);
-
-        if (!parsedItems || parsedItems.length === 0) {
-          showToast('O arquivo selecionado está vazio ou não possui linhas válidas.', 'warning');
-          setImporting(false);
-          setLoading(false);
-          return;
-        }
-
-        let existingList: MLItem[] = [...items];
-        if (existingList.length === 0) {
-          try {
-            const stored = JSON.parse(localStorage.getItem('mercado_livre_items') || '[]');
-            if (Array.isArray(stored)) existingList = stored;
-          } catch {}
-        }
-
-        // First calculate local reconciliation so we always have accurate fallback & stats
-        const localReconciled = reconcileMercadoLivreItems(existingList, parsedItems);
-
-        let apiSucceeded = false;
+      if (!isPdf) {
         try {
-          const res = await authFetch('/api/mercado-livre', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(parsedItems),
-          });
-          const json = await res.json().catch(() => null);
-
-          if (res.ok && json?.success) {
-            apiSucceeded = true;
-            const finalData = Array.isArray(json.data) ? json.data : localReconciled.mergedList;
-            setItems(finalData);
-            localStorage.setItem('mercado_livre_items', JSON.stringify(finalData));
-
-            setUpdatedRowIds(new Set(json.updatedIds || localReconciled.stats.updatedIds));
-            setInsertedRowIds(new Set(json.insertedIds || localReconciled.stats.insertedIds));
-
-            const summary = {
-              fileName: file.name,
-              totalRead: parsedItems.length,
-              updatedCount: json.updatedCount ?? localReconciled.stats.updatedCount,
-              insertedCount: json.insertedCount ?? localReconciled.stats.insertedCount,
-              unchangedCount: json.unchangedCount ?? localReconciled.stats.unchangedCount,
-              duplicatesRemovedCount: json.duplicatesRemovedCount ?? localReconciled.stats.duplicatesRemovedCount,
-            };
-            setImportSummary(summary);
-            showToast(
-              `Planilha sincronizada: ${summary.updatedCount} atualizado(s) e ${summary.insertedCount} novo(s) incluído(s).`,
-              'success'
-            );
-          } else if (json?.missing_table) {
-            setMissingTableInfo({ missing: true, sql: json.create_sql });
+          const wb = XLSX.read(data, { type: 'array' });
+          if (wb.SheetNames && wb.SheetNames.length > 0) {
+            parsedItems = parseWorkbookToMLItems(wb);
           }
-        } catch (apiErr) {
-          console.warn('API POST falhou, aplicando sincronização localmente:', apiErr);
+        } catch (xlsxErr) {
+          console.warn('Leitura local via XLSX falhou, tentando parser no servidor:', xlsxErr);
         }
+      }
 
-        if (!apiSucceeded) {
-          localStorage.setItem('mercado_livre_items', JSON.stringify(localReconciled.mergedList));
-          setItems(localReconciled.mergedList as MLItem[]);
-          setUpdatedRowIds(new Set(localReconciled.stats.updatedIds));
-          setInsertedRowIds(new Set(localReconciled.stats.insertedIds));
+      // Server-side parser for PDF files or fallback if local XLSX yielded 0 items
+      if (isPdf || !parsedItems || parsedItems.length === 0) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const parseRes = await authFetch('/api/mercado-livre/parse-file', {
+          method: 'POST',
+          body: fd,
+        });
+        const parseJson = await parseRes.json().catch(() => null);
+        if (parseRes.ok && Array.isArray(parseJson?.items)) {
+          parsedItems = parseJson.items;
+        } else if (parseJson?.error) {
+          throw new Error(parseJson.error);
+        }
+      }
+
+      if (!parsedItems || parsedItems.length === 0) {
+        showToast(
+          'Não foram encontradas linhas válidas de produtos no arquivo. Verifique se o arquivo contém as colunas Código e Nome.',
+          'warning'
+        );
+        return;
+      }
+
+      let existingList: MLItem[] = [...items];
+      if (existingList.length === 0) {
+        try {
+          const stored = JSON.parse(localStorage.getItem('mercado_livre_items') || '[]');
+          if (Array.isArray(stored)) existingList = stored;
+        } catch {}
+      }
+
+      const localReconciled = reconcileMercadoLivreItems(existingList, parsedItems);
+
+      let apiSucceeded = false;
+      try {
+        const res = await authFetch('/api/mercado-livre', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(parsedItems),
+        });
+        const json = await res.json().catch(() => null);
+
+        if (res.ok && json?.success) {
+          apiSucceeded = true;
+          const finalData = Array.isArray(json.data) ? json.data : localReconciled.mergedList;
+          setItems(finalData);
+          localStorage.setItem('mercado_livre_items', JSON.stringify(finalData));
+
+          setUpdatedRowIds(new Set(json.updatedIds || localReconciled.stats.updatedIds));
+          setInsertedRowIds(new Set(json.insertedIds || localReconciled.stats.insertedIds));
 
           const summary = {
             fileName: file.name,
             totalRead: parsedItems.length,
-            updatedCount: localReconciled.stats.updatedCount,
-            insertedCount: localReconciled.stats.insertedCount,
-            unchangedCount: localReconciled.stats.unchangedCount,
-            duplicatesRemovedCount: localReconciled.stats.duplicatesRemovedCount,
+            updatedCount: json.updatedCount ?? localReconciled.stats.updatedCount,
+            insertedCount: json.insertedCount ?? localReconciled.stats.insertedCount,
+            unchangedCount: json.unchangedCount ?? localReconciled.stats.unchangedCount,
+            duplicatesRemovedCount: json.duplicatesRemovedCount ?? localReconciled.stats.duplicatesRemovedCount,
           };
           setImportSummary(summary);
           showToast(
-            `Planilha sincronizada: ${summary.updatedCount} atualizado(s) e ${summary.insertedCount} novo(s) incluído(s).`,
+            `Arquivo sincronizado: ${summary.updatedCount} atualizado(s) e ${summary.insertedCount} novo(s) incluído(s).`,
             'success'
           );
+        } else if (json?.missing_table) {
+          setMissingTableInfo({ missing: true, sql: json.create_sql });
         }
-
-        setIsImportModalOpen(false);
-        setImportFile(null);
-      } catch (err: any) {
-        console.error('Erro ao processar arquivo:', err);
-        showToast('Erro ao processar arquivo: ' + (err?.message || err), 'error');
-      } finally {
-        setImporting(false);
-        setLoading(false);
+      } catch (apiErr) {
+        console.warn('API POST falhou, aplicando sincronização localmente:', apiErr);
       }
-    };
 
-    reader.readAsArrayBuffer(file);
+      if (!apiSucceeded) {
+        localStorage.setItem('mercado_livre_items', JSON.stringify(localReconciled.mergedList));
+        setItems(localReconciled.mergedList as MLItem[]);
+        setUpdatedRowIds(new Set(localReconciled.stats.updatedIds));
+        setInsertedRowIds(new Set(localReconciled.stats.insertedIds));
+
+        const summary = {
+          fileName: file.name,
+          totalRead: parsedItems.length,
+          updatedCount: localReconciled.stats.updatedCount,
+          insertedCount: localReconciled.stats.insertedCount,
+          unchangedCount: localReconciled.stats.unchangedCount,
+          duplicatesRemovedCount: localReconciled.stats.duplicatesRemovedCount,
+        };
+        setImportSummary(summary);
+        showToast(
+          `Arquivo sincronizado: ${summary.updatedCount} atualizado(s) e ${summary.insertedCount} novo(s) incluído(s).`,
+          'success'
+        );
+      }
+
+      setIsImportModalOpen(false);
+      setImportFile(null);
+    } catch (err: any) {
+      console.error('Erro ao processar arquivo:', err);
+      showToast('Erro ao processar arquivo: ' + (err?.message || err), 'error');
+    } finally {
+      setImporting(false);
+      setLoading(false);
+      if (inputEl) {
+        inputEl.value = '';
+      }
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const inputEl = e.target;
+    const file = inputEl.files?.[0];
     if (!file) return;
-    processSpreadsheetFile(file);
-    if (e.target) e.target.value = '';
+    processSpreadsheetFile(file, inputEl);
   };
 
   const handleExecuteImport = async () => {
@@ -608,7 +623,7 @@ export default function MercadoLivreResearchPage() {
         type="file" 
         ref={fileInputRef} 
         onChange={handleFileUpload} 
-        accept=".xlsx, .xls, .csv" 
+        accept=".xlsx, .xls, .csv, .pdf, .ods" 
         className="hidden" 
       />
 
@@ -670,17 +685,17 @@ export default function MercadoLivreResearchPage() {
               </button>
             )}
 
-            {/* Importar Excel / CSV */}
+            {/* Importar Excel / CSV / PDF */}
             <label
               className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-              title="Importar planilha Excel ou CSV (atualiza códigos existentes e inclui novos)"
+              title="Importar planilha Excel (.xlsx, .xls), CSV ou PDF (atualiza códigos existentes e inclui novos)"
             >
               <Upload className="w-4 h-4 text-white" />
               <span>Importar Planilha</span>
               <input
                 type="file"
                 onChange={handleFileUpload}
-                accept=".xlsx, .xls, .csv"
+                accept=".xlsx, .xls, .csv, .pdf, .ods"
                 className="hidden"
               />
             </label>
@@ -906,7 +921,7 @@ export default function MercadoLivreResearchPage() {
                             <input
                               type="file"
                               onChange={handleFileUpload}
-                              accept=".xlsx, .xls, .csv"
+                              accept=".xlsx, .xls, .csv, .pdf, .ods"
                               className="hidden"
                             />
                           </label>
@@ -1604,7 +1619,7 @@ export default function MercadoLivreResearchPage() {
                   type="file"
                   id="ml-file-input"
                   onChange={e => setImportFile(e.target.files?.[0] || null)}
-                  accept=".xlsx, .xls, .csv"
+                  accept=".xlsx, .xls, .csv, .pdf, .ods"
                   className="hidden"
                 />
                 <label
