@@ -8,8 +8,13 @@ import {
   CheckCircle2, X, Edit2, Save, FileSpreadsheet, Layers, Store
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import { useUI } from '@/hooks/useUI';
 import { authFetch } from '@/lib/authFetch';
 import * as XLSX from 'xlsx';
+import {
+  parseWorkbookToMLItems,
+  reconcileMercadoLivreItems,
+} from '@/lib/mercadoLivreUpsert';
 
 interface MLItem {
   id: string;
@@ -117,6 +122,7 @@ const EMPTY_FORM = {
 
 export default function MercadoLivreResearchPage() {
   const { isDarkMode } = useTheme();
+  const { showToast, showConfirm } = useUI();
   const [items, setItems] = useState<MLItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -130,6 +136,16 @@ export default function MercadoLivreResearchPage() {
   const [inlineFormData, setInlineFormData] = useState<any>({});
   const [missingTableInfo, setMissingTableInfo] = useState<{ missing: boolean; sql?: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [importSummary, setImportSummary] = useState<{
+    fileName: string;
+    totalRead: number;
+    updatedCount: number;
+    insertedCount: number;
+    unchangedCount: number;
+    duplicatesRemovedCount: number;
+  } | null>(null);
+  const [updatedRowIds, setUpdatedRowIds] = useState<Set<string>>(new Set());
+  const [insertedRowIds, setInsertedRowIds] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
@@ -179,19 +195,18 @@ export default function MercadoLivreResearchPage() {
   }, [fetchItems]);
 
   const handleSeedSample = async () => {
-    if (!confirm('Deseja popular a pesquisa com os itens de exemplo da planilha do Mercado Livre?')) return;
     setLoading(true);
     try {
-      for (const sample of SAMPLE_ITEMS) {
-        await authFetch('/api/mercado-livre', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(sample)
-        });
-      }
+      await authFetch('/api/mercado-livre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(SAMPLE_ITEMS)
+      });
       await fetchItems();
+      showToast('Itens de exemplo carregados com sucesso!', 'success');
     } catch (err) {
       console.error('Erro ao popular exemplos:', err);
+      showToast('Erro ao carregar exemplos.', 'error');
     } finally {
       setLoading(false);
     }
@@ -242,7 +257,7 @@ export default function MercadoLivreResearchPage() {
 
       const payload = isEdit ? { id: editingId, ...formData } : formData;
 
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -252,15 +267,16 @@ export default function MercadoLivreResearchPage() {
         setIsModalOpen(false);
         setEditingId(null);
         setFormData(EMPTY_FORM);
+        showToast(isEdit ? 'Item atualizado com sucesso!' : 'Item salvo com sucesso!', 'success');
         fetchItems();
       } else if (json.missing_table) {
         setMissingTableInfo({ missing: true, sql: json.create_sql });
-        alert(json.error);
+        showToast(json.error || 'Tabela não encontrada no Supabase.', 'warning');
       } else {
-        alert(json.error || 'Erro ao salvar registro.');
+        showToast(json.error || 'Erro ao salvar registro.', 'error');
       }
     } catch (err: any) {
-      alert('Erro de conexão: ' + err.message);
+      showToast('Erro de conexão: ' + err.message, 'error');
     }
   };
 
@@ -285,37 +301,58 @@ export default function MercadoLivreResearchPage() {
       if (res.ok) {
         setInlineEditingId(null);
         setInlineFormData({});
+        showToast('Alterações salvas com sucesso!', 'success');
         fetchItems();
       } else {
         const json = await res.json();
-        alert(json.error || 'Erro ao salvar alteração inline.');
+        showToast(json.error || 'Erro ao salvar alteração inline.', 'error');
       }
     } catch (err: any) {
-      alert('Erro ao salvar: ' + err.message);
+      showToast('Erro ao salvar: ' + err.message, 'error');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deseja realmente excluir este item da pesquisa?')) return;
-    try {
-      const res = await authFetch(`/api/mercado-livre?id=${id}`, {
-        method: 'DELETE'
-      });
-      if (res.ok) {
-        setItems(prev => prev.filter(i => i.id !== id));
-      } else {
-        const json = await res.json();
-        alert(json.error || 'Erro ao excluir');
+    showConfirm({
+      title: 'Excluir Item',
+      message: 'Deseja realmente excluir este item da pesquisa do Mercado Livre?',
+      confirmLabel: 'Excluir',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/mercado-livre?id=${id}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            setItems(prev => {
+              const next = prev.filter(i => i.id !== id);
+              localStorage.setItem('mercado_livre_items', JSON.stringify(next));
+              return next;
+            });
+            showToast('Item removido da pesquisa.', 'success');
+          } else {
+            const json = await res.json().catch(() => ({}));
+            // Fallback local delete if item is local-only
+            setItems(prev => {
+              const next = prev.filter(i => i.id !== id);
+              localStorage.setItem('mercado_livre_items', JSON.stringify(next));
+              return next;
+            });
+            if (json.error) {
+              console.warn('Delete API warning:', json.error);
+            }
+          }
+        } catch (err) {
+          showToast('Erro ao excluir item.', 'error');
+        }
       }
-    } catch (err) {
-      alert('Erro ao excluir item.');
-    }
+    });
   };
 
   // Exportar Excel
   const handleExportExcel = () => {
     if (filteredItems.length === 0) {
-      alert('Nenhum registro para exportar.');
+      showToast('Nenhum registro para exportar.', 'warning');
       return;
     }
 
@@ -350,138 +387,190 @@ export default function MercadoLivreResearchPage() {
     XLSX.writeFile(workbook, `Pesquisa_Mercado_Livre_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Importar Excel / CSV
+  // Importar Excel / CSV com sincronização inteligente por Código
   const handleTriggerImport = () => {
     fileInputRef.current?.click();
   };
 
-        const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processSpreadsheetFile = async (file: File) => {
+    setImporting(true);
+    setLoading(true);
 
     const reader = new FileReader();
     reader.onerror = (error) => {
       console.error('FileReader error:', error);
-      alert('Erro ao ler o arquivo selecionado.');
+      showToast('Erro ao ler o arquivo selecionado.', 'error');
+      setImporting(false);
+      setLoading(false);
     };
 
     reader.onload = async (evt) => {
       try {
         const arrayBuffer = evt.target?.result as ArrayBuffer;
         if (!arrayBuffer) {
-          alert('Não foi possível ler o conteúdo do arquivo.');
+          showToast('Não foi possível ler o conteúdo do arquivo.', 'error');
+          setImporting(false);
+          setLoading(false);
           return;
         }
 
         const data = new Uint8Array(arrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
-        
+
         if (!wb.SheetNames || wb.SheetNames.length === 0) {
-          alert('O arquivo Excel/CSV não possui planilhas válidas.');
+          showToast('O arquivo Excel/CSV não possui planilhas válidas.', 'error');
+          setImporting(false);
+          setLoading(false);
           return;
         }
 
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' });
+        const parsedItems = parseWorkbookToMLItems(wb);
 
-        if (!rawData || rawData.length === 0) {
-          alert('O arquivo selecionado está vazio ou não possui linhas válidas.');
+        if (!parsedItems || parsedItems.length === 0) {
+          showToast('O arquivo selecionado está vazio ou não possui linhas válidas.', 'warning');
+          setImporting(false);
+          setLoading(false);
           return;
         }
 
-        const normalizeKey = (str: string) => {
-          return str
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]/g, '');
-        };
-
-        const mapped = rawData.map((row, index) => {
-          const rowKeys = Object.keys(row);
-          const getVal = (...keys: string[]) => {
-            for (const k of keys) {
-              const nk = normalizeKey(k);
-              const foundKey = rowKeys.find(rk => normalizeKey(rk) === nk);
-              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
-                return row[foundKey];
-              }
-            }
-            for (const k of keys) {
-              const nk = normalizeKey(k);
-              const foundKey = rowKeys.find(rk => normalizeKey(rk).includes(nk) || nk.includes(normalizeKey(rk)));
-              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== '') {
-                return row[foundKey];
-              }
-            }
-            return null;
-          };
-
-          const values = Object.values(row);
-
-          return {
-            id: `ml_imp_${Date.now()}_${index}`,
-            created_at: new Date().toISOString(),
-            segmento_ml: getVal('Segmento ML', 'Segmento', 'segmento_ml', 'segmento') || values[0] || '',
-            codigo: getVal('Código', 'Codigo', 'codigo', 'cod', 'sku') || values[1] || `ITEM-${index + 1}`,
-            nome: getVal('Nome', 'Nome do Produto', 'nome_produto', 'produto', 'descricao', 'desc') || values[2] || `Produto ${index + 1}`,
-            cod_adicional_1: getVal('Cód. Adicional 1', 'Cod. Adicional 1', 'cod_adicional_1', 'cod_adic_1') || '',
-            estoque: Number(getVal('Estoque', 'estoque', 'qtd', 'quantidade') ?? 0),
-            vds_6m: Number(getVal('Vds 6M', 'Vendas 6M', 'vds_6m', 'vendas_6m') ?? 0),
-            a_vista_cp: getVal('À Vista CP', 'A Vista CP', 'a_vista_cp', 'a_vista', 'preco_vista'),
-            liq_ml_envios: getVal('Liq. ML Envios', 'Liq ML Envios', 'liq_ml_envios'),
-            pr_cp_ml: getVal('Pr. CP ML', 'Pr CP ML', 'pr_cp_ml', 'preco_cp_ml'),
-            pr_vende_mais: getVal('Pr. Vende+', 'Pr Vende+', 'pr_vende_mais'),
-            liq_ml_full: getVal('Liq. ML Full', 'Liq ML Full', 'liq_ml_full'),
-            full_price: getVal('FULL', 'Full', 'full_price', 'preco_full'),
-            segundo_preco: getVal('2º Preço', '2o Preco', 'segundo_preco'),
-            cod_adicional_2: getVal('Cód. Adic. 2', 'cod_adicional_2') || '',
-            cod_adicional_3: getVal('Cód. Adic. 3', 'cod_adicional_3') || '',
-            cod_adicional_4: getVal('Cód. Adic. 4', 'cod_adicional_4') || '',
-            cod_adicional_5: getVal('Cód. Adic. 5', 'cod_adicional_5') || '',
-            codigo_barras: getVal('Código Barras', 'Codigo Barras', 'codigo_barras', 'ean') || '',
-            nome_fabricante: getVal('Nome Fabricante', 'Fabricante', 'nome_fabricante', 'marca') || '',
-            link_campos: getVal('Link Campos', 'link_campos') || '',
-            link_vd_mais: getVal('Link Vd+', 'link_vd_mais') || '',
-            vd_mais_segundo_pr: getVal('Vd+ 2º Pr.', 'vd_mais_segundo_pr')
-          };
-        });
-
-        if (!confirm(`Foram encontrados ${mapped.length} registros no arquivo. Deseja importar para a pesquisa de preços do Mercado Livre?`)) {
-          return;
+        let existingList: MLItem[] = [...items];
+        if (existingList.length === 0) {
+          try {
+            const stored = JSON.parse(localStorage.getItem('mercado_livre_items') || '[]');
+            if (Array.isArray(stored)) existingList = stored;
+          } catch {}
         }
 
-        setLoading(true);
+        // First calculate local reconciliation so we always have accurate fallback & stats
+        const localReconciled = reconcileMercadoLivreItems(existingList, parsedItems);
 
-        // Try API first
+        let apiSucceeded = false;
         try {
-          await authFetch('/api/mercado-livre', {
+          const res = await authFetch('/api/mercado-livre', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(mapped)
+            body: JSON.stringify(parsedItems),
           });
+          const json = await res.json().catch(() => null);
+
+          if (res.ok && json?.success) {
+            apiSucceeded = true;
+            const finalData = Array.isArray(json.data) ? json.data : localReconciled.mergedList;
+            setItems(finalData);
+            localStorage.setItem('mercado_livre_items', JSON.stringify(finalData));
+
+            setUpdatedRowIds(new Set(json.updatedIds || localReconciled.stats.updatedIds));
+            setInsertedRowIds(new Set(json.insertedIds || localReconciled.stats.insertedIds));
+
+            const summary = {
+              fileName: file.name,
+              totalRead: parsedItems.length,
+              updatedCount: json.updatedCount ?? localReconciled.stats.updatedCount,
+              insertedCount: json.insertedCount ?? localReconciled.stats.insertedCount,
+              unchangedCount: json.unchangedCount ?? localReconciled.stats.unchangedCount,
+              duplicatesRemovedCount: json.duplicatesRemovedCount ?? localReconciled.stats.duplicatesRemovedCount,
+            };
+            setImportSummary(summary);
+            showToast(
+              `Planilha sincronizada: ${summary.updatedCount} atualizado(s) e ${summary.insertedCount} novo(s) incluído(s).`,
+              'success'
+            );
+          } else if (json?.missing_table) {
+            setMissingTableInfo({ missing: true, sql: json.create_sql });
+          }
         } catch (apiErr) {
-          console.warn('API POST falhou, salvando localmente:', apiErr);
+          console.warn('API POST falhou, aplicando sincronização localmente:', apiErr);
         }
 
-        // Save to localStorage and update state
-        const existing = JSON.parse(localStorage.getItem('mercado_livre_items') || '[]');
-        const updated = [...mapped, ...existing];
-        localStorage.setItem('mercado_livre_items', JSON.stringify(updated));
-        setItems(updated);
+        if (!apiSucceeded) {
+          localStorage.setItem('mercado_livre_items', JSON.stringify(localReconciled.mergedList));
+          setItems(localReconciled.mergedList as MLItem[]);
+          setUpdatedRowIds(new Set(localReconciled.stats.updatedIds));
+          setInsertedRowIds(new Set(localReconciled.stats.insertedIds));
 
-        alert(`Importação concluída com sucesso! ${mapped.length} itens adicionados.`);
+          const summary = {
+            fileName: file.name,
+            totalRead: parsedItems.length,
+            updatedCount: localReconciled.stats.updatedCount,
+            insertedCount: localReconciled.stats.insertedCount,
+            unchangedCount: localReconciled.stats.unchangedCount,
+            duplicatesRemovedCount: localReconciled.stats.duplicatesRemovedCount,
+          };
+          setImportSummary(summary);
+          showToast(
+            `Planilha sincronizada: ${summary.updatedCount} atualizado(s) e ${summary.insertedCount} novo(s) incluído(s).`,
+            'success'
+          );
+        }
+
+        setIsImportModalOpen(false);
+        setImportFile(null);
       } catch (err: any) {
         console.error('Erro ao processar arquivo:', err);
-        alert('Erro ao processar arquivo: ' + (err?.message || err));
+        showToast('Erro ao processar arquivo: ' + (err?.message || err), 'error');
       } finally {
+        setImporting(false);
         setLoading(false);
-        if (e.target) e.target.value = '';
       }
     };
 
     reader.readAsArrayBuffer(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processSpreadsheetFile(file);
+    if (e.target) e.target.value = '';
+  };
+
+  const handleExecuteImport = async () => {
+    if (!importFile) {
+      showToast('Por favor, selecione um arquivo Excel (.xlsx, .xls) ou CSV.', 'warning');
+      return;
+    }
+    await processSpreadsheetFile(importFile);
+  };
+
+  const existingDuplicatesCount = useMemo(() => {
+    if (items.length <= 1) return 0;
+    return reconcileMercadoLivreItems(items, []).stats.duplicatesRemovedCount;
+  }, [items]);
+
+  const handleConsolidateDuplicates = async () => {
+    setLoading(true);
+    try {
+      const localReconciled = reconcileMercadoLivreItems(items, []);
+      let apiSucceeded = false;
+
+      try {
+        const res = await authFetch('/api/mercado-livre', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'deduplicate' }),
+        });
+        const json = await res.json().catch(() => null);
+        if (res.ok && json?.success && Array.isArray(json.data)) {
+          apiSucceeded = true;
+          setItems(json.data);
+          localStorage.setItem('mercado_livre_items', JSON.stringify(json.data));
+        }
+      } catch (e) {
+        console.warn('Falha ao consolidar duplicados na API, consolidando localmente:', e);
+      }
+
+      if (!apiSucceeded) {
+        setItems(localReconciled.mergedList as MLItem[]);
+        localStorage.setItem('mercado_livre_items', JSON.stringify(localReconciled.mergedList));
+      }
+
+      showToast(
+        `${localReconciled.stats.duplicatesRemovedCount} registro(s) duplicado(s) foram consolidados com sucesso!`,
+        'success'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const filteredItems = useMemo(() => {
@@ -505,178 +594,6 @@ export default function MercadoLivreResearchPage() {
     items.forEach(i => { if (i.segmento_ml) set.add(String(i.segmento_ml)); });
     return Array.from(set).sort();
   }, [items]);
-
-
-  const handleExecuteImport = async () => {
-    if (!importFile) {
-      alert("Por favor, selecione um arquivo Excel (.xlsx, .xls) ou CSV.");
-      return;
-    }
-
-    setImporting(true);
-    const reader = new FileReader();
-    reader.onerror = (error) => {
-      console.error("FileReader error:", error);
-      alert("Erro ao ler o arquivo selecionado.");
-      setImporting(false);
-    };
-
-    reader.onload = async (evt) => {
-      try {
-        const arrayBuffer = evt.target?.result as ArrayBuffer;
-        if (!arrayBuffer) {
-          alert("Não foi possível ler o conteúdo do arquivo.");
-          setImporting(false);
-          return;
-        }
-
-        const data = new Uint8Array(arrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
-        
-        if (!wb.SheetNames || wb.SheetNames.length === 0) {
-          alert("O arquivo Excel/CSV não possui planilhas válidas.");
-          setImporting(false);
-          return;
-        }
-
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        const rawData = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: "" });
-
-        if (!rawData || rawData.length === 0) {
-          alert("O arquivo selecionado está vazio ou não possui linhas válidas.");
-          setImporting(false);
-          return;
-        }
-
-        const normalizeKey = (str: string) => {
-          return str
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()
-            .replace(/[^a-z0-9]/g, "");
-        };
-
-        const mapped = rawData.map((row, index) => {
-          const rowKeys = Object.keys(row);
-          const getVal = (...keys: string[]) => {
-            for (const k of keys) {
-              const nk = normalizeKey(k);
-              const foundKey = rowKeys.find(rk => normalizeKey(rk) === nk);
-              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== "") {
-                return row[foundKey];
-              }
-            }
-            for (const k of keys) {
-              const nk = normalizeKey(k);
-              const foundKey = rowKeys.find(rk => normalizeKey(rk).includes(nk) || nk.includes(normalizeKey(rk)));
-              if (foundKey && row[foundKey] !== undefined && row[foundKey] !== "") {
-                return row[foundKey];
-              }
-            }
-            return null;
-          };
-
-          const values = Object.values(row);
-
-          return {
-            id: `ml_imp_${Date.now()}_${index}`,
-            created_at: new Date().toISOString(),
-            segmento_ml: getVal("Segmento ML", "Segmento", "segmento_ml", "segmento") || values[0] || "",
-            codigo: getVal("Código", "Codigo", "codigo", "cod", "sku") || values[1] || `ITEM-${index + 1}`,
-            nome: getVal("Nome", "Nome do Produto", "nome_produto", "produto", "descricao", "desc") || values[2] || `Produto ${index + 1}`,
-            cod_adicional_1: getVal("Cód. Adicional 1", "Cod. Adicional 1", "cod_adicional_1", "cod_adic_1") || "",
-            estoque: Number(getVal("Estoque", "estoque", "qtd", "quantidade") ?? 0),
-            vds_6m: Number(getVal("Vds 6M", "Vendas 6M", "vds_6m", "vendas_6m") ?? 0),
-            a_vista_cp: getVal("À Vista CP", "A Vista CP", "a_vista_cp", "a_vista", "preco_vista"),
-            liq_ml_envios: getVal("Liq. ML Envios", "Liq ML Envios", "liq_ml_envios"),
-            pr_cp_ml: getVal("Pr. CP ML", "Pr CP ML", "pr_cp_ml", "preco_cp_ml"),
-            pr_vende_mais: getVal("Pr. Vende+", "Pr Vende+", "pr_vende_mais"),
-            liq_ml_full: getVal("Liq. ML Full", "Liq ML Full", "liq_ml_full"),
-            full_price: getVal("FULL", "Full", "full_price", "preco_full"),
-            segundo_preco: getVal("2º Preço", "2o Preco", "segundo_preco"),
-            cod_adicional_2: getVal("Cód. Adic. 2", "cod_adicional_2") || "",
-            cod_adicional_3: getVal("Cód. Adic. 3", "cod_adicional_3") || "",
-            cod_adicional_4: getVal("Cód. Adic. 4", "cod_adicional_4") || "",
-            cod_adicional_5: getVal("Cód. Adic. 5", "cod_adicional_5") || "",
-            codigo_barras: getVal("Código Barras", "Codigo Barras", "codigo_barras", "ean") || "",
-            nome_fabricante: getVal("Nome Fabricante", "Fabricante", "nome_fabricante", "marca") || "",
-            link_campos: getVal("Link Campos", "link_campos") || "",
-            link_vd_mais: getVal("Link Vd+", "link_vd_mais") || "",
-            vd_mais_segundo_pr: getVal("Vd+ 2º Pr.", "vd_mais_segundo_pr")
-          };
-        });
-
-        try {
-          await authFetch("/api/mercado-livre", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(mapped)
-          });
-        } catch (apiErr) {
-          console.warn("API POST falhou, salvando localmente:", apiErr);
-        }
-
-        const normCode = (val: any) => val !== null && val !== undefined && String(val).trim() !== "" ? (String(val).trim().toLowerCase().replace(/^0+/, "") || "0") : "";
-
-        const existingList = JSON.parse(localStorage.getItem("mercado_livre_items") || "[]") as MLItem[];
-        const currentItems = existingList.length > 0 ? existingList : [...items];
-
-        const itemMap = new Map<string, MLItem>();
-        currentItems.forEach(item => {
-          const key = item.codigo ? normCode(item.codigo) : item.id;
-          if (key) itemMap.set(key, { ...item });
-        });
-
-        let updatedCount = 0;
-        let insertedCount = 0;
-
-        mapped.forEach((newItem, index) => {
-          const codeKey = newItem.codigo ? normCode(newItem.codigo) : null;
-          if (codeKey && itemMap.has(codeKey)) {
-            const existing = itemMap.get(codeKey)!;
-            itemMap.set(codeKey, {
-              ...existing,
-              ...newItem,
-              id: existing.id,
-              created_at: existing.created_at || new Date().toISOString()
-            });
-            updatedCount++;
-          } else {
-            const newKey = codeKey || `ml_imp_${Date.now()}_${index}`;
-            const fullNewItem = {
-              id: `ml_imp_${Date.now()}_${index}`,
-              created_at: new Date().toISOString(),
-              ...newItem
-            };
-            itemMap.set(newKey, fullNewItem);
-            insertedCount++;
-          }
-        });
-
-        const updatedList = Array.from(itemMap.values());
-        localStorage.setItem("mercado_livre_items", JSON.stringify(updatedList));
-        setItems(updatedList);
-
-        setIsImportModalOpen(false);
-        setImportFile(null);
-
-        let msg = "Importação concluída com sucesso!\n";
-        if (updatedCount > 0) msg += `• ${updatedCount} registro(s) existente(s) foram atualizados.\n`;
-        if (insertedCount > 0) msg += `• ${insertedCount} novo(s) registro(s) foram incluídos.`;
-        if (updatedCount === 0 && insertedCount === 0) msg += "Nenhum registro foi alterado.";
-        alert(msg);
-        fetchItems();
-      } catch (err: any) {
-        console.error("Erro ao processar arquivo:", err);
-        alert("Erro ao processar arquivo: " + (err?.message || err));
-      } finally {
-        setImporting(false);
-      }
-    };
-
-    reader.readAsArrayBuffer(importFile);
-  };
 
   const formatCurrency = (val: number | null) => {
 
@@ -742,10 +659,21 @@ export default function MercadoLivreResearchPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {existingDuplicatesCount > 0 && (
+              <button
+                onClick={handleConsolidateDuplicates}
+                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm shadow-xs transition-colors flex items-center gap-2"
+                title="Consolidar registros com mesmo código"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Unificar Duplicados ({existingDuplicatesCount})</span>
+              </button>
+            )}
+
             {/* Importar Excel / CSV */}
             <label
               className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer active:scale-95"
-              title="Importar planilha Excel ou CSV"
+              title="Importar planilha Excel ou CSV (atualiza códigos existentes e inclui novos)"
             >
               <Upload className="w-4 h-4 text-white" />
               <span>Importar Planilha</span>
@@ -789,6 +717,58 @@ export default function MercadoLivreResearchPage() {
       </header>
 
       <main className="max-w-[98%] mx-auto px-2 sm:px-4 lg:px-6 pt-6">
+        {/* Import Summary Feedback Banner */}
+        {importSummary && (
+          <div className={`mb-6 p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+            isDarkMode ? 'bg-slate-900/90 border-emerald-500/30 text-slate-100' : 'bg-emerald-50/70 border-emerald-200 text-slate-800'
+          }`}>
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-500 shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-bold">
+                    Sincronização de Planilha Concluída ({importSummary.fileName})
+                  </h3>
+                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-slate-500/10 text-slate-500 dark:text-slate-400 font-semibold">
+                    {importSummary.totalRead} linha(s) lida(s)
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs">
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
+                    <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    {importSummary.updatedCount} item(ns) existente(s) atualizado(s)
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    {importSummary.insertedCount} novo(s) código(s) incluído(s)
+                  </span>
+                  {importSummary.unchangedCount > 0 && (
+                    <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                      <span className="w-2 h-2 rounded-full bg-slate-400" />
+                      {importSummary.unchangedCount} sem alterações
+                    </span>
+                  )}
+                  {importSummary.duplicatesRemovedCount > 0 && (
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-rose-500">
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                      {importSummary.duplicatesRemovedCount} duplicado(s) unificado(s)
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setImportSummary(null)}
+              className="self-end sm:self-center p-1.5 rounded-lg text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+              title="Fechar resumo"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Missing Table Warning */}
         {missingTableInfo?.missing && (
           <div className="mb-6 p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 space-y-3">
@@ -1177,15 +1157,36 @@ export default function MercadoLivreResearchPage() {
                       );
                     }
 
+                    const isRowUpdated = updatedRowIds.has(item.id);
+                    const isRowInserted = insertedRowIds.has(item.id);
+
                     return (
                       <tr 
                         key={item.id} 
                         className={`hover:bg-slate-500/5 transition-colors group ${
-                          isDarkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'
+                          isRowInserted
+                            ? 'bg-emerald-500/5'
+                            : isRowUpdated
+                              ? 'bg-amber-500/5'
+                              : isDarkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50'
                         }`}
                       >
                         <td className="p-3 border-r dark:border-slate-800 font-semibold text-amber-500">{item.segmento_ml || '-'}</td>
-                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-400">{item.codigo || '-'}</td>
+                        <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-400">
+                          <div className="flex items-center gap-1.5">
+                            <span>{item.codigo || '-'}</span>
+                            {isRowUpdated && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
+                                ATUALIZADO
+                              </span>
+                            )}
+                            {isRowInserted && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-500 border border-emerald-500/30">
+                                NOVO
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="p-3 border-r dark:border-slate-800 font-medium text-slate-900 dark:text-slate-100 min-w-[280px]">
                           {item.nome || '-'}
                         </td>

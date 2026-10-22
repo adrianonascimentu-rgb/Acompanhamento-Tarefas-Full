@@ -60,40 +60,20 @@ FOR DELETE TO authenticated, anon USING (true);
 NOTIFY pgrst, 'reload schema';`;
 
 
-const normCode = (val: any) => {
-  if (val === null || val === undefined) return "";
-  const s = String(val).trim().toLowerCase().replace(/^0+/, "");
-  return s || "0";
-};
-
-const parseStr = (val: any) => (val !== null && val !== undefined && String(val).trim() !== '' ? String(val).trim() : null);
-const parseNum = (val: any) => (val !== '' && val !== null && val !== undefined ? parseFloat(String(val).replace(',', '.')) : null);
-const parseIntVal = (val: any) => (val !== '' && val !== null && val !== undefined ? parseInt(String(val), 10) : 0);
+import {
+  parseStr,
+  parseLinkStr,
+  parseNum,
+  parseOptionalInt,
+  sanitizeIncomingItem,
+  toDbPayload,
+  reconcileMercadoLivreItems,
+} from '@/lib/mercadoLivreUpsert';
 
 function mapItemPayload(item: any) {
+  const sanitized = sanitizeIncomingItem(item);
   return {
-    segmento_ml: parseStr(item.segmento_ml),
-    codigo: parseStr(item.codigo),
-    nome: parseStr(item.nome),
-    cod_adicional_1: parseStr(item.cod_adicional_1),
-    estoque: parseIntVal(item.estoque),
-    vds_6m: parseIntVal(item.vds_6m),
-    a_vista_cp: parseNum(item.a_vista_cp),
-    liq_ml_envios: parseNum(item.liq_ml_envios),
-    pr_cp_ml: parseNum(item.pr_cp_ml),
-    pr_vende_mais: parseNum(item.pr_vende_mais),
-    liq_ml_full: parseNum(item.liq_ml_full),
-    full_price: parseNum(item.full_price),
-    segundo_preco: parseNum(item.segundo_preco),
-    cod_adicional_2: parseStr(item.cod_adicional_2),
-    cod_adicional_3: parseStr(item.cod_adicional_3),
-    cod_adicional_4: parseStr(item.cod_adicional_4),
-    cod_adicional_5: parseStr(item.cod_adicional_5),
-    codigo_barras: parseStr(item.codigo_barras),
-    nome_fabricante: parseStr(item.nome_fabricante),
-    link_campos: parseStr(item.link_campos),
-    link_vd_mais: parseStr(item.link_vd_mais),
-    vd_mais_segundo_pr: parseNum(item.vd_mais_segundo_pr),
+    ...toDbPayload(sanitized),
     company_id: item.company_id || null,
     created_by: item.created_by || null,
   };
@@ -136,95 +116,101 @@ export async function POST(request: Request) {
     const supabase = getSupabaseClient();
     const body = await request.json();
 
-    if (Array.isArray(body) || Array.isArray(body.items)) {
-      const rawList = Array.isArray(body) ? body : body.items;
-      const records = rawList.map(mapItemPayload);
+    const isBatch = Array.isArray(body) || Array.isArray(body?.items) || body?.action === 'deduplicate';
+    const rawList = body?.action === 'deduplicate'
+      ? []
+      : Array.isArray(body)
+        ? body
+        : Array.isArray(body?.items)
+          ? body.items
+          : [body];
 
-      const { data: existingRecords, error: fetchErr } = await supabase
+    const { data: existingRecords, error: fetchErr } = await supabase
+      .from('mercado_livre_research')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (fetchErr && (fetchErr.message?.includes('schema cache') || fetchErr.message?.includes('mercado_livre_research') || fetchErr.code === 'PGRST301' || fetchErr.code === '42P01')) {
+      return NextResponse.json({ 
+        error: "A tabela 'mercado_livre_research' não existe no Supabase.",
+        missing_table: true,
+        create_sql: CREATE_TABLE_SQL
+      }, { status: 400 });
+    }
+
+    const reconciled = reconcileMercadoLivreItems(existingRecords || [], rawList);
+
+    // 1. Remove any pre-existing duplicate rows from database
+    if (reconciled.duplicateIdsToDelete.length > 0) {
+      await supabase
         .from('mercado_livre_research')
-        .select('*');
+        .delete()
+        .in('id', reconciled.duplicateIdsToDelete);
+    }
 
-      if (fetchErr && (fetchErr.message?.includes('schema cache') || fetchErr.message?.includes('mercado_livre_research') || fetchErr.code === 'PGRST301' || fetchErr.code === '42P01')) {
-        return NextResponse.json({ 
-          error: "A tabela 'mercado_livre_research' não existe no Supabase.",
-          missing_table: true,
-          create_sql: CREATE_TABLE_SQL
-        }, { status: 400 });
+    // 2. Apply updates to existing items that had alterations
+    if (reconciled.toUpdate.length > 0) {
+      const chunkSize = 15;
+      for (let i = 0; i < reconciled.toUpdate.length; i += chunkSize) {
+        const chunk = reconciled.toUpdate.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(u =>
+            supabase
+              .from('mercado_livre_research')
+              .update(u.payload)
+              .eq('id', u.id)
+          )
+        );
       }
+    }
 
-      const existingByCode = new Map<string, any>();
-      if (existingRecords) {
-        existingRecords.forEach((rec: any) => {
-          if (rec.codigo) {
-            existingByCode.set(normCode(rec.codigo), rec);
-          }
-        });
-      }
+    // 3. Insert new items with new codes
+    let insertedIds: string[] = [];
+    if (reconciled.toInsert.length > 0) {
+      const { data: insertedData, error: insertErr } = await supabase
+        .from('mercado_livre_research')
+        .insert(reconciled.toInsert)
+        .select();
 
-      const toInsert: any[] = [];
-      let updatedCount = 0;
-
-      for (const item of records) {
-        const codeKey = item.codigo ? normCode(item.codigo) : null;
-        if (codeKey && existingByCode.has(codeKey)) {
-          const existing = existingByCode.get(codeKey);
-          await supabase
-            .from('mercado_livre_research')
-            .update(item)
-            .eq('id', existing.id);
-          updatedCount++;
-        } else {
-          toInsert.push(item);
+      if (insertErr) {
+        if (insertErr.message?.includes('schema cache') || insertErr.message?.includes('mercado_livre_research') || insertErr.code === 'PGRST301' || insertErr.code === '42P01') {
+          return NextResponse.json({ 
+            error: "A tabela 'mercado_livre_research' não existe no Supabase.",
+            missing_table: true,
+            create_sql: CREATE_TABLE_SQL
+          }, { status: 400 });
         }
+        return NextResponse.json({ error: insertErr.message }, { status: 400 });
       }
+      insertedIds = (insertedData || []).map((r: any) => r.id);
+    }
 
-      let insertedCount = 0;
-      if (toInsert.length > 0) {
-        const { data: insertedData, error: insertErr } = await supabase
-          .from('mercado_livre_research')
-          .insert(toInsert)
-          .select();
+    // Fetch fresh canonical dataset from Supabase
+    const { data: finalData } = await supabase
+      .from('mercado_livre_research')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-        if (insertErr) {
-          if (insertErr.message?.includes('schema cache') || insertErr.message?.includes('mercado_livre_research') || insertErr.code === 'PGRST301' || insertErr.code === '42P01') {
-            return NextResponse.json({ 
-              error: "A tabela 'mercado_livre_research' não existe no Supabase.",
-              missing_table: true,
-              create_sql: CREATE_TABLE_SQL
-            }, { status: 400 });
-          }
-          return NextResponse.json({ error: insertErr.message }, { status: 400 });
-        }
-        insertedCount = insertedData?.length || toInsert.length;
-      }
-
+    if (isBatch) {
       return NextResponse.json({
         success: true,
-        count: updatedCount + insertedCount,
-        updatedCount,
-        insertedCount
+        count: reconciled.stats.updatedCount + reconciled.stats.insertedCount,
+        updatedCount: reconciled.stats.updatedCount,
+        insertedCount: reconciled.stats.insertedCount,
+        unchangedCount: reconciled.stats.unchangedCount,
+        duplicatesRemovedCount: reconciled.stats.duplicatesRemovedCount,
+        updatedIds: reconciled.stats.updatedIds,
+        insertedIds,
+        data: finalData || reconciled.mergedList,
       });
     }
 
-    const payload = mapItemPayload(body);
-    const { data, error } = await supabase
-      .from('mercado_livre_research')
-      .insert([payload])
-      .select()
-      .single();
-
-    if (error) {
-      if (error.message?.includes('schema cache') || error.message?.includes('mercado_livre_research') || error.code === 'PGRST301' || error.code === '42P01') {
-        return NextResponse.json({ 
-          error: "A tabela 'mercado_livre_research' não existe no Supabase.",
-          missing_table: true,
-          create_sql: CREATE_TABLE_SQL
-        }, { status: 400 });
-      }
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({
+      success: true,
+      updatedCount: reconciled.stats.updatedCount,
+      insertedCount: reconciled.stats.insertedCount,
+      data: finalData?.[0] || reconciled.mergedList[0] || null,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Erro ao salvar registro do Mercado Livre.' }, { status: 500 });
   }
@@ -248,8 +234,8 @@ export async function PUT(request: Request) {
     if (updateFields.codigo !== undefined) payload.codigo = parseStr(updateFields.codigo);
     if (updateFields.nome !== undefined) payload.nome = parseStr(updateFields.nome);
     if (updateFields.cod_adicional_1 !== undefined) payload.cod_adicional_1 = parseStr(updateFields.cod_adicional_1);
-    if (updateFields.estoque !== undefined) payload.estoque = parseIntVal(updateFields.estoque);
-    if (updateFields.vds_6m !== undefined) payload.vds_6m = parseIntVal(updateFields.vds_6m);
+    if (updateFields.estoque !== undefined) payload.estoque = parseOptionalInt(updateFields.estoque) ?? 0;
+    if (updateFields.vds_6m !== undefined) payload.vds_6m = parseOptionalInt(updateFields.vds_6m) ?? 0;
     if (updateFields.a_vista_cp !== undefined) payload.a_vista_cp = parseNum(updateFields.a_vista_cp);
     if (updateFields.liq_ml_envios !== undefined) payload.liq_ml_envios = parseNum(updateFields.liq_ml_envios);
     if (updateFields.pr_cp_ml !== undefined) payload.pr_cp_ml = parseNum(updateFields.pr_cp_ml);
@@ -263,8 +249,8 @@ export async function PUT(request: Request) {
     if (updateFields.cod_adicional_5 !== undefined) payload.cod_adicional_5 = parseStr(updateFields.cod_adicional_5);
     if (updateFields.codigo_barras !== undefined) payload.codigo_barras = parseStr(updateFields.codigo_barras);
     if (updateFields.nome_fabricante !== undefined) payload.nome_fabricante = parseStr(updateFields.nome_fabricante);
-    if (updateFields.link_campos !== undefined) payload.link_campos = parseStr(updateFields.link_campos);
-    if (updateFields.link_vd_mais !== undefined) payload.link_vd_mais = parseStr(updateFields.link_vd_mais);
+    if (updateFields.link_campos !== undefined) payload.link_campos = parseLinkStr(updateFields.link_campos);
+    if (updateFields.link_vd_mais !== undefined) payload.link_vd_mais = parseLinkStr(updateFields.link_vd_mais);
     if (updateFields.vd_mais_segundo_pr !== undefined) payload.vd_mais_segundo_pr = parseNum(updateFields.vd_mais_segundo_pr);
 
     const { data, error } = await supabase
