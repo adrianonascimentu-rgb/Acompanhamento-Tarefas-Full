@@ -26,7 +26,6 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase, handleSupabaseAuthError, isSupabaseConfigured } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import { PermanentTasksNotepadGrid } from '@/components/dashboard/PermanentTasksNotepadGrid';
-import { ReplenishmentTruckCard } from '@/components/dashboard/ReplenishmentTruckCard';
 
 const stats = [
   { id: 'total', label: 'Total', value: '48', change: '+5%', icon: ClipboardList, color: 'text-blue-600', trend: 'up' },
@@ -952,9 +951,6 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-
-        {/* Card em Destaque da Reposição de Caminhão para Todos os Usuários */}
-        <ReplenishmentTruckCard isDarkMode={isDarkMode} />
 
         <section className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
