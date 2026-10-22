@@ -1015,10 +1015,15 @@ export default function Dashboard() {
             })}
           </div>
 
-          <div className={`grid grid-cols-1 ${canAccessDeliveries ? 'lg:grid-cols-2' : ''} gap-4`}>
+          <div className="w-full">
             <SalesPerformanceCard isDarkMode={isDarkMode} />
-            {canAccessDeliveries && <UrgentDeliveryAlertCard isDarkMode={isDarkMode} />}
           </div>
+
+          {canAccessDeliveries && (
+            <div className="w-full">
+              <UrgentDeliveryAlertCard isDarkMode={isDarkMode} />
+            </div>
+          )}
 
           {(isAdmin || isEstoqueUser) && (
             <div className={`grid grid-cols-1 ${isAdmin && isEstoqueUser ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4`}>

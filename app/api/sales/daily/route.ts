@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getDefaultSalesCycleForDate } from '@/lib/salesCycle';
+import { evaluateAndDispatchSalesMilestones } from '@/app/api/sales/milestone-alerts/route';
 
 export interface DailySaleEntry {
   id?: string;
@@ -19,7 +21,6 @@ const SETTING_KEY_DAILY_SALES = 'daily_sales_registry';
 
 async function getStoredDailySales(): Promise<DailySaleEntry[]> {
   try {
-    // Try table first
     const { data, error } = await supabase
       .from('daily_sales_results')
       .select('*')
@@ -32,7 +33,6 @@ async function getStoredDailySales(): Promise<DailySaleEntry[]> {
     console.warn('Table daily_sales_results not yet ready, using system_settings fallback:', err);
   }
 
-  // Fallback to system_settings
   try {
     const { data } = await supabase
       .from('system_settings')
@@ -54,7 +54,6 @@ async function saveDailySales(entriesToSave: DailySaleEntry[]): Promise<boolean>
   let tableSuccess = false;
 
   try {
-    // Attempt upsert to daily_sales_results
     const { error } = await supabase
       .from('daily_sales_results')
       .upsert(
@@ -80,18 +79,15 @@ async function saveDailySales(entriesToSave: DailySaleEntry[]): Promise<boolean>
     console.warn('Upsert to daily_sales_results failed or table missing:', err);
   }
 
-  // Always keep system_settings synced as resilient fallback
   try {
     const currentList = await getStoredDailySales();
     const map = new Map<string, DailySaleEntry>();
-    
-    // Add existing
+
     currentList.forEach(item => {
       const key = `${item.date}_${item.collaborator_id}`;
       map.set(key, item);
     });
 
-    // Merge new entries
     entriesToSave.forEach(item => {
       const key = `${item.date}_${item.collaborator_id}`;
       map.set(key, {
@@ -116,65 +112,108 @@ async function saveDailySales(entriesToSave: DailySaleEntry[]): Promise<boolean>
   }
 }
 
-// Sync monthly sales_results for given sellers and month/year
+// Sync sales_results for given sellers using the company's 26-to-25 sales cycle
 async function syncMonthlySalesResults(dateString: string, sellerIds: string[]) {
   try {
     const parsedDate = new Date(dateString + 'T12:00:00Z');
-    const month = parsedDate.getMonth() + 1;
-    const year = parsedDate.getFullYear();
+    const cycle = getDefaultSalesCycleForDate(parsedDate);
+    const { startDate, endDate, refMonth, refYear } = cycle;
 
-    // Get all daily entries for this month
     const allDaily = await getStoredDailySales();
-    const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
-    const monthDaily = allDaily.filter(d => d.date.startsWith(monthPrefix));
+    const cycleDaily = allDaily.filter(d => d.date >= startDate && d.date <= endDate);
 
-    // Calculate sum for each seller in this month
     for (const sellerId of sellerIds) {
-      const sellerDaily = monthDaily.filter(d => d.collaborator_id === sellerId);
-      const totalMonthSales = sellerDaily.reduce((acc, curr) => acc + (Number(curr.sales_amount) || 0), 0);
+      const sellerDaily = cycleDaily.filter(d => d.collaborator_id === sellerId);
+      const totalCycleSales = sellerDaily.reduce((acc, curr) => acc + (Number(curr.sales_amount) || 0), 0);
 
-      // Check existing sales_results entry
       const { data: existing } = await supabase
         .from('sales_results')
         .select('*')
         .eq('collaborator_id', sellerId)
-        .eq('month', month)
-        .eq('year', year)
+        .eq('month', refMonth)
+        .eq('year', refYear)
         .maybeSingle();
 
       if (existing) {
-        // Update result_2026
         await supabase
           .from('sales_results')
           .update({
-            result_2026: totalMonthSales,
+            result_2026: totalCycleSales,
             updated_at: new Date().toISOString()
           })
           .eq('id', existing.id);
       } else {
-        // Insert new entry with default targets
         await supabase
           .from('sales_results')
           .insert({
             collaborator_id: sellerId,
-            month,
-            year,
+            month: refMonth,
+            year: refYear,
             result_2025: 0,
             target_suggestion: 50000,
             target_2026: 50000,
-            result_2026: totalMonthSales
+            result_2026: totalCycleSales
           });
       }
     }
   } catch (err) {
-    console.error('Error syncing monthly sales_results:', err);
+    console.error('Error syncing cycle sales_results:', err);
   }
+}
+
+function buildRangeAggregates(filtered: DailySaleEntry[]) {
+  const byDate: Record<string, { total: number; sellers_count: number; orders: number }> = {};
+  const bySeller: Record<string, { sales_amount: number; orders_count: number; seller_name: string }> = {};
+
+  let totalSales = 0;
+  let totalOrders = 0;
+
+  filtered.forEach(item => {
+    const amount = Number(item.sales_amount) || 0;
+    const orders = Number(item.orders_count) || 0;
+    totalSales += amount;
+    totalOrders += orders;
+
+    if (!byDate[item.date]) {
+      byDate[item.date] = { total: 0, sellers_count: 0, orders: 0 };
+    }
+    byDate[item.date].total += amount;
+    byDate[item.date].orders += orders;
+    if (amount > 0) {
+      byDate[item.date].sellers_count += 1;
+    }
+
+    if (!bySeller[item.collaborator_id]) {
+      bySeller[item.collaborator_id] = {
+        sales_amount: 0,
+        orders_count: 0,
+        seller_name: item.seller_name || 'Vendedor'
+      };
+    }
+    bySeller[item.collaborator_id].sales_amount += amount;
+    bySeller[item.collaborator_id].orders_count += orders;
+  });
+
+  const activeSellersCount = Object.values(bySeller).filter(s => s.sales_amount > 0).length;
+
+  return {
+    byDate,
+    bySeller,
+    summary: {
+      total_sales: totalSales,
+      total_orders: totalOrders,
+      sellers_reported: Object.keys(bySeller).length,
+      sellers_with_sales: activeSellersCount
+    }
+  };
 }
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get('date');
+    const startDate = searchParams.get('startDate');
+    const endDate = searchParams.get('endDate');
     const month = searchParams.get('month');
     const year = searchParams.get('year');
 
@@ -196,28 +235,32 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    if (startDate && endDate) {
+      const filtered = all.filter(e => e.date >= startDate && e.date <= endDate);
+      const { byDate, bySeller, summary } = buildRangeAggregates(filtered);
+
+      return NextResponse.json({
+        startDate,
+        endDate,
+        entries: filtered,
+        days_summary: byDate,
+        by_seller: bySeller,
+        summary
+      });
+    }
+
     if (month && year) {
       const prefix = `${year}-${String(month).padStart(2, '0')}`;
       const filtered = all.filter(e => e.date.startsWith(prefix));
-      
-      // Group by date
-      const byDate: Record<string, { total: number; sellers_count: number; orders: number }> = {};
-      filtered.forEach(item => {
-        if (!byDate[item.date]) {
-          byDate[item.date] = { total: 0, sellers_count: 0, orders: 0 };
-        }
-        byDate[item.date].total += Number(item.sales_amount) || 0;
-        byDate[item.date].orders += Number(item.orders_count) || 0;
-        if (Number(item.sales_amount) > 0) {
-          byDate[item.date].sellers_count += 1;
-        }
-      });
+      const { byDate, bySeller, summary } = buildRangeAggregates(filtered);
 
       return NextResponse.json({
         month: Number(month),
         year: Number(year),
         entries: filtered,
-        days_summary: byDate
+        days_summary: byDate,
+        by_seller: bySeller,
+        summary
       });
     }
 
@@ -251,9 +294,25 @@ export async function POST(req: NextRequest) {
 
     await saveDailySales(formattedEntries);
 
-    // Sync monthly totals in sales_results
     const sellerIds = Array.from(new Set(formattedEntries.map(e => e.collaborator_id)));
     await syncMonthlySalesResults(date, sellerIds);
+
+    // Automatically check 50%, 75%, and 100% milestones and dispatch push notifications to sellers
+    const parsedDate = new Date(date + 'T12:00:00Z');
+    const cycle = getDefaultSalesCycleForDate(parsedDate);
+    let dispatchedMilestones: any[] = [];
+    try {
+      const milestoneResult = await evaluateAndDispatchSalesMilestones({
+        refMonth: cycle.refMonth,
+        refYear: cycle.refYear,
+        startDate: cycle.startDate,
+        endDate: cycle.endDate,
+        sellerIds
+      });
+      dispatchedMilestones = milestoneResult.newlyDispatched || [];
+    } catch (mErr) {
+      console.warn('Erro ao disparar alertas de marcos de metas:', mErr);
+    }
 
     const totalDay = formattedEntries.reduce((acc, curr) => acc + (Number(curr.sales_amount) || 0), 0);
     const totalOrders = formattedEntries.reduce((acc, curr) => acc + (Number(curr.orders_count) || 0), 0);
@@ -264,6 +323,7 @@ export async function POST(req: NextRequest) {
       count: formattedEntries.length,
       total_sales: totalDay,
       total_orders: totalOrders,
+      milestone_alerts: dispatchedMilestones,
       message: 'Lançamentos diários de vendas salvos com sucesso!'
     });
   } catch (err: any) {

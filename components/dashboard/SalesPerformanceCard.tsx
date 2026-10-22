@@ -3,13 +3,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   TrendingUp, ArrowUpRight, Target, CheckCircle2, Award, Zap, Users, 
-  AlertTriangle, Sparkles, Clock, BarChart2, CalendarPlus, Calendar, PlusCircle
+  AlertTriangle, Sparkles, Clock, BarChart2, CalendarPlus, Calendar, RotateCcw, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { gsap } from 'gsap';
 import { useRole } from '@/hooks/useRole';
 import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
+import { SalesCycleDateSelector } from '@/components/sales/SalesCycleDateSelector';
+import { SalesCycleGoalGapCard } from '@/components/sales/SalesCycleGoalGapCard';
+import { SalesMilestonePushCard } from '@/components/sales/SalesMilestonePushCard';
+import {
+  SalesCycleRange,
+  getDefaultSalesCycleForDate,
+  getCycleDaysProgress,
+  loadSavedSalesCycle,
+  formatDateBR
+} from '@/lib/salesCycle';
 
 interface SalesPerformanceCardProps {
   isDarkMode?: boolean;
@@ -19,6 +29,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
   const { role, user, isAdmin, isGerente, isSupervisor } = useRole();
   const [showDailySalesModal, setShowDailySalesModal] = useState(false);
   const [todaySummary, setTodaySummary] = useState<{ total: number; sellersCount: number } | null>(null);
+  const [cycleRange, setCycleRange] = useState<SalesCycleRange>(() => getDefaultSalesCycleForDate());
   const [performance, setPerformance] = useState<{
     totalGoal: number;
     totalResult: number;
@@ -37,14 +48,28 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
   const barRef = useRef<HTMLDivElement>(null);
   const resultNumRef = useRef<HTMLParagraphElement>(null);
 
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  const currentMonthName = now.toLocaleString('pt-BR', { month: 'long' });
+  // Hydrate saved cycle from localStorage on mount & listen for cross-component updates
+  useEffect(() => {
+    const saved = loadSavedSalesCycle();
+    setCycleRange(saved);
+
+    const handleCycleEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<SalesCycleRange>;
+      if (customEvent.detail?.startDate && customEvent.detail?.endDate) {
+        setCycleRange(customEvent.detail);
+      } else {
+        setCycleRange(loadSavedSalesCycle());
+      }
+    };
+
+    window.addEventListener('sales_cycle_updated', handleCycleEvent);
+    return () => window.removeEventListener('sales_cycle_updated', handleCycleEvent);
+  }, []);
+
+  const { daysRemaining, totalDays } = getCycleDaysProgress(cycleRange.startDate, cycleRange.endDate);
+  const refMonthDate = new Date(cycleRange.refYear, cycleRange.refMonth - 1, 1);
+  const currentMonthName = refMonthDate.toLocaleString('pt-BR', { month: 'long' });
   const formattedMonthName = currentMonthName.charAt(0).toUpperCase() + currentMonthName.slice(1);
-  const currentDay = now.getDate();
-  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
-  const daysRemaining = Math.max(0, daysInMonth - currentDay);
 
   const isManagerial = isAdmin || isGerente || isSupervisor || role === 'gerente' || role === 'supervisor' || role === 'admin';
 
@@ -100,12 +125,32 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           return;
         }
 
-        // Fetch sales results for current month
+        // 1. Fetch daily sales in the exact [startDate, endDate] range
+        let dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
+        let hasDailyEntriesInRange = false;
+        try {
+          const dailyRes = await fetch(
+            `/api/sales/daily?startDate=${cycleRange.startDate}&endDate=${cycleRange.endDate}`
+          );
+          if (dailyRes.ok) {
+            const dailyJson = await dailyRes.json();
+            dailyBySeller = dailyJson.by_seller || {};
+            hasDailyEntriesInRange = (dailyJson.entries?.length || 0) > 0;
+          }
+        } catch (e) {
+          console.warn('Falha ao buscar vendas diárias por período:', e);
+        }
+
+        // 2. Fetch sales results — the values already informed for sellers in sales_results
+        // already correspond to the 26-to-25 sales cycle.
+        const [startY, startM] = cycleRange.startDate.split('-').map(Number);
+        const [endY, endM] = cycleRange.endDate.split('-').map(Number);
+
         let salesQuery = supabase
           .from('sales_results')
           .select('collaborator_id, target_2026, result_2026, month, year')
-          .eq('month', currentMonth)
-          .eq('year', currentYear);
+          .eq('month', cycleRange.refMonth)
+          .eq('year', cycleRange.refYear);
         
         if (!isManagerial && user?.id) {
           salesQuery = salesQuery.eq('collaborator_id', user.id);
@@ -115,29 +160,47 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
         const { data, error } = await salesQuery;
 
-        if (!error && data && data.length > 0) {
-          const relevantData = sellerIds.length > 0
-            ? data.filter(curr => sellerIds.includes(curr.collaborator_id))
-            : data;
+        let activeRows = (!error && data && data.length > 0) ? data : [];
+        const hasNonZeroInRef = activeRows.some(
+          r => (parseFloat(r.result_2026) || 0) > 0 || (parseFloat(r.target_2026) || 0) > 0
+        );
 
-          const totalGoal = relevantData.reduce((acc, curr) => acc + (parseFloat(curr.target_2026) || 0), 0);
-          const totalResult = relevantData.reduce((acc, curr) => acc + (parseFloat(curr.result_2026) || 0), 0);
-          const percentage = totalGoal > 0 ? Math.round((totalResult / totalGoal) * 1000) / 10 : 0;
-          
-          setPerformance({ 
-            totalGoal, 
-            totalResult, 
-            percentage,
-            sellersCount: relevantData.length
-          });
-        } else {
-          // Fallback: search most recent recorded period
+        // If the end-month has no informed values, check the start-month of the 26-to-25 cycle
+        if (!hasNonZeroInRef && startM && startY && (startM !== endM || startY !== endY)) {
+          let startMonthQuery = supabase
+            .from('sales_results')
+            .select('collaborator_id, target_2026, result_2026, month, year')
+            .eq('month', startM)
+            .eq('year', startY);
+
+          if (!isManagerial && user?.id) {
+            startMonthQuery = startMonthQuery.eq('collaborator_id', user.id);
+          } else if (sellerIds.length > 0) {
+            startMonthQuery = startMonthQuery.in('collaborator_id', sellerIds);
+          }
+
+          const { data: startMonthData } = await startMonthQuery;
+          if (
+            startMonthData &&
+            startMonthData.some(
+              r => (parseFloat(r.result_2026) || 0) > 0 || (parseFloat(r.target_2026) || 0) > 0
+            )
+          ) {
+            activeRows = startMonthData;
+          }
+        }
+
+        // Fallback to most recent recorded period with informed values if still empty
+        const stillEmpty = !activeRows.some(
+          r => (parseFloat(r.result_2026) || 0) > 0 || (parseFloat(r.target_2026) || 0) > 0
+        );
+        if (activeRows.length === 0 || stillEmpty) {
           let fallbackQuery = supabase
             .from('sales_results')
             .select('collaborator_id, target_2026, result_2026, month, year')
             .order('year', { ascending: false })
             .order('month', { ascending: false })
-            .limit(10);
+            .limit(40);
           
           if (!isManagerial && user?.id) {
             fallbackQuery = fallbackQuery.eq('collaborator_id', user.id);
@@ -146,24 +209,45 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           }
 
           const { data: fallbackData } = await fallbackQuery;
-
           if (fallbackData && fallbackData.length > 0) {
-            const latestMonth = fallbackData[0].month;
-            const latestYear = fallbackData[0].year;
-            const monthEntries = fallbackData.filter(d => d.month === latestMonth && d.year === latestYear);
-            const totalGoal = monthEntries.reduce((acc, curr) => acc + (parseFloat(curr.target_2026) || 0), 0);
-            const totalResult = monthEntries.reduce((acc, curr) => acc + (parseFloat(curr.result_2026) || 0), 0);
-            const percentage = totalGoal > 0 ? Math.round((totalResult / totalGoal) * 1000) / 10 : 0;
-            setPerformance({ 
-              totalGoal, 
-              totalResult, 
-              percentage,
-              sellersCount: monthEntries.length 
-            });
-          } else {
-            setPerformance({ totalGoal: 0, totalResult: 0, percentage: 0, sellersCount: 0 });
+            const nonZeroRow = fallbackData.find(
+              d => (parseFloat(d.result_2026) || 0) > 0 || (parseFloat(d.target_2026) || 0) > 0
+            ) || fallbackData[0];
+            const latestMonth = nonZeroRow.month;
+            const latestYear = nonZeroRow.year;
+            activeRows = fallbackData.filter(d => d.month === latestMonth && d.year === latestYear);
           }
         }
+
+        const relevantData = sellerIds.length > 0
+          ? activeRows.filter(curr => sellerIds.includes(curr.collaborator_id))
+          : activeRows;
+
+        const totalGoal = relevantData.reduce((acc, curr) => acc + (parseFloat(curr.target_2026) || 0), 0);
+
+        // The sum of the values already informed for the sellers (result_2026) already corresponds
+        // to the 26-to-25 sales cycle. Preserve result_2026 and only use dailyBySeller if result_2026 is 0.
+        const consolidatedSum = relevantData.reduce(
+          (acc, curr) => acc + (parseFloat(curr.result_2026) || 0),
+          0
+        );
+
+        let totalResult = consolidatedSum;
+        if (consolidatedSum === 0 && hasDailyEntriesInRange) {
+          totalResult = Object.values(dailyBySeller).reduce(
+            (acc, curr) => acc + (Number(curr.sales_amount) || 0),
+            0
+          );
+        }
+
+        const percentage = totalGoal > 0 ? Math.round((totalResult / totalGoal) * 1000) / 10 : 0;
+
+        setPerformance({
+          totalGoal,
+          totalResult,
+          percentage,
+          sellersCount: Math.max(relevantData.length, sellerIds.length)
+        });
       } catch (err) {
         console.error('Error fetching sales performance data:', err);
       } finally {
@@ -173,6 +257,13 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
     fetchSalesResults();
 
+    const handleRefresh = () => {
+      fetchSalesResults();
+    };
+
+    window.addEventListener('daily_sales_updated', handleRefresh);
+    window.addEventListener('sales_results_updated', handleRefresh);
+
     const channel = supabase
       .channel('sales_results_current_month_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sales_results' }, () => {
@@ -181,18 +272,23 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
       .subscribe();
 
     return () => {
+      window.removeEventListener('daily_sales_updated', handleRefresh);
+      window.removeEventListener('sales_results_updated', handleRefresh);
       supabase.removeChannel(channel);
     };
-  }, [currentMonth, currentYear, isManagerial, role, user?.id]);
+  }, [cycleRange.startDate, cycleRange.endDate, cycleRange.refMonth, cycleRange.refYear, isManagerial, role, user?.id]);
 
   // Gauge calculations
-  const radius = 38;
+  const radius = 44;
   const circumference = 2 * Math.PI * radius;
   const clampedPercentage = Math.min(100, Math.max(0, performance.percentage));
   const targetStrokeDashoffset = circumference - (clampedPercentage / 100) * circumference;
 
   const isGoalReached = performance.totalGoal > 0 && performance.totalResult >= performance.totalGoal;
   const gapValue = performance.totalGoal - performance.totalResult;
+  const safeRemainingDays = Math.max(1, daysRemaining);
+  const requiredDailyPace =
+    !isGoalReached && gapValue > 0 ? gapValue / safeRemainingDays : 0;
 
   // Status and color theme
   const getStatusInfo = () => {
@@ -279,40 +375,49 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
     return () => ctx.revert();
   }, [circumference, targetStrokeDashoffset, clampedPercentage]);
 
+  const formatBRL = (val: number, decimals = 2) =>
+    `R$ ${val.toLocaleString('pt-BR', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })}`;
+
   return (
     <div
       ref={containerRef}
-      className={`p-5 sm:p-6 rounded-3xl border transition-all flex flex-col justify-between gap-5 relative overflow-hidden shadow-sm hover:shadow-md ${
+      className={`p-5 sm:p-6 rounded-3xl border transition-all flex flex-col justify-between gap-4 relative overflow-hidden shadow-sm hover:shadow-md ${
         isDarkMode 
           ? 'bg-gradient-to-br from-slate-900 via-slate-900/98 to-slate-950 border-slate-800/90 shadow-slate-950/50' 
           : 'bg-gradient-to-br from-white via-white to-slate-50/80 border-slate-200/90'
       }`}
     >
       {/* Decorative background glow */}
-      <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-24 -right-24 w-56 h-56 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Header */}
-      <div className="flex items-center justify-between gap-3 relative z-10">
+      {/* 1. Top Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500/20 via-teal-500/15 to-emerald-600/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/25 shadow-inner">
             <TrendingUp size={22} className="stroke-[2.2]" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white tracking-tight">
-                Performance de Vendas
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
+                Faturamento Realizado vs Meta
               </h3>
-              <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold rounded-lg border border-emerald-500/20 whitespace-nowrap shadow-2xs">
-                {formattedMonthName} {currentYear}
+              <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold rounded-full border border-emerald-500/20 whitespace-nowrap">
+                Ciclo {formattedMonthName}/{cycleRange.refYear} ({cycleRange.shortLabel})
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
-              {isManagerial ? 'Equipe Comercial • Acompanhamento Global' : 'Meu Desempenho Individual • Acompanhamento'}
+              {isManagerial
+                ? 'Ciclo Comercial (26 a 25) • Soma consolidada dos valores informados pelos vendedores'
+                : 'Meu Desempenho no Ciclo Comercial (26 a 25) • Acompanhamento em tempo real'}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        {/* Action Buttons Row */}
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           {isManagerial && (
             <button 
               type="button"
@@ -336,93 +441,212 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
         </div>
       </div>
 
-      {/* Main Stats Showcase & Circular Gauge Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center bg-slate-50/90 dark:bg-slate-800/60 p-4 sm:p-5 rounded-2xl border border-slate-200/70 dark:border-slate-800/80 relative z-10 shadow-inner">
+      {/* 2. Full-Width Dynamic Cycle Date Selector (26 to 25) saved in Supabase */}
+      <div className="relative z-10">
+        <SalesCycleDateSelector
+          cycleRange={cycleRange}
+          onChange={(newRange) => setCycleRange(newRange)}
+          userId={user?.id}
+          userName={user?.name}
+          isManagerial={isManagerial}
+          compact
+        />
+      </div>
+
+      {/* 3. Main Hero Showcase: Realized Revenue, 3 KPI Boxes, Linear Progress & Circular Gauge */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch bg-slate-50/90 dark:bg-slate-900/70 p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800/90 relative z-10 shadow-inner">
         
-        {/* Left Stats Column */}
-        <div className="md:col-span-8 space-y-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                <Zap size={14} className="stroke-[2.5]" />
+        {/* Left 8 Columns: Realized Revenue + 3 KPI Strip + Linear Progress Bar */}
+        <div className="lg:col-span-8 flex flex-col justify-between gap-4">
+          {/* Top Label & Value */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Zap size={14} className="stroke-[2.5]" />
+                </div>
+                <span className="text-[11px] uppercase font-black tracking-wider text-slate-500 dark:text-slate-400">
+                  Soma Realizada no Ciclo ({formatDateBR(cycleRange.startDate)} a {formatDateBR(cycleRange.endDate)})
+                </span>
               </div>
-              <span className="text-[11px] uppercase font-black tracking-wider text-slate-500 dark:text-slate-400">
-                Faturamento Realizado vs Meta
-              </span>
+
+              <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
+                  <Users size={12} className="text-emerald-500" />
+                  {isManagerial
+                    ? `${performance.sellersCount} ${performance.sellersCount === 1 ? 'vendedor' : 'vendedores'}`
+                    : 'Individual'}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
+                  <Clock size={12} className="text-blue-500" />
+                  {daysRemaining === 0
+                    ? 'Último dia'
+                    : `${daysRemaining}d restantes de ${totalDays}d`}
+                </span>
+              </div>
             </div>
-            
-            <div className="flex items-baseline gap-3 flex-wrap">
+
+            <div className="flex items-baseline gap-3 flex-wrap pt-1">
               <p 
                 ref={resultNumRef}
-                className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight break-all sm:break-normal"
+                className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight whitespace-nowrap"
               >
                 {loading ? (
-                  <span className="inline-block w-44 h-9 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-lg" />
+                  <span className="inline-block w-52 h-10 bg-slate-200 dark:bg-slate-700 animate-pulse rounded-xl" />
                 ) : (
-                  `R$ ${performance.totalResult.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  formatBRL(performance.totalResult)
                 )}
               </p>
+              {!loading && performance.totalGoal > 0 && (
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold border ${
+                    isGoalReached
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25'
+                      : 'bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300/60 dark:border-slate-700'
+                  }`}
+                >
+                  {isGoalReached
+                    ? `+${formatBRL(Math.abs(gapValue))} acima da meta`
+                    : `${performance.percentage.toFixed(1)}% da meta mensal`}
+                </span>
+              )}
             </div>
           </div>
 
-          {/* Target & Gap Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            {/* Target Box */}
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-white/95 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
-                  <Target size={16} />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block truncate">Meta do Período</span>
-                  <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 tabular-nums truncate block">
-                    {loading ? '...' : `R$ ${performance.totalGoal.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
-                  </span>
-                </div>
+          {/* 3-Column KPI Strip: Meta do Ciclo | Falta para a Meta | Ritmo Diário Necessário */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Box 1: Meta do Ciclo */}
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/85 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+                <Target size={18} />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-400 dark:text-slate-500 block">
+                  Meta do Ciclo (26 a 25)
+                </span>
+                <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white tabular-nums block truncate">
+                  {loading ? '...' : formatBRL(performance.totalGoal)}
+                </span>
               </div>
             </div>
 
-            {/* Gap or Celebration Box */}
-            <div className="flex items-center justify-between p-3 rounded-2xl bg-white/95 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className={`p-2 rounded-xl shrink-0 ${isGoalReached ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
-                  {isGoalReached ? <CheckCircle2 size={16} /> : <Award size={16} />}
-                </div>
-                <div className="min-w-0">
-                  <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 block truncate">
-                    {isGoalReached ? 'Superávit' : 'Falta para a Meta'}
-                  </span>
-                  <span className={`text-xs sm:text-sm font-black tabular-nums truncate block ${isGoalReached ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                    {loading ? '...' : `R$ ${Math.abs(gapValue).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
-                  </span>
-                </div>
+            {/* Box 2: Falta para a Meta ou Superávit */}
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/85 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-xl shrink-0 ${
+                  isGoalReached
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                }`}
+              >
+                {isGoalReached ? <CheckCircle2 size={18} /> : <Award size={18} />}
               </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-400 dark:text-slate-500 block">
+                  {isGoalReached ? 'Superávit no Ciclo' : 'Falta p/ Meta Mensal'}
+                </span>
+                <span
+                  className={`text-sm sm:text-base font-black tabular-nums block truncate ${
+                    isGoalReached
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  {loading ? '...' : formatBRL(Math.abs(gapValue))}
+                </span>
+              </div>
+            </div>
+
+            {/* Box 3: Meta Diária Necessária */}
+            <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-950/85 border border-slate-200/80 dark:border-slate-800 shadow-2xs flex items-center gap-3">
+              <div
+                className={`p-2.5 rounded-xl shrink-0 ${
+                  isGoalReached
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                }`}
+              >
+                <Clock size={18} />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] uppercase font-extrabold tracking-wider text-slate-400 dark:text-slate-500 block">
+                  {isGoalReached ? 'Ritmo Diário' : `Meta/Dia (${safeRemainingDays}d rest.)`}
+                </span>
+                <span
+                  className={`text-sm sm:text-base font-black tabular-nums block truncate ${
+                    isGoalReached
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-indigo-600 dark:text-indigo-400'
+                  }`}
+                >
+                  {loading
+                    ? '...'
+                    : isGoalReached
+                    ? 'Meta 100% Batida!'
+                    : `${formatBRL(requiredDailyPace)}/dia`}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Interactive Linear Progress Bar with 25% / 50% / 75% / 100% Milestones */}
+          <div className="space-y-1.5 pt-1">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-1.5">
+                <BarChart2 size={14} className="text-emerald-500" />
+                <span>Progresso Acumulado no Ciclo ({cycleRange.shortLabel})</span>
+              </div>
+              <span className="tabular-nums px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-extrabold text-[11px]">
+                {clampedPercentage.toFixed(1)}% concluído
+              </span>
+            </div>
+
+            <div className="relative w-full h-3.5 bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200/70 dark:border-slate-700/80 shadow-inner">
+              <div
+                ref={barRef}
+                style={{ width: '0%' }}
+                className={`h-full rounded-full bg-gradient-to-r ${status.progressGradient} transition-all shadow-xs`}
+              />
+            </div>
+
+            <div className="flex justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 px-0.5">
+              <span>0%</span>
+              <span>25%</span>
+              <span className={performance.percentage >= 50 ? 'text-amber-600 dark:text-amber-400 font-extrabold' : ''}>
+                50% (Alerta)
+              </span>
+              <span className={performance.percentage >= 75 ? 'text-blue-600 dark:text-blue-400 font-extrabold' : ''}>
+                75% (Alerta)
+              </span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
+                100% (Meta)
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Right Circular Gauge Column */}
-        <div className="md:col-span-4 flex flex-col items-center justify-center pt-3 md:pt-0 border-t md:border-t-0 md:border-l border-slate-200/70 dark:border-slate-800/80 md:pl-4">
-          <div className="relative flex items-center justify-center">
-            <svg className="w-28 h-28 transform -rotate-90">
+        {/* Right 4 Columns: Circular Gauge + Status Badge + Today's Sales Quick Box */}
+        <div className="lg:col-span-4 flex flex-col items-center justify-between p-4 rounded-2xl bg-white dark:bg-slate-950/85 border border-slate-200/80 dark:border-slate-800/90 shadow-2xs gap-3">
+          <div className="relative flex items-center justify-center mt-1">
+            <svg className="w-32 h-32 transform -rotate-90">
               {/* Track */}
               <circle
-                cx="56"
-                cy="56"
+                cx="64"
+                cy="64"
                 r={radius}
                 stroke="currentColor"
-                strokeWidth="8"
-                className="text-slate-200 dark:text-slate-700/60"
+                strokeWidth="9"
+                className="text-slate-100 dark:text-slate-800"
                 fill="transparent"
               />
               {/* Animated Progress Arc */}
               <circle
                 ref={circleRef}
-                cx="56"
-                cy="56"
+                cx="64"
+                cy="64"
                 r={radius}
                 stroke="currentColor"
-                strokeWidth="8"
+                strokeWidth="9"
                 strokeDasharray={circumference}
                 strokeDashoffset={circumference}
                 strokeLinecap="round"
@@ -433,112 +657,79 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
             
             {/* Center Content */}
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight">
+              <span className="text-2xl font-black text-slate-900 dark:text-white tabular-nums tracking-tight">
                 {loading ? '...' : `${performance.percentage}%`}
               </span>
-              <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 dark:text-slate-400">
+              <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 dark:text-slate-500">
                 Atingido
               </span>
             </div>
           </div>
 
           {/* Status Badge */}
-          <div className={`mt-3 flex items-center gap-1.5 px-3 py-1 text-xs font-black rounded-full border shadow-2xs ${status.badgeColor}`}>
+          <div className={`flex items-center gap-1.5 px-3.5 py-1 text-xs font-black rounded-full border shadow-2xs ${status.badgeColor}`}>
             <StatusIcon size={13} className="shrink-0" />
             <span>{status.label}</span>
           </div>
+
+          {/* Today's Sales Quick Status inside the Gauge Box */}
+          {isManagerial ? (
+            <button
+              type="button"
+              onClick={() => setShowDailySalesModal(true)}
+              className="w-full p-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-between gap-2 text-left transition-colors cursor-pointer"
+            >
+              <div className="min-w-0">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+                  {todaySummary && todaySummary.total > 0 ? 'Vendas de Hoje' : 'Lançamento Diário'}
+                </span>
+                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 truncate block tabular-nums">
+                  {todaySummary && todaySummary.total > 0
+                    ? `${formatBRL(todaySummary.total)} (${todaySummary.sellersCount} vend.)`
+                    : 'Informar vendas de hoje'}
+                </span>
+              </div>
+              <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                <CalendarPlus size={13} />
+              </div>
+            </button>
+          ) : (
+            <div className="w-full p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 text-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                Fechamento do Ciclo
+              </span>
+              <span className="text-xs font-extrabold text-slate-700 dark:text-slate-200">
+                Dia {formatDateBR(cycleRange.endDate)} ({daysRemaining}d restantes)
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Interactive Linear Progress Bar with Milestones */}
-      <div className="space-y-2 relative z-10">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300">
-          <div className="flex items-center gap-1.5">
-            <BarChart2 size={14} className="text-emerald-500" />
-            <span>Progresso Geral do Mês</span>
-          </div>
-          <span className="tabular-nums px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold">
-            {clampedPercentage.toFixed(1)}% / 100%
-          </span>
-        </div>
-
-        {/* Bar */}
-        <div className="relative w-full h-3.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-200/70 dark:border-slate-700/80 shadow-inner">
-          <div
-            ref={barRef}
-            style={{ width: '0%' }}
-            className={`h-full rounded-full bg-gradient-to-r ${status.progressGradient} transition-all shadow-xs`}
-          />
-        </div>
-
-        {/* Milestone Labels */}
-        <div className="flex justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 px-1">
-          <span>0%</span>
-          <span>25%</span>
-          <span>50%</span>
-          <span>75%</span>
-          <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">100% (Meta)</span>
-        </div>
+      {/* 4. Quanto Falta para Atingir a Meta Diária e Mensal (Ciclo 26 a 25) */}
+      <div className="relative z-10">
+        <SalesCycleGoalGapCard
+          cycleRange={cycleRange}
+          totalGoal={performance.totalGoal}
+          totalResult={performance.totalResult}
+          todaySales={todaySummary?.total || 0}
+          loading={loading}
+          isDarkMode={isDarkMode}
+          isManagerial={isManagerial}
+          onOpenDailySalesModal={() => setShowDailySalesModal(true)}
+          compact
+        />
       </div>
 
-      {/* Daily Sales Quick Notice for Managers */}
-      {isManagerial && (
-        <div className="p-3 rounded-2xl bg-emerald-500/10 dark:bg-emerald-950/30 border border-emerald-500/20 flex items-center justify-between gap-3 text-xs relative z-10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Calendar size={15} />
-            </div>
-            <div className="min-w-0">
-              <span className="font-extrabold text-slate-800 dark:text-slate-200 block truncate">
-                {todaySummary && todaySummary.total > 0
-                  ? `Vendas de Hoje: R$ ${todaySummary.total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${todaySummary.sellersCount} com venda)`
-                  : 'Lançamento Diário de Vendas'}
-              </span>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate">
-                {todaySummary && todaySummary.total > 0
-                  ? 'Resultado do dia registrado • Clique para revisar ou atualizar'
-                  : 'Informe as vendas realizadas hoje por cada vendedor da equipe'}
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowDailySalesModal(true)}
-            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shrink-0 transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-1.5"
-          >
-            <CalendarPlus size={13} />
-            <span>{todaySummary && todaySummary.total > 0 ? 'Editar Vendas' : 'Informar Hoje'}</span>
-          </button>
-        </div>
-      )}
-
-      {/* Footer Quick Summary Tags & Days Remaining */}
-      <div className="pt-3 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between flex-wrap gap-3 text-xs relative z-10">
-        <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 font-medium">
-          <div className="flex items-center gap-1.5">
-            <Users size={14} className="text-slate-400" />
-            <span>
-              {isManagerial 
-                ? `${performance.sellersCount} ${performance.sellersCount === 1 ? 'vendedor ativo' : 'vendedores ativos'}`
-                : 'Performance Individual'}
-            </span>
-          </div>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
-          <div className="flex items-center gap-1.5">
-            <Clock size={14} className="text-blue-500" />
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
-              {daysRemaining} {daysRemaining === 1 ? 'dia restante' : 'dias restantes'} no mês
-            </span>
-          </div>
-        </div>
-
-        <Link
-          href="/sales-results"
-          className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 group bg-blue-50/50 dark:bg-blue-950/40 px-2.5 py-1.5 rounded-lg border border-blue-200/50 dark:border-blue-900/50 transition-all"
-        >
-          <span>Gerenciar Metas & Vendas</span>
-          <ArrowUpRight size={13} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-        </Link>
+      {/* 5. Automatic Push Notifications for 50%, 75%, and 100% Goal Milestones */}
+      <div className="relative z-10">
+        <SalesMilestonePushCard
+          cycleRange={cycleRange}
+          userId={user?.id}
+          isManagerial={isManagerial}
+          isDarkMode={isDarkMode}
+          compact
+        />
       </div>
 
       {/* Daily Sales Modal */}

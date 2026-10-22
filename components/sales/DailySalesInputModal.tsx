@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '@/lib/supabase';
 import { useRole } from '@/hooks/useRole';
+import { getDefaultSalesCycleForDate } from '@/lib/salesCycle';
 
 interface DailySalesInputModalProps {
   isOpen: boolean;
@@ -131,21 +132,20 @@ export function DailySalesInputModal({
     }
   }, []);
 
-  // Fetch month history
+  // Fetch sales cycle history (26th to 25th)
   const loadMonthHistory = useCallback(async (targetDate: string) => {
     try {
       setHistoryLoading(true);
       const parsed = new Date(targetDate + 'T12:00:00Z');
-      const month = parsed.getMonth() + 1;
-      const year = parsed.getFullYear();
+      const cycle = getDefaultSalesCycleForDate(parsed);
 
-      const res = await fetch(`/api/sales/daily?month=${month}&year=${year}`);
+      const res = await fetch(`/api/sales/daily?startDate=${cycle.startDate}&endDate=${cycle.endDate}`);
       if (res.ok) {
         const json = await res.json();
         setMonthHistory(json.days_summary || {});
       }
     } catch (e) {
-      console.warn('Erro ao carregar histórico do mês:', e);
+      console.warn('Erro ao carregar histórico do ciclo:', e);
     } finally {
       setHistoryLoading(false);
     }

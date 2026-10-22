@@ -21,8 +21,21 @@ import { GsapSalesProgressBar } from '@/components/dashboard/GsapSalesProgressBa
 import { exportSalesDashboardToPDF } from '@/lib/exportPdf';
 import { NewCommissionModal } from '@/components/sales/NewCommissionModal';
 import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
+import { SalesCycleDateSelector } from '@/components/sales/SalesCycleDateSelector';
+import { SalesCycleGoalGapCard } from '@/components/sales/SalesCycleGoalGapCard';
+import { SalesMilestonePushCard } from '@/components/sales/SalesMilestonePushCard';
 import { CalendarPlus, CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
+import {
+  SalesCycleRange,
+  getDefaultSalesCycleForDate,
+  getSalesCycleForMonthYear,
+  loadSavedSalesCycle,
+  saveSalesCycleRange,
+  saveSalesCycleToSupabase,
+  formatDateBR,
+  getCycleDaysProgress
+} from '@/lib/salesCycle';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
@@ -32,13 +45,60 @@ export default function SalesResultsPage() {
   const [loading, setLoading] = useState(true);
   const [salesData, setSalesData] = useState<any[]>([]);
   const [leadsData, setLeadsData] = useState<any[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  const initialCycle = getDefaultSalesCycleForDate();
+  const [cycleRange, setCycleRange] = useState<SalesCycleRange>(initialCycle);
+  const [selectedMonth, setSelectedMonth] = useState(initialCycle.refMonth);
+  const [selectedYear, setSelectedYear] = useState(initialCycle.refYear);
+
   const [showCommissionModal, setShowCommissionModal] = useState(false);
   const [showDailySalesModal, setShowDailySalesModal] = useState(false);
   const [todayDailySales, setTodayDailySales] = useState<{ total: number; sellersCount: number } | null>(null);
 
   const isManagerial = isAdmin || isGerente || isSupervisor || role === 'gerente' || role === 'supervisor' || role === 'admin';
+
+  useEffect(() => {
+    const saved = loadSavedSalesCycle();
+    setCycleRange(saved);
+    setSelectedMonth(saved.refMonth);
+    setSelectedYear(saved.refYear);
+
+    const handleCycleEvent = (e: Event) => {
+      const customEvent = e as CustomEvent<SalesCycleRange>;
+      if (customEvent.detail?.startDate && customEvent.detail?.endDate) {
+        setCycleRange(customEvent.detail);
+        setSelectedMonth(customEvent.detail.refMonth);
+        setSelectedYear(customEvent.detail.refYear);
+      }
+    };
+
+    window.addEventListener('sales_cycle_updated', handleCycleEvent);
+    return () => window.removeEventListener('sales_cycle_updated', handleCycleEvent);
+  }, []);
+
+  const handleMonthYearChange = async (newMonth: number, newYear: number) => {
+    setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
+    const stdCycle = getSalesCycleForMonthYear(
+      newMonth,
+      newYear,
+      cycleRange.startDay || 26,
+      cycleRange.endDay || 25,
+      cycleRange.scope || (isManagerial ? 'company' : 'user')
+    );
+    const saved = saveSalesCycleRange(stdCycle.startDate, stdCycle.endDate, stdCycle.scope);
+    setCycleRange(saved);
+
+    await saveSalesCycleToSupabase({
+      startDate: saved.startDate,
+      endDate: saved.endDate,
+      startDay: saved.startDay,
+      endDay: saved.endDay,
+      scope: isManagerial ? 'company' : 'user',
+      userId: user?.id,
+      userName: user?.name,
+    });
+  };
 
   const fetchSalesData = useCallback(async () => {
     try {
@@ -62,7 +122,27 @@ export default function SalesResultsPage() {
 
       if (profilesError) throw profilesError;
 
-      // Fetch existing sales entries for the selected period
+      // 1. Fetch daily sales in the selected [startDate, endDate] range
+      let dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
+      let hasDailyEntriesInRange = false;
+      try {
+        const dailyRes = await fetch(
+          `/api/sales/daily?startDate=${cycleRange.startDate}&endDate=${cycleRange.endDate}`
+        );
+        if (dailyRes.ok) {
+          const dailyJson = await dailyRes.json();
+          dailyBySeller = dailyJson.by_seller || {};
+          hasDailyEntriesInRange = (dailyJson.entries?.length || 0) > 0;
+        }
+      } catch (e) {
+        console.warn('Falha ao buscar vendas diárias por período:', e);
+      }
+
+      // 2. Fetch existing sales entries — the values already informed for sellers in sales_results
+      // already correspond to the 26-to-25 sales cycle.
+      const [startY, startM] = cycleRange.startDate.split('-').map(Number);
+      const [endY, endM] = cycleRange.endDate.split('-').map(Number);
+
       let salesQuery = supabase
         .from('sales_results')
         .select('*')
@@ -76,6 +156,59 @@ export default function SalesResultsPage() {
       const { data: sales, error: salesError } = await salesQuery;
       if (salesError) throw salesError;
 
+      let activeSalesRows = sales || [];
+      const hasInformedValues = activeSalesRows.some(
+        r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0
+      );
+
+      // If the selected end-month has no informed values yet, check the start-month of the 26-to-25 cycle
+      if (!hasInformedValues && startM && startY && (startM !== selectedMonth || startY !== selectedYear)) {
+        let startQuery = supabase
+          .from('sales_results')
+          .select('*')
+          .eq('month', startM)
+          .eq('year', startY);
+
+        if (!isManagerial && user?.id) {
+          startQuery = startQuery.eq('collaborator_id', user.id);
+        }
+
+        const { data: startSales } = await startQuery;
+        if (
+          startSales &&
+          startSales.some(r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
+        ) {
+          activeSalesRows = startSales;
+        }
+      }
+
+      // If still empty, fallback to most recent recorded period in sales_results that has informed values
+      if (
+        !activeSalesRows.some(r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
+      ) {
+        let fallbackQuery = supabase
+          .from('sales_results')
+          .select('*')
+          .order('year', { ascending: false })
+          .order('month', { ascending: false })
+          .limit(40);
+
+        if (!isManagerial && user?.id) {
+          fallbackQuery = fallbackQuery.eq('collaborator_id', user.id);
+        }
+
+        const { data: fallbackSales } = await fallbackQuery;
+        if (fallbackSales && fallbackSales.length > 0) {
+          const nonZero =
+            fallbackSales.find(
+              d => (Number(d.result_2026) || 0) > 0 || (Number(d.target_2026) || 0) > 0
+            ) || fallbackSales[0];
+          activeSalesRows = fallbackSales.filter(
+            d => d.month === nonZero.month && d.year === nonZero.year
+          );
+        }
+      }
+
       // Fetch leads data to calculate conversion rate accurately
       let leadsQuery = supabase
         .from('leads')
@@ -85,13 +218,13 @@ export default function SalesResultsPage() {
         leadsQuery = leadsQuery.eq('assigned_to', user.id);
       }
 
-      const { data: leads, error: leadsError } = await leadsQuery;
+      const { data: leads } = await leadsQuery;
       const allLeads = leads || [];
       setLeadsData(allLeads);
 
       if (profiles) {
         const formattedData = profiles.map(profile => {
-          const entry = sales?.find(s => s.collaborator_id === profile.id);
+          const entry = activeSalesRows?.find(s => s.collaborator_id === profile.id);
           const profileLeads = allLeads.filter(l => l.assigned_to === profile.id);
           const profileConverted = profileLeads.filter(l => 
             l.status === 'Convertido' || l.status === 'Ganho' || l.status === 'Fechado'
@@ -101,12 +234,21 @@ export default function SalesResultsPage() {
             : 0;
           
           const res2025 = Number(entry?.result_2025 || 0);
-          const res2026 = Number(entry?.result_2026 || 0);
+          const consolidatedRes2026 = Number(entry?.result_2026 || 0);
+          const dailySellerAmount = Number(dailyBySeller[profile.id]?.sales_amount || 0);
+
+          // The values already informed for sellers in sales_results (consolidatedRes2026)
+          // already correspond to the 26-to-25 cycle.
+          const res2026 = consolidatedRes2026 > 0
+            ? consolidatedRes2026
+            : (hasDailyEntriesInRange ? dailySellerAmount : 0);
+
           const yoyGrowth = res2025 > 0 
             ? ((res2026 - res2025) / res2025) * 100 
             : (res2026 > 0 ? 100 : 0);
 
           return {
+            ...entry,
             id: profile.id,
             name: profile.name,
             res2025,
@@ -117,7 +259,6 @@ export default function SalesResultsPage() {
             convertedCount: profileConverted,
             conversionRate: profileConvRate,
             yoyGrowth,
-            ...entry
           };
         });
         setSalesData(formattedData);
@@ -127,7 +268,7 @@ export default function SalesResultsPage() {
     } finally {
       setLoading(false);
     }
-  }, [role, isAdmin, user?.id, selectedMonth, selectedYear]);
+  }, [role, isAdmin, user?.id, selectedMonth, selectedYear, cycleRange.startDate, cycleRange.endDate]);
 
   const fetchTodaySales = useCallback(async () => {
     try {
@@ -282,35 +423,56 @@ export default function SalesResultsPage() {
       </header>
       
       <main className="flex-1 overflow-y-auto pb-32 p-4 space-y-6">
-        {/* Filters & Shortcut Bar */}
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="flex-1 flex gap-2 p-1 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 max-w-md">
-            <select 
-              value={selectedMonth} 
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="flex-1 bg-transparent border-none text-xs font-bold uppercase tracking-wider p-2 outline-none cursor-pointer"
-            >
-              {Array.from({ length: 12 }, (_, i) => (
-                <option key={i + 1} value={i + 1}>
-                  {new Date(2000, i).toLocaleString('pt-BR', { month: 'long' })}
-                </option>
-              ))}
-            </select>
-            <select 
-              value={selectedYear} 
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="flex-1 bg-transparent border-none text-xs font-bold uppercase tracking-wider p-2 outline-none cursor-pointer"
-            >
-              {[2024, 2025, 2026].map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+        {/* Filters, Sales Cycle (26 a 25) & Shortcut Bar */}
+        <div className="flex flex-col xl:flex-row gap-3 items-stretch xl:items-center justify-between">
+          <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 flex-1">
+            {/* Month / Year Cycle Selector */}
+            <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs">
+              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 px-2">
+                Ciclo Ref.:
+              </span>
+              <select 
+                value={selectedMonth} 
+                onChange={(e) => handleMonthYearChange(parseInt(e.target.value), selectedYear)}
+                className="bg-transparent border-none text-xs font-extrabold uppercase tracking-wider py-1.5 px-2 outline-none cursor-pointer"
+              >
+                {Array.from({ length: 12 }, (_, i) => (
+                  <option key={i + 1} value={i + 1} className="bg-white dark:bg-slate-900">
+                    {new Date(2000, i).toLocaleString('pt-BR', { month: 'long' })}
+                  </option>
+                ))}
+              </select>
+              <select 
+                value={selectedYear} 
+                onChange={(e) => handleMonthYearChange(selectedMonth, parseInt(e.target.value))}
+                className="bg-transparent border-none text-xs font-extrabold uppercase tracking-wider py-1.5 px-2 outline-none cursor-pointer"
+              >
+                {[2024, 2025, 2026, 2027].map(y => (
+                  <option key={y} value={y} className="bg-white dark:bg-slate-900">{y}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Dynamic Start Date & End Date Selector with Supabase Persistence */}
+            <div className="flex-1 min-w-[300px]">
+              <SalesCycleDateSelector
+                cycleRange={cycleRange}
+                onChange={(newRange) => {
+                  setCycleRange(newRange);
+                  setSelectedMonth(newRange.refMonth);
+                  setSelectedYear(newRange.refYear);
+                }}
+                userId={user?.id}
+                userName={user?.name}
+                isManagerial={isManagerial}
+              />
+            </div>
           </div>
 
           {/* Banner de atalho rápido para vendedores */}
           <button
             onClick={() => setShowCommissionModal(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-black transition-all cursor-pointer shadow-xs"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-xs font-black transition-all cursor-pointer shadow-xs shrink-0"
             title="Clique para abrir o formulário de lançamento de comissão"
           >
             <DollarSign size={16} className="stroke-[2.5]" />
@@ -375,18 +537,18 @@ export default function SalesResultsPage() {
           <div className="space-y-6">
             {/* Summary Cards Section at the Top */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <h2 className="text-xs font-black uppercase tracking-widest text-slate-400">
                     Resumo Executivo & Indicadores Estratégicos
                   </h2>
                   <p className={`text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Taxa média de conversão da equipe e evolução ano a ano (YoY) da receita
+                    Ciclo ativo: <strong className="text-emerald-600 dark:text-emerald-400">{formatDateBR(cycleRange.startDate)} até {formatDateBR(cycleRange.endDate)}</strong> ({getCycleDaysProgress(cycleRange.startDate, cycleRange.endDate).daysRemaining} dias restantes)
                   </p>
                 </div>
                 <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-500 border border-blue-500/20">
                   <Activity size={12} />
-                  <span>Indicadores em Tempo Real</span>
+                  <span>Ciclo Comercial: {cycleRange.shortLabel}</span>
                 </div>
               </div>
 
@@ -472,7 +634,7 @@ export default function SalesResultsPage() {
                 }`}>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-black uppercase tracking-wider text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-lg border border-blue-500/20">
-                      Resultado {selectedYear}
+                      {cycleRange.shortLabel}
                     </span>
                     <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center shadow-xs">
                       <DollarSign size={18} />
@@ -502,7 +664,7 @@ export default function SalesResultsPage() {
                 }`}>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[10px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
-                      Meta {selectedYear}
+                      Meta ({cycleRange.shortLabel})
                     </span>
                     <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center shadow-xs">
                       <Award size={18} />
@@ -533,14 +695,34 @@ export default function SalesResultsPage() {
               <GsapSalesProgressBar
                 currentRevenue={totals.res2026}
                 targetGoal={totals.meta2026}
-                label={`Progresso Geral de Meta vs. Faturamento Realizado (${selectedYear})`}
-                subtitle="Indicador em tempo real alimentado com animação fluida GSAP"
+                label={`Faturamento Realizado vs Meta • Ciclo ${formatDateBR(cycleRange.startDate)} a ${formatDateBR(cycleRange.endDate)}`}
+                subtitle={`Ciclo comercial de 26 a 25 • ${getCycleDaysProgress(cycleRange.startDate, cycleRange.endDate).daysRemaining} dias restantes no período`}
                 isDarkMode={isDarkMode}
                 showDetails={true}
                 barHeight="h-4"
                 colorScheme={totals.res2026 >= totals.meta2026 ? 'emerald' : 'blue'}
               />
             </div>
+
+            {/* Novo Card: Quanto Falta para Atingir a Meta Diária e Mensal (Ciclo 26 a 25) */}
+            <SalesCycleGoalGapCard
+              cycleRange={cycleRange}
+              totalGoal={totals.meta2026}
+              totalResult={totals.res2026}
+              todaySales={todayDailySales?.total || 0}
+              loading={loading}
+              isDarkMode={isDarkMode}
+              isManagerial={isManagerial}
+              onOpenDailySalesModal={() => setShowDailySalesModal(true)}
+            />
+
+            {/* Sistema de Notificações Push Automáticas por Marcos de Meta (50%, 75% e 100%) */}
+            <SalesMilestonePushCard
+              cycleRange={cycleRange}
+              userId={user?.id}
+              isManagerial={isManagerial}
+              isDarkMode={isDarkMode}
+            />
 
             {/* Main Chart */}
             {renderChartContainer(`Comparativo de Resultados - ${new Date(2000, selectedMonth - 1).toLocaleString('pt-BR', { month: 'long' })}`, (
