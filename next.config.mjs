@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: false,
-  allowedDevOrigins: ['*'],
+  reactStrictMode: true,
+  distDir: process.env.NODE_ENV === 'production' ? '.next-build' : '.next',
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -12,7 +12,9 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: '**',
+        hostname: 'picsum.photos',
+        port: '',
+        pathname: '/**',
       },
     ],
   },

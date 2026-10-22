@@ -48,8 +48,8 @@ export async function POST(req: Request) {
 
     // 2. Verificar se o usuário já existe no Supabase Auth
     const { data: usersData } = await adminClient.auth.admin.listUsers();
-    const existingAuthUser = usersData?.users?.find(
-      u => u.email?.toLowerCase() === targetEmail || u.id === profile.id
+    const existingAuthUser = (usersData?.users as any[] | undefined)?.find(
+      (u: any) => u.email?.toLowerCase() === targetEmail || u.id === profile.id
     );
 
     if (!existingAuthUser) {

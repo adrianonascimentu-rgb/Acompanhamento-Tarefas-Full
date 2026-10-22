@@ -151,7 +151,7 @@ export default function EditCollaboratorPage() {
         } else if (pRole.includes('estoque') || pRole.includes('estoquista')) {
           derivedRole = 'estoque';
         }
-        setUserRole(derivedRole);
+        setUserRole(derivedRole as any);
         const isInactive = getInactiveCollaboratorIds().includes(id as string) || profile.status === 'Inativo';
         setStatus(isInactive ? 'Inativo' : 'Ativo');
         setSubmodules({
