@@ -193,7 +193,12 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
   // Custom Chart Tooltip
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      const data = payload[0].payload;
+      const data = payload[0]?.payload || {};
+      const sent = Number(data.sent ?? 0);
+      const received = Number(data.received ?? 0);
+      const total = Number(data.total ?? sent + received);
+      const isHourly = Boolean(data.hour);
+
       return (
         <div className={`p-3.5 rounded-2xl shadow-xl border text-xs space-y-2 backdrop-blur-md ${
           isDarkMode 
@@ -201,8 +206,10 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
             : 'bg-white/95 border-slate-200 text-slate-900 shadow-slate-200'
         }`}>
           <div className="flex items-center justify-between gap-4 border-b pb-1.5 border-slate-200 dark:border-slate-800">
-            <span className="font-bold text-xs">{data.fullDate || label}</span>
-            <span className="text-[10px] font-semibold text-slate-400 capitalize">{data.dayName}</span>
+            <span className="font-bold text-xs">{data.fullDate || data.hour || label}</span>
+            <span className="text-[10px] font-semibold text-slate-400 capitalize">
+              {data.dayName || (isHourly ? 'Faixa Horária' : '')}
+            </span>
           </div>
           
           <div className="space-y-1.5 font-medium">
@@ -211,7 +218,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                 <span className="size-2 rounded-full bg-emerald-500" />
                 Enviadas:
               </span>
-              <span className="font-mono font-bold">{data.sent.toLocaleString('pt-BR')}</span>
+              <span className="font-mono font-bold">{sent.toLocaleString('pt-BR')}</span>
             </div>
 
             <div className="flex items-center justify-between gap-4">
@@ -219,12 +226,12 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                 <span className="size-2 rounded-full bg-indigo-500" />
                 Recebidas:
               </span>
-              <span className="font-mono font-bold">{data.received.toLocaleString('pt-BR')}</span>
+              <span className="font-mono font-bold">{received.toLocaleString('pt-BR')}</span>
             </div>
 
             <div className="pt-1 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4 font-bold text-slate-700 dark:text-slate-200">
-              <span>Total do Dia:</span>
-              <span className="font-mono">{data.total.toLocaleString('pt-BR')} msgs</span>
+              <span>{isHourly ? 'Total na Faixa:' : 'Total do Dia:'}</span>
+              <span className="font-mono">{total.toLocaleString('pt-BR')} msgs</span>
             </div>
           </div>
         </div>
