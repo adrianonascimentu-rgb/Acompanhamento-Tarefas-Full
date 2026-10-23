@@ -365,54 +365,99 @@ export function saveDirectoryConfig(config: AutomationDirectoryConfig): void {
   }
 }
 
+const DEMO_PLACEHOLDER_PHONES = new Set([
+  '5583999990001',
+  '5511999999999',
+  '5583988881001',
+  '5583988881002',
+  '5583988881003',
+  '5583988881004',
+  '5583988881005',
+  '5583988881006',
+  '5583988881007',
+  '5511888888888'
+]);
+
+export function normalizeBrazilPhone(raw?: string): string {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) {
+    return `55${digits}`;
+  }
+  return digits;
+}
+
+export function isPlaceholderPhone(phone?: string): boolean {
+  const clean = normalizeBrazilPhone(phone);
+  return !clean || DEMO_PLACEHOLDER_PHONES.has(clean);
+}
+
 export function resolveRecipientPhone(
   target: RecipientTarget,
   payload: Record<string, any>,
   customPhone?: string
 ): { name: string; phone: string } {
   const dir = getDirectoryConfig();
+  const normalizedAdminPhone = normalizeBrazilPhone(dir.adminPhone);
+  const hasRealAdminPhone = !isPlaceholderPhone(normalizedAdminPhone);
 
   if (target === 'custom_number' && customPhone) {
-    return { name: payload.recipientName || ' Destinatário Configurado', phone: customPhone };
+    const cleanCustom = normalizeBrazilPhone(customPhone);
+    return {
+      name: payload.recipientName || 'Destinatário Configurado',
+      phone: isPlaceholderPhone(cleanCustom) && hasRealAdminPhone ? normalizedAdminPhone : cleanCustom
+    };
   }
 
   if (target === 'admin_or_creator') {
     const creatorName = payload.criador || dir.adminName;
-    const creatorPhone = payload.creatorPhone || dir.adminPhone;
+    const creatorPhone = normalizeBrazilPhone(payload.creatorPhone || normalizedAdminPhone);
     return { name: creatorName, phone: creatorPhone };
   }
 
   if (target === 'assigned_collaborator') {
     const collabName = String(payload.colaborador || 'Colaborador');
     const explicitPhone = payload.collaboratorPhone || payload.phone;
-    const mappedPhone =
+    const mappedRaw =
       explicitPhone ||
       dir.collaboratorPhones[collabName.toLowerCase()] ||
-      dir.collaboratorPhones[collabName.split(' ')[0].toLowerCase()] ||
-      dir.adminPhone;
-    return { name: collabName, phone: mappedPhone };
+      dir.collaboratorPhones[collabName.split(' ')[0].toLowerCase()];
+    const mappedPhone = normalizeBrazilPhone(mappedRaw);
+
+    // If the collaborator phone is still a demo placeholder and the Admin configured their real phone, use Admin's phone
+    const finalPhone =
+      !mappedPhone || (isPlaceholderPhone(mappedPhone) && hasRealAdminPhone)
+        ? normalizedAdminPhone
+        : mappedPhone;
+
+    return { name: collabName, phone: finalPhone };
   }
 
   if (target === 'assigned_driver') {
     const driverName = String(payload.motorista || 'Motorista');
     const explicitPhone = payload.driverPhone || payload.phone;
-    const mappedPhone =
+    const mappedRaw =
       explicitPhone ||
       dir.collaboratorPhones[driverName.toLowerCase()] ||
-      dir.collaboratorPhones[driverName.split(' ')[0].toLowerCase()] ||
-      '5511888888888';
-    return { name: driverName, phone: mappedPhone };
+      dir.collaboratorPhones[driverName.split(' ')[0].toLowerCase()];
+    const mappedPhone = normalizeBrazilPhone(mappedRaw);
+
+    const finalPhone =
+      !mappedPhone || (isPlaceholderPhone(mappedPhone) && hasRealAdminPhone)
+        ? normalizedAdminPhone
+        : mappedPhone;
+
+    return { name: driverName, phone: finalPhone };
   }
 
   if (target === 'delivery_client') {
-    const clientPhone = String(payload.cliente_telefone || payload.phone || '').replace(/\D/g, '');
+    const clientPhone = normalizeBrazilPhone(payload.cliente_telefone || payload.phone || '');
     return {
       name: payload.cliente || `Cliente (${payload.bairro || 'Entrega'})`,
-      phone: clientPhone.length >= 10 ? (clientPhone.startsWith('55') ? clientPhone : `55${clientPhone}`) : dir.adminPhone
+      phone: clientPhone.length >= 12 ? clientPhone : normalizedAdminPhone
     };
   }
 
-  return { name: dir.adminName, phone: dir.adminPhone };
+  return { name: dir.adminName, phone: normalizedAdminPhone };
 }
 
 export function interpolateTemplate(template: string, variables: Record<string, any>): string {
@@ -496,8 +541,12 @@ export function getAutomatedInboxMessages(): Array<{
 export async function triggerWhatsAppAutomation(
   trigger: AutomationTriggerType,
   variables: Record<string, any>,
-  options?: { forceRuleId?: string }
-): Promise<{ triggeredCount: number; logs: WhatsAppAutomationLog[] }> {
+  options?: {
+    forceRuleId?: string;
+    forceRecipientPhone?: string;
+    forceRecipientName?: string;
+  }
+): Promise<{ triggeredCount: number; logs: WhatsAppAutomationLog[]; lastError?: string }> {
   const rules = getAutomationRules();
   const matchingRules = rules.filter(r => {
     if (options?.forceRuleId) return r.id === options.forceRuleId;
@@ -513,19 +562,24 @@ export async function triggerWhatsAppAutomation(
   }
 
   const providerMode = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_provider_mode')) || 'alternative';
-  const altServerUrl = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_server_url')) || '';
+  const altServerUrl = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_server_url')) || 'https://api.w-api.app';
   const altApiKey = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_api_key')) || '';
-  const altInstance = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_instance')) || 'instancia_vendas_01';
+  const altInstance = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_instance')) || '';
 
   const createdLogs: WhatsAppAutomationLog[] = [];
   const nowFormatted = `Hoje, ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  let lastError: string | undefined;
 
   for (const rule of matchingRules) {
-    const { name: recipientName, phone: recipientPhone } = resolveRecipientPhone(
+    const resolved = resolveRecipientPhone(
       rule.recipientTarget,
       variables,
       rule.customPhone
     );
+
+    const recipientName = options?.forceRecipientName || resolved.name;
+    const recipientPhone = normalizeBrazilPhone(options?.forceRecipientPhone || resolved.phone);
+
     const finalMessage = interpolateTemplate(rule.template, {
       ...variables,
       colaborador: variables.colaborador || recipientName,
@@ -547,12 +601,19 @@ export async function triggerWhatsAppAutomation(
           altInstance
         })
       });
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        sendStatus = data.simulated ? 'simulated' : 'sent';
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && !data.simulated) {
+        sendStatus = 'sent';
+      } else if (data.simulated) {
+        sendStatus = 'simulated';
+        if (data.error) lastError = data.error;
+      } else {
+        sendStatus = 'failed';
+        lastError = data.error || 'Falha ao enviar pela W-API';
       }
-    } catch {
-      sendStatus = 'simulated';
+    } catch (err: any) {
+      sendStatus = 'failed';
+      lastError = err?.message || 'Erro de conexão ao disparar WhatsApp';
     }
 
     const logEntry: WhatsAppAutomationLog = {
@@ -584,5 +645,5 @@ export async function triggerWhatsAppAutomation(
   });
   saveAutomationRules(updatedRules);
 
-  return { triggeredCount: createdLogs.length, logs: createdLogs };
+  return { triggeredCount: createdLogs.length, logs: createdLogs, lastError };
 }

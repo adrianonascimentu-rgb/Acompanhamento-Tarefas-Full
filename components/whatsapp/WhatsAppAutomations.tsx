@@ -47,7 +47,9 @@ import {
   saveDirectoryConfig,
   triggerWhatsAppAutomation,
   interpolateTemplate,
-  DEFAULT_AUTOMATION_RULES
+  DEFAULT_AUTOMATION_RULES,
+  normalizeBrazilPhone,
+  isPlaceholderPhone
 } from '@/lib/whatsappAutomation';
 
 const EXTRA_SUGGESTION_TEMPLATES: Omit<WhatsAppAutomationRule, 'id' | 'totalSentCount'>[] = [
@@ -120,11 +122,16 @@ export default function WhatsAppAutomations() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [testingRuleId, setTestingRuleId] = useState<string | null>(null);
+  const [isSendingDirectTest, setIsSendingDirectTest] = useState(false);
 
-  // Directory State
+  // Directory & W-API Gateway State
   const [directory, setDirectory] = useState(getDirectoryConfig());
   const [newCollabName, setNewCollabName] = useState('');
   const [newCollabPhone, setNewCollabPhone] = useState('');
+  const [wapiInstanceId, setWapiInstanceId] = useState('');
+  const [wapiToken, setWapiToken] = useState('');
+  const [wapiServerUrl, setWapiServerUrl] = useState('https://api.w-api.app');
+  const [lastDiagnosticError, setLastDiagnosticError] = useState<string | null>(null);
 
   // Form State for New/Edit Rule
   const [formState, setFormState] = useState<{
@@ -153,6 +160,11 @@ export default function WhatsAppAutomations() {
     setRules(getAutomationRules());
     setLogs(getAutomationLogs());
     setDirectory(getDirectoryConfig());
+    if (typeof window !== 'undefined') {
+      setWapiInstanceId(localStorage.getItem('whatsapp_alt_instance') || '');
+      setWapiToken(localStorage.getItem('whatsapp_alt_api_key') || '');
+      setWapiServerUrl(localStorage.getItem('whatsapp_alt_server_url') || 'https://api.w-api.app');
+    }
   };
 
   useEffect(() => {
@@ -301,12 +313,115 @@ export default function WhatsAppAutomations() {
     setIsModalOpen(false);
   };
 
+  const isWapiConfigured = Boolean(wapiInstanceId.trim() && wapiToken.trim());
+  const isAdminPhoneReal = Boolean(
+    directory.adminPhone &&
+      directory.adminPhone.replace(/\D/g, '').length >= 10 &&
+      !isPlaceholderPhone(directory.adminPhone)
+  );
+
+  const persistWapiAndDirectory = (nextDir = directory) => {
+    const normalizedAdmin = normalizeBrazilPhone(nextDir.adminPhone);
+    const normalizedGroup = normalizeBrazilPhone(nextDir.logisticsGroupPhone);
+    const updatedDir = {
+      ...nextDir,
+      adminPhone: normalizedAdmin || nextDir.adminPhone,
+      logisticsGroupPhone: normalizedGroup || nextDir.logisticsGroupPhone
+    };
+    setDirectory(updatedDir);
+    saveDirectoryConfig(updatedDir);
+
+    if (typeof window !== 'undefined') {
+      if (wapiInstanceId.trim() && wapiToken.trim()) {
+        localStorage.setItem('whatsapp_provider_mode', 'alternative');
+        localStorage.setItem(
+          'whatsapp_alt_server_url',
+          wapiServerUrl.trim() || 'https://api.w-api.app'
+        );
+        localStorage.setItem('whatsapp_alt_instance', wapiInstanceId.trim());
+        localStorage.setItem(
+          'whatsapp_alt_api_key',
+          wapiToken.trim().replace(/^Bearer\s+/i, '')
+        );
+      }
+    }
+    return updatedDir;
+  };
+
+  const handleDirectAdminTestSend = async () => {
+    const savedDir = persistWapiAndDirectory(directory);
+    setLastDiagnosticError(null);
+
+    if (!savedDir.adminPhone || isPlaceholderPhone(savedDir.adminPhone)) {
+      const msg =
+        'Você ainda está com o telefone fictício de exemplo (5583999990001). Digite o SEU número real de celular (DDD + Número) no campo "WhatsApp do Administrador"!';
+      setLastDiagnosticError(msg);
+      showToast(msg, 'warning');
+      setActiveSubView('directory');
+      return;
+    }
+
+    if (!wapiInstanceId.trim() || !wapiToken.trim()) {
+      const msg =
+        'Para a mensagem chegar no seu celular, preencha o "Instance ID" e o "Token Bearer" da sua conta W-API.';
+      setLastDiagnosticError(msg);
+      showToast(msg, 'warning');
+      setActiveSubView('directory');
+      return;
+    }
+
+    setIsSendingDirectTest(true);
+    try {
+      const cleanToken = wapiToken.trim().replace(/^Bearer\s+/i, '');
+      const cleanUrl = (wapiServerUrl.trim() || 'https://api.w-api.app').replace(/\/$/, '');
+      const targetPhone = normalizeBrazilPhone(savedDir.adminPhone);
+
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: targetPhone,
+          text: `✅ *Teste de Recebimento do Administrador*\n\nOlá *${savedDir.adminName}*! Seu número (*+${targetPhone}*) e sua instância *W-API (${wapiInstanceId.trim()})* estão configurados e prontos para receber alertas automáticos de tarefas e entregas.`,
+          providerMode: 'alternative',
+          altServerUrl: cleanUrl,
+          altApiKey: cleanToken,
+          altInstance: wapiInstanceId.trim()
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        setLastDiagnosticError(null);
+        showToast(
+          `Mensagem enviada via W-API para seu celular (+${targetPhone})! Verifique seu WhatsApp.`,
+          'success'
+        );
+      } else {
+        const errText =
+          data?.error ||
+          'A W-API recusou o envio. Verifique se sua instância está "Conectada" (QR Code lido) no painel w-api.app.';
+        setLastDiagnosticError(errText);
+        showToast(`Falha no envio W-API: ${errText}`, 'error');
+      }
+    } catch {
+      const errText = 'Erro de comunicação ao tentar disparar para a W-API.';
+      setLastDiagnosticError(errText);
+      showToast(errText, 'error');
+    } finally {
+      setIsSendingDirectTest(false);
+    }
+  };
+
   const handleTestRuleNow = async (rule: WhatsAppAutomationRule) => {
     setTestingRuleId(rule.id);
+    setLastDiagnosticError(null);
     try {
+      const savedDir = persistWapiAndDirectory(directory);
+      const adminTargetPhone = normalizeBrazilPhone(savedDir.adminPhone);
+
       const sampleVariables: Record<string, any> = {
         colaborador: 'Carlos',
-        criador: directory.adminName,
+        criador: savedDir.adminName,
         tarefa: 'Conferência de Estoque Setor A',
         prioridade: 'Alta',
         prazo: new Date().toLocaleDateString('pt-BR'),
@@ -331,16 +446,34 @@ export default function WhatsAppAutomations() {
         tarefas_pendentes: '4'
       };
 
-      const res = await triggerWhatsAppAutomation(rule.trigger, sampleVariables, {
-        forceRuleId: rule.id
-      });
+      // Ao clicar em "Testar Disparo", envia para o celular do Administrador se ele já cadastrou o número real dele
+      const forceToAdmin =
+        adminTargetPhone && !isPlaceholderPhone(adminTargetPhone)
+          ? {
+              forceRuleId: rule.id,
+              forceRecipientPhone: adminTargetPhone,
+              forceRecipientName: `${savedDir.adminName} (Teste no seu Celular)`
+            }
+          : { forceRuleId: rule.id };
+
+      const res = await triggerWhatsAppAutomation(rule.trigger, sampleVariables, forceToAdmin);
 
       if (res.triggeredCount > 0) {
         const log = res.logs[0];
-        showToast(
-          `Disparo enviado para ${log.recipientName} (${log.recipientPhone})!`,
-          'success'
-        );
+        if (log.status === 'sent') {
+          showToast(
+            `Enviado via W-API para +${log.recipientPhone} (${log.recipientName})! Confira seu celular.`,
+            'success'
+          );
+        } else {
+          const warnMsg =
+            res.lastError ||
+            (isPlaceholderPhone(log.recipientPhone)
+              ? `O número +${log.recipientPhone} é apenas de exemplo. Cadastre seu celular real e a W-API na aba "Telefones de Destino".`
+              : `Apenas simulado no painel para +${log.recipientPhone}. Configure o Instance ID e Token da W-API para receber no celular.`);
+          setLastDiagnosticError(warnMsg);
+          showToast(warnMsg, 'warning');
+        }
       }
     } catch {
       showToast('Erro ao testar disparo automático.', 'error');
@@ -375,8 +508,9 @@ export default function WhatsAppAutomations() {
 
   const handleSaveDirectory = (e: React.FormEvent) => {
     e.preventDefault();
-    saveDirectoryConfig(directory);
-    showToast('Agenda de telefones de automação salva com sucesso!', 'success');
+    persistWapiAndDirectory(directory);
+    setLastDiagnosticError(null);
+    showToast('Seu telefone de Administrador e credenciais W-API foram salvos!', 'success');
   };
 
   const handleAddCollaboratorPhone = () => {
@@ -384,7 +518,7 @@ export default function WhatsAppAutomations() {
       showToast('Informe o nome do colaborador/motorista e o WhatsApp.', 'warning');
       return;
     }
-    const cleanPhone = newCollabPhone.replace(/\D/g, '');
+    const cleanPhone = normalizeBrazilPhone(newCollabPhone);
     const updatedDir = {
       ...directory,
       collaboratorPhones: {
@@ -578,8 +712,15 @@ export default function WhatsAppAutomations() {
               </div>
             </div>
             <div className="space-y-2">
-              <div className="text-sm font-bold font-mono tabular-nums truncate">
-                +{directory.adminPhone} ({directory.adminName})
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-bold font-mono tabular-nums truncate">
+                  +{directory.adminPhone}
+                </span>
+                {!isAdminPhoneReal && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-500 border border-amber-500/30">
+                    Exemplo Fictício
+                  </span>
+                )}
               </div>
               <button
                 type="button"
@@ -590,12 +731,113 @@ export default function WhatsAppAutomations() {
                     : 'bg-emerald-50/80 border-emerald-200 text-emerald-700 hover:bg-emerald-100/80'
                 }`}
               >
-                <span>Gerenciar telefones</span>
+                <span>{isAdminPhoneReal && isWapiConfigured ? 'Gerenciar telefones' : 'Configurar meu celular'}</span>
                 <ArrowRight size={13} />
               </button>
             </div>
           </div>
         </div>
+
+        {/* Diagnostic & Quick Setup Banner when Admin phone is placeholder or W-API is missing */}
+        {(!isAdminPhoneReal || !isWapiConfigured || lastDiagnosticError) && (
+          <div
+            className={`p-4 sm:p-5 rounded-2xl border space-y-4 ${
+              isDarkMode
+                ? 'bg-amber-950/25 border-amber-500/40 text-amber-100'
+                : 'bg-amber-50/90 border-amber-300 text-slate-900'
+            }`}
+          >
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-500 shrink-0 mt-0.5">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold">
+                    Por que a mensagem ainda não chegou no seu celular de Administrador?
+                  </h3>
+                  <p className="text-xs opacity-90 mt-1 leading-relaxed">
+                    {!isAdminPhoneReal && (
+                      <span>
+                        1. O telefone de Administrador está com o número fictício de demonstração (<strong>5583999990001</strong>). Digite o <strong>seu número real com DDD</strong> abaixo.{' '}
+                      </span>
+                    )}
+                    {!isWapiConfigured && (
+                      <span>
+                        2. As credenciais da <strong>W-API (Instance ID e Token Bearer)</strong> ainda não foram salvas neste navegador. Preencha-as abaixo para envio real.
+                      </span>
+                    )}
+                    {lastDiagnosticError && (
+                      <span className="block mt-1 font-semibold text-rose-500 dark:text-rose-400">
+                        Diagnóstico do último disparo: {lastDiagnosticError}
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Inline Quick Configuration Bar */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-bold mb-1">
+                  1. Seu WhatsApp (Admin com DDD) *
+                </label>
+                <input
+                  type="text"
+                  value={directory.adminPhone}
+                  onChange={e =>
+                    setDirectory({ ...directory, adminPhone: e.target.value.replace(/\D/g, '') })
+                  }
+                  placeholder="Ex: 5583999998888"
+                  className={`${inputBaseClass} font-mono`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold mb-1">
+                  2. Instance ID (W-API) *
+                </label>
+                <input
+                  type="text"
+                  value={wapiInstanceId}
+                  onChange={e => setWapiInstanceId(e.target.value)}
+                  placeholder="Ex: 3B9X8Z..."
+                  className={`${inputBaseClass} font-mono`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold mb-1">
+                  3. Token Bearer (W-API) *
+                </label>
+                <input
+                  type="password"
+                  value={wapiToken}
+                  onChange={e => setWapiToken(e.target.value)}
+                  placeholder="Cole seu Token da W-API"
+                  className={`${inputBaseClass} font-mono`}
+                />
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  disabled={isSendingDirectTest}
+                  onClick={handleDirectAdminTestSend}
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-sm cursor-pointer"
+                >
+                  {isSendingDirectTest ? (
+                    <RefreshCw size={15} className="animate-spin shrink-0" />
+                  ) : (
+                    <Send size={15} className="shrink-0" />
+                  )}
+                  <span>Salvar & Testar no Meu Celular</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main Section Switcher Tabs (Well-framed 4-tab bar) */}
         <div
@@ -1143,7 +1385,7 @@ export default function WhatsAppAutomations() {
 
                 <div>
                   <label className="block text-xs font-bold mb-1.5">
-                    WhatsApp do Administrador (com DDI 55 + DDD)
+                    Seu WhatsApp de Administrador (DDD + Número) *
                   </label>
                   <input
                     type="text"
@@ -1151,9 +1393,12 @@ export default function WhatsAppAutomations() {
                     onChange={e =>
                       setDirectory({ ...directory, adminPhone: e.target.value.replace(/\D/g, '') })
                     }
-                    placeholder="Ex: 5583999990001"
+                    placeholder="Ex: 5583999998888"
                     className={`${inputBaseClass} font-mono`}
                   />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Se você digitar apenas DDD + Número (ex: 83999998888), o sistema adiciona o DDI 55 automaticamente.
+                  </p>
                 </div>
 
                 <div>
@@ -1173,15 +1418,79 @@ export default function WhatsAppAutomations() {
                     className={`${inputBaseClass} font-mono`}
                   />
                 </div>
+
+                {/* Direct W-API Gateway Fields inside Directory */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                      Credenciais W-API (Para Envio Real no Celular)
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isWapiConfigured
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-amber-500/15 text-amber-500'
+                      }`}
+                    >
+                      {isWapiConfigured ? 'W-API Configurada' : 'Pendente'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-1">
+                      Instance ID da W-API
+                    </label>
+                    <input
+                      type="text"
+                      value={wapiInstanceId}
+                      onChange={e => setWapiInstanceId(e.target.value)}
+                      placeholder="Ex: 3B9X8Z..."
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-1">
+                      Token Bearer da W-API
+                    </label>
+                    <input
+                      type="password"
+                      value={wapiToken}
+                      onChange={e => setWapiToken(e.target.value)}
+                      placeholder="Cole seu Token Bearer da W-API"
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <button
-                type="submit"
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-2xs"
-              >
-                <Check size={15} />
-                <span>Salvar Configurações de Destino</span>
-              </button>
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <Check size={15} />
+                  <span>Salvar Telefone & Credenciais W-API</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSendingDirectTest}
+                  onClick={handleDirectAdminTestSend}
+                  className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border transition-colors cursor-pointer ${
+                    isDarkMode
+                      ? 'bg-slate-800 border-slate-700 text-emerald-400 hover:bg-slate-700'
+                      : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                >
+                  {isSendingDirectTest ? (
+                    <RefreshCw size={15} className="animate-spin" />
+                  ) : (
+                    <Send size={15} />
+                  )}
+                  <span>Enviar Mensagem de Teste para Meu Celular Agora</span>
+                </button>
+              </div>
             </form>
 
             {/* Right Card: Collaborator & Driver Phone Mapping */}
@@ -1376,13 +1685,23 @@ export default function WhatsAppAutomations() {
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
                           <span
                             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${
-                              isDarkMode
-                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                              log.status === 'sent'
+                                ? isDarkMode
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                  : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                                : isDarkMode
+                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                                : 'bg-amber-50 border-amber-200 text-amber-700'
                             }`}
                           >
-                            <CheckCircle2 size={12} />
-                            {log.status === 'sent' ? 'Enviado via Gateway' : 'Disparado'}
+                            {log.status === 'sent' ? (
+                              <CheckCircle2 size={12} />
+                            ) : (
+                              <AlertTriangle size={12} />
+                            )}
+                            {log.status === 'sent'
+                              ? 'Enviado via W-API'
+                              : 'Simulado (Configure W-API)'}
                           </span>
                         </td>
                       </tr>

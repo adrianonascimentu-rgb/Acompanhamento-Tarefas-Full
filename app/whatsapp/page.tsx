@@ -1229,16 +1229,68 @@ export default function WhatsAppPage() {
                 {/* TAB 1: ALTERNATIVE GATEWAY / QR CODE */}
                 {configTab === 'alternative' && (
                   <div className="space-y-6">
+                    {/* Quick Gateway Preset Bar */}
+                    <div className={`p-3.5 rounded-xl border flex flex-wrap items-center justify-between gap-2.5 text-xs ${
+                      isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'
+                    }`}>
+                      <span className="font-semibold text-slate-500 dark:text-slate-300">
+                        Preenchimento rápido de provedor:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAltServerUrl('https://api.w-api.app')}
+                          className={`px-3 py-1.5 rounded-lg font-bold border transition-colors ${
+                            altServerUrl.includes('w-api')
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : isDarkMode
+                              ? 'bg-slate-900 border-slate-700 text-emerald-400 hover:bg-slate-800'
+                              : 'bg-white border-slate-300 text-emerald-700 hover:bg-emerald-50'
+                          }`}
+                        >
+                          W-API (api.w-api.app)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAltServerUrl('https://api.z-api.io')}
+                          className={`px-3 py-1.5 rounded-lg font-semibold border transition-colors ${
+                            altServerUrl.includes('z-api')
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : isDarkMode
+                              ? 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                              : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          Z-API
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAltServerUrl('https://evolution.suaempresa.com')}
+                          className={`px-3 py-1.5 rounded-lg font-semibold border transition-colors ${
+                            altServerUrl.includes('evolution')
+                              ? 'bg-emerald-600 text-white border-emerald-600'
+                              : isDarkMode
+                              ? 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                              : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          Evolution API
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-4">
                         <div>
-                          <label className="block text-xs font-bold mb-1.5">URL do Servidor Gateway</label>
+                          <label className="block text-xs font-bold mb-1.5">
+                            1. URL do Servidor Gateway (W-API / Evolution / Z-API)
+                          </label>
                           <input
                             type="text"
                             value={altServerUrl}
                             onChange={e => setAltServerUrl(e.target.value)}
-                            placeholder="https://api.z-api.io ou https://evolution.suaempresa.com"
-                            className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                            placeholder="https://api.w-api.app"
+                            className={`w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border ${
                               isDarkMode
                                 ? 'bg-slate-800 border-slate-700 text-white'
                                 : 'bg-slate-50 border-slate-200 text-slate-900'
@@ -1247,13 +1299,15 @@ export default function WhatsAppPage() {
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold mb-1.5">Chave de API / Token</label>
+                          <label className="block text-xs font-bold mb-1.5">
+                            2. Token da Instância / Bearer Token (W-API)
+                          </label>
                           <input
                             type="password"
                             value={altApiKey}
                             onChange={e => setAltApiKey(e.target.value)}
-                            placeholder="Sua chave de API do Gateway"
-                            className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                            placeholder="Cole aqui o Token da sua instância W-API"
+                            className={`w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border ${
                               isDarkMode
                                 ? 'bg-slate-800 border-slate-700 text-white'
                                 : 'bg-slate-50 border-slate-200 text-slate-900'
@@ -1262,13 +1316,15 @@ export default function WhatsAppPage() {
                         </div>
 
                         <div>
-                          <label className="block text-xs font-bold mb-1.5">ID / Nome da Instância</label>
+                          <label className="block text-xs font-bold mb-1.5">
+                            3. ID da Instância (Instance ID no painel W-API)
+                          </label>
                           <input
                             type="text"
                             value={altInstance}
                             onChange={e => setAltInstance(e.target.value)}
-                            placeholder="instancia_01"
-                            className={`w-full px-3.5 py-2.5 text-xs rounded-xl border ${
+                            placeholder="Ex: LITE-XXXXXX ou ID da Instância"
+                            className={`w-full px-3.5 py-2.5 text-xs font-mono rounded-xl border ${
                               isDarkMode
                                 ? 'bg-slate-800 border-slate-700 text-white'
                                 : 'bg-slate-50 border-slate-200 text-slate-900'
