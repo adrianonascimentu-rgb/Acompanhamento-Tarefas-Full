@@ -611,9 +611,88 @@ export default function MercadoLivreResearchPage() {
   }, [items]);
 
   const formatCurrency = (val: number | null) => {
-
     if (val === null || val === undefined) return '-';
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+  };
+
+  type PriceRankColor = 'green' | 'yellow' | 'red' | null;
+
+  const getRowPriceComparison = (item: Pick<MLItem, 'a_vista_cp' | 'pr_vende_mais' | 'segundo_preco'>): {
+    a_vista_cp: PriceRankColor;
+    pr_vende_mais: PriceRankColor;
+    segundo_preco: PriceRankColor;
+  } => {
+    const entries: Array<{ key: 'a_vista_cp' | 'pr_vende_mais' | 'segundo_preco'; val: number }> = [];
+    const fields: Array<'a_vista_cp' | 'pr_vende_mais' | 'segundo_preco'> = [
+      'a_vista_cp',
+      'pr_vende_mais',
+      'segundo_preco',
+    ];
+
+    for (const key of fields) {
+      const raw = item[key];
+      if (raw !== null && raw !== undefined && raw !== ('' as unknown)) {
+        const num = Number(raw);
+        if (Number.isFinite(num) && num > 0) {
+          entries.push({ key, val: Math.round(num * 100) / 100 });
+        }
+      }
+    }
+
+    const result: {
+      a_vista_cp: PriceRankColor;
+      pr_vende_mais: PriceRankColor;
+      segundo_preco: PriceRankColor;
+    } = {
+      a_vista_cp: null,
+      pr_vende_mais: null,
+      segundo_preco: null,
+    };
+
+    if (entries.length === 0) return result;
+
+    const uniqueSorted = Array.from(new Set(entries.map(e => e.val))).sort((a, b) => a - b);
+
+    for (const entry of entries) {
+      const rankIndex = uniqueSorted.indexOf(entry.val);
+      if (rankIndex === 0) {
+        result[entry.key] = 'green';
+      } else if (rankIndex === 1) {
+        result[entry.key] = 'yellow';
+      } else {
+        result[entry.key] = 'red';
+      }
+    }
+
+    return result;
+  };
+
+  const getPriceCellStyles = (rank: PriceRankColor) => {
+    if (rank === 'green') {
+      return {
+        td: 'bg-emerald-500/15 dark:bg-emerald-500/20',
+        badge:
+          'inline-flex items-center justify-end px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border border-emerald-500/40 font-bold',
+      };
+    }
+    if (rank === 'yellow') {
+      return {
+        td: 'bg-amber-500/15 dark:bg-amber-500/20',
+        badge:
+          'inline-flex items-center justify-end px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 font-bold',
+      };
+    }
+    if (rank === 'red') {
+      return {
+        td: 'bg-rose-500/15 dark:bg-rose-500/20',
+        badge:
+          'inline-flex items-center justify-end px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-800 dark:text-rose-200 border border-rose-500/40 font-bold',
+      };
+    }
+    return {
+      td: '',
+      badge: 'text-slate-600 dark:text-slate-300',
+    };
   };
 
   return (
@@ -849,7 +928,19 @@ export default function MercadoLivreResearchPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+          <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/50">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Comparativo (À Vista CP / Pr. Vende+ / 2º Preço):</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 font-bold text-[10px]">
+                1º Menor
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 font-bold text-[10px]">
+                2º Menor
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/40 font-bold text-[10px]">
+                3º Maior
+              </span>
+            </div>
             <span>Total de registros: <strong className="text-slate-900 dark:text-white">{filteredItems.length}</strong></span>
             <button
               onClick={fetchItems}
@@ -883,7 +974,7 @@ export default function MercadoLivreResearchPage() {
                   <th className="p-3 border-r dark:border-slate-700 text-right">À Vista CP</th>
                   <th className="p-3 border-r dark:border-slate-700 text-right">Liq. ML Envios</th>
                   <th className="p-3 border-r dark:border-slate-700 text-right">Pr. CP ML</th>
-                  <th className="p-3 border-r dark:border-slate-700 text-right bg-blue-500/10 text-blue-600 dark:text-blue-400">Pr. Vende+</th>
+                  <th className="p-3 border-r dark:border-slate-700 text-right">Pr. Vende+</th>
                   <th className="p-3 border-r dark:border-slate-700 text-right">Liq. ML Full</th>
                   <th className="p-3 border-r dark:border-slate-700 text-right">FULL</th>
                   <th className="p-3 border-r dark:border-slate-700 text-right">2º Preço</th>
@@ -1174,6 +1265,10 @@ export default function MercadoLivreResearchPage() {
 
                     const isRowUpdated = updatedRowIds.has(item.id);
                     const isRowInserted = insertedRowIds.has(item.id);
+                    const priceRanks = getRowPriceComparison(item);
+                    const aVistaStyle = getPriceCellStyles(priceRanks.a_vista_cp);
+                    const prVendeMaisStyle = getPriceCellStyles(priceRanks.pr_vende_mais);
+                    const segundoPrecoStyle = getPriceCellStyles(priceRanks.segundo_preco);
 
                     return (
                       <tr 
@@ -1208,15 +1303,19 @@ export default function MercadoLivreResearchPage() {
                         <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-400">{item.cod_adicional_1 || '-'}</td>
                         <td className="p-3 border-r dark:border-slate-800 text-center font-bold">{item.estoque ?? 0}</td>
                         <td className="p-3 border-r dark:border-slate-800 text-center font-bold text-slate-400">{item.vds_6m ?? 0}</td>
-                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.a_vista_cp)}</td>
+                        <td className={`p-3 border-r dark:border-slate-800 text-right ${aVistaStyle.td}`}>
+                          <span className={aVistaStyle.badge}>{formatCurrency(item.a_vista_cp)}</span>
+                        </td>
                         <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.liq_ml_envios)}</td>
                         <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.pr_cp_ml)}</td>
-                        <td className="p-3 border-r dark:border-slate-800 text-right font-bold text-blue-600 dark:text-blue-400 bg-blue-500/5">
-                          {formatCurrency(item.pr_vende_mais)}
+                        <td className={`p-3 border-r dark:border-slate-800 text-right ${prVendeMaisStyle.td}`}>
+                          <span className={prVendeMaisStyle.badge}>{formatCurrency(item.pr_vende_mais)}</span>
                         </td>
                         <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.liq_ml_full)}</td>
                         <td className="p-3 border-r dark:border-slate-800 text-right font-semibold text-amber-500">{formatCurrency(item.full_price)}</td>
-                        <td className="p-3 border-r dark:border-slate-800 text-right">{formatCurrency(item.segundo_preco)}</td>
+                        <td className={`p-3 border-r dark:border-slate-800 text-right ${segundoPrecoStyle.td}`}>
+                          <span className={segundoPrecoStyle.badge}>{formatCurrency(item.segundo_preco)}</span>
+                        </td>
                         <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_2 || '-'}</td>
                         <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_3 || '-'}</td>
                         <td className="p-3 border-r dark:border-slate-800 font-mono text-slate-500">{item.cod_adicional_4 || '-'}</td>
