@@ -10,7 +10,7 @@ import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useUI } from '@/hooks/useUI';
-import dynamic from 'next/dynamic';
+import nextDynamic from 'next/dynamic';
 import { TaskCard } from '@/components/TaskCard';
 import { VoiceSearch } from '@/components/ui/VoiceSearch';
 import { calculateDistanceKm, formatDistance, getTaskCoords } from '@/lib/distance';
@@ -20,11 +20,6 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { useDataPrefetch } from '@/hooks/useDataPrefetch';
 import { getCurrentPosition } from '@/lib/navigation';
-
-const TasksMapView = dynamic(() => import('@/components/tasks/TasksMapView').then(mod => mod.TasksMapView), {
-  ssr: false,
-  loading: () => <div className="w-full h-[550px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
-});
 import { 
   format, 
   startOfMonth, 
@@ -40,9 +35,26 @@ import {
   startOfDay,
   addDays,
   isPast,
-  differenceInHours
+  differenceInHours,
+  subWeeks,
+  startOfYear,
+  endOfYear
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { DragDropContext, Draggable, DropResult } from '@hello-pangea/dnd';
+import { StrictModeDroppable } from '@/components/StrictModeDroppable';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { supabase, getSafeSupabaseConfig } from '@/lib/supabase';
+import { formatLocalDate, parseLocalDate } from '@/lib/utils';
+import TaskComments from '@/components/tasks/TaskComments';
+import DemandDetailsModal from '@/components/tasks/DemandDetailsModal';
+import { ProgressBar } from '@/components/tasks/ProgressBar';
+import { DateFilterSelect } from '@/components/DateFilterSelect';
+
+const TasksMapView = nextDynamic(() => import('@/components/tasks/TasksMapView').then(mod => mod.TasksMapView), {
+  ssr: false,
+  loading: () => <div className="w-full h-[550px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
+});
 
 const AnimatedCheckmark = ({ size = 64, className = "", strokeWidth = 3, animate = true }: { size?: number, className?: string, strokeWidth?: number, animate?: boolean }) => {
   return (
@@ -101,9 +113,6 @@ const triggerConfetti = () => {
     confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
   }, 250);
 };
-
-import { DragDropContext, Draggable, DropResult } from '@hello-pangea/dnd';
-import { StrictModeDroppable } from '@/components/StrictModeDroppable';
 
 const filters = ['Todas', 'Urgente', 'Alta', 'Média', 'Baixa', 'Em Andamento', 'Pendente', 'Concluída', 'Atrasadas', 'Vencendo em Breve'];
 
@@ -235,15 +244,6 @@ const MOCK_TASKS = [
     task_type: 'Permanente'
   }
 ];
-
-import { useRouter, useSearchParams } from 'next/navigation';
-import { supabase, getSafeSupabaseConfig } from '@/lib/supabase';
-import { formatLocalDate, parseLocalDate } from '@/lib/utils';
-import TaskComments from '@/components/tasks/TaskComments';
-import DemandDetailsModal from '@/components/tasks/DemandDetailsModal';
-import { ProgressBar } from '@/components/tasks/ProgressBar';
-import { DateFilterSelect } from '@/components/DateFilterSelect';
-import { subWeeks, startOfYear, endOfYear } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
