@@ -10,9 +10,9 @@ import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useUI } from '@/hooks/useUI';
+import dynamic from 'next/dynamic';
 import { TaskCard } from '@/components/TaskCard';
 import { VoiceSearch } from '@/components/ui/VoiceSearch';
-import { TasksMapView } from '@/components/tasks/TasksMapView';
 import { calculateDistanceKm, formatDistance, getTaskCoords } from '@/lib/distance';
 import { CompletionFeedback } from '@/components/CompletionFeedback';
 import { DemandModal } from '@/components/dashboard/DemandModal';
@@ -20,6 +20,11 @@ import PushNotificationManager from '@/components/PushNotificationManager';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { useDataPrefetch } from '@/hooks/useDataPrefetch';
 import { getCurrentPosition } from '@/lib/navigation';
+
+const TasksMapView = dynamic(() => import('@/components/tasks/TasksMapView').then(mod => mod.TasksMapView), {
+  ssr: false,
+  loading: () => <div className="w-full h-[550px] bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
+});
 import { 
   format, 
   startOfMonth, 

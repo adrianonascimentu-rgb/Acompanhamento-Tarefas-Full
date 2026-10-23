@@ -1,9 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
 import { MapPin, Navigation, Info, ExternalLink } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import type { CheckInPoint } from '@/components/LiveMap';
+
+const LiveMap = dynamic(() => import('@/components/LiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800/50 text-xs text-slate-500 p-4 text-center">
+      <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-2" />
+      <span className="font-medium">Carregando mapa...</span>
+    </div>
+  )
+});
 
 export interface MapMarkerItem {
   id: string | number;
@@ -40,20 +52,13 @@ export default function GoogleMapView({
   onSelectMarker,
   showControls = true
 }: GoogleMapViewProps) {
-  const { mapsApiKey, isDarkMode } = useTheme();
+  const { mapsApiKey, isDarkMode, hasBillingError: themeBillingError, setHasBillingError: setThemeBillingError } = useTheme();
   const [activeMarker, setActiveMarker] = useState<MapMarkerItem | null>(null);
 
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+  const rawKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = rawKey === 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY' ? '' : rawKey;
   const [hasBillingError, setHasBillingError] = useState(false);
-
-  useEffect(() => {
-    (window as any).gm_authFailure = () => {
-      console.warn('Google Maps Authentication or Billing Error detected. Using demo key fallback.');
-      try {
-        localStorage.removeItem('app_maps_api_key');
-      } catch {}
-    };
-  }, []);
+  const isBillingError = hasBillingError || themeBillingError;
 
   // Default coordinates (João Pessoa / Paraíba)
   const defaultCenter = center || (
@@ -71,19 +76,26 @@ export default function GoogleMapView({
     }
   }, [selectedMarkerId, markers]);
 
-  if (!effectiveApiKey) {
+  if (!effectiveApiKey || isBillingError) {
+    const fallbackPoints: CheckInPoint[] = markers.map(m => ({
+      id: String(m.id),
+      title: m.title,
+      checkin_lat: m.lat,
+      checkin_lng: m.lng,
+      checkin_at: new Date().toISOString(),
+      collaborator_name: m.badge || m.status || 'Localização',
+      source: 'delivery',
+      address: m.subtitle || m.description,
+    }));
+
     return (
       <div 
         style={{ height }} 
-        className={`w-full rounded-2xl flex flex-col items-center justify-center p-6 text-center border ${
-          isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
+        className={`relative w-full rounded-3xl overflow-hidden border shadow-sm [&>#map]:h-full [&>#map]:rounded-none [&>#map]:border-0 ${
+          isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'
         } ${className}`}
       >
-        <MapPin size={40} className="text-blue-500 mb-3 animate-bounce" />
-        <h3 className="font-bold text-base mb-1">Google Maps Platform</h3>
-        <p className="text-xs max-w-md text-slate-500 mb-4">
-          Para visualizar o mapa em alta definição, configure sua chave no menu de configurações do sistema.
-        </p>
+        <LiveMap points={fallbackPoints} />
       </div>
     );
   }
@@ -95,18 +107,13 @@ export default function GoogleMapView({
         isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'
       } ${className}`}
     >
-      {hasBillingError && (
-        <div className="absolute top-4 left-4 right-4 z-[1000] p-4 bg-amber-500/90 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 text-xs font-bold">
-          <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError).</span>
-          <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white text-amber-700 rounded-xl hover:bg-amber-50 transition-all shrink-0">
-            Ativar Faturamento
-          </a>
-        </div>
-      )}
       <APIProvider 
         apiKey={effectiveApiKey}
         solutionChannel="gmp_mcp_codeassist_v1_aistudio"
-        onError={() => setHasBillingError(true)}
+        onError={() => {
+          setHasBillingError(true);
+          setThemeBillingError(true);
+        }}
       >
         <Map
           defaultCenter={defaultCenter}

@@ -22,6 +22,8 @@ import {
 import { renderToString } from 'react-dom/server';
 import { useTheme } from '@/hooks/useTheme';
 import GoogleMapView, { MapMarkerItem } from '@/components/GoogleMapView';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 interface Task {
@@ -120,39 +122,18 @@ export function TasksMapView({
   onFetchLocation,
   loadingGeo = false
 }: TasksMapViewProps) {
-  const { mapsApiKey } = useTheme();
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => effectiveApiKey ? 'google' : 'leaflet');
-  const [MapComponents, setMapComponents] = useState<any>(null);
-  const [L, setL] = useState<any>(null);
+  const { mapsApiKey, hasBillingError } = useTheme();
+  const rawKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = rawKey === 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY' ? '' : rawKey;
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => (effectiveApiKey && !hasBillingError) ? 'google' : 'leaflet');
   const [filterPendingOnly, setFilterPendingOnly] = useState(true);
   const [selectedTaskId, setSelectedTaskId] = useState<string | number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCoords, setSelectedCoords] = useState<[number, number] | null>(null);
 
-  // Load Leaflet dynamically on client side
-  useEffect(() => {
-    let isMounted = true;
-    Promise.all([
-      import('react-leaflet'),
-      import('leaflet')
-    ]).then(([reactLeaflet, leafletModule]) => {
-      if (isMounted) {
-        setMapComponents(reactLeaflet);
-        setL(leafletModule.default || leafletModule);
-      }
-    }).catch(err => {
-      console.error('Erro ao carregar mapa Leaflet:', err);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
   // Custom User GPS marker icon
   const createUserGpsMarkerIcon = () => {
-    if (!L) return null;
+    if (typeof window === 'undefined' || !L) return null;
     const html = renderToString(
       <div className="relative flex items-center justify-center">
         <div className="size-6 rounded-full bg-blue-600 border-2 border-white shadow-xl flex items-center justify-center text-white z-10">
@@ -193,7 +174,7 @@ export function TasksMapView({
   }, [tasks]);
 
   const createCustomMarkerIcon = (task: Task) => {
-    if (!L) return null;
+    if (typeof window === 'undefined' || !L) return null;
 
     let pinBg = '#3b82f6'; // Blue for Em Andamento
     let borderColor = '#2563eb';
@@ -246,19 +227,6 @@ export function TasksMapView({
       onSelectTask(task);
     }
   };
-
-  if (!MapComponents || !L) {
-    return (
-      <div className={`w-full h-[550px] rounded-2xl border flex flex-col items-center justify-center gap-3 animate-pulse ${
-        isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
-      }`}>
-        <MapPin size={32} className="animate-bounce text-blue-500" />
-        <p className="text-xs font-bold uppercase tracking-wider">Carregando Mapa de Tarefas...</p>
-      </div>
-    );
-  }
-
-  const { MapContainer, TileLayer, Marker, Popup, useMap } = MapComponents;
 
   // Controller component to handle flying to selected task
   const MapFlyTo = () => {

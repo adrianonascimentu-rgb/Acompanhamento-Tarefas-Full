@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap } from '@vis.gl/react-google-maps';
 import { 
   Truck, 
@@ -22,6 +23,7 @@ import {
   Gauge
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import type { CheckInPoint } from '@/components/LiveMap';
 import { 
   LiveVehiclePosition, 
   DeliveryStop, 
@@ -32,6 +34,16 @@ import {
   optimizeStopsSequence, 
   calculatePolylineDistanceKm 
 } from '@/lib/truckTrackingService';
+
+const LiveMap = dynamic(() => import('@/components/LiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800/50 text-xs text-slate-500 p-4 text-center">
+      <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-2" />
+      <span className="font-medium">Carregando mapa da frota...</span>
+    </div>
+  )
+});
 
 interface GoogleMapsFleetTrackerProps {
   initialVehicles?: LiveVehiclePosition[];
@@ -132,36 +144,17 @@ export function GoogleMapsFleetTracker({
   const [mapType, setMapType] = useState<'roadmap' | 'satellite' | 'hybrid'>('roadmap');
   const [optimizationApplied, setOptimizationApplied] = useState(false);
 
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+  const rawKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = rawKey === 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY' ? '' : rawKey;
   const [hasBillingError, setHasBillingError] = useState(false);
-  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>('google');
-  const [LeafletComponents, setLeafletComponents] = useState<any>(null);
-  const [L, setL] = useState<any>(null);
-
   const isBillingError = hasBillingError || themeBillingError;
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => (effectiveApiKey && !isBillingError) ? 'google' : 'leaflet');
 
   useEffect(() => {
-    if (isBillingError) {
+    if (isBillingError || !effectiveApiKey) {
       setMapEngine('leaflet');
     }
-  }, [isBillingError]);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (mapEngine === 'leaflet' || isBillingError) {
-      Promise.all([
-        import('react-leaflet'),
-        import('leaflet')
-      ]).then(([rl, leaflet]) => {
-        if (!isMounted) return;
-        setLeafletComponents(rl);
-        setL(leaflet.default || leaflet);
-      }).catch(err => {
-        console.error('Erro ao carregar mapa Leaflet:', err);
-      });
-    }
-    return () => { isMounted = false; };
-  }, [mapEngine, isBillingError]);
+  }, [isBillingError, effectiveApiKey]);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId) || vehicles[0] || null;
 
@@ -175,6 +168,38 @@ export function GoogleMapsFleetTracker({
     }
     return pts;
   }, [selectedVehicle]);
+
+  const liveMapPoints = React.useMemo<CheckInPoint[]>(() => {
+    const pts: CheckInPoint[] = vehicles.map(v => ({
+      id: v.id,
+      title: `${v.vehicle_name} (${v.plate}) • ${v.speed_kmh} km/h`,
+      checkin_lat: v.lat,
+      checkin_lng: v.lng,
+      checkin_at: v.last_updated || new Date().toISOString(),
+      collaborator_name: v.driver_name,
+      source: 'delivery',
+      route: v.id === selectedVehicle?.id && routePath.length > 1 ? routePath.map(p => [p.lat, p.lng] as [number, number]) : undefined,
+      address: v.next_stop_name ? `Próxima Parada: ${v.next_stop_name}` : undefined,
+    }));
+
+    if (selectedVehicle?.stops) {
+      selectedVehicle.stops.forEach(stop => {
+        pts.push({
+          id: `stop-${stop.id}`,
+          title: `${stop.seq}ª Parada: ${stop.title} (${stop.status})`,
+          checkin_lat: stop.lat,
+          checkin_lng: stop.lng,
+          checkin_at: new Date().toISOString(),
+          collaborator_name: selectedVehicle.driver_name,
+          source: 'task',
+          address: stop.address,
+          neighborhood: stop.neighborhood,
+        });
+      });
+    }
+
+    return pts;
+  }, [vehicles, selectedVehicle, routePath]);
 
   // Simulação de movimento contínuo realista pelas vias
   useEffect(() => {
@@ -346,163 +371,173 @@ export function GoogleMapsFleetTracker({
         </div>
       </div>
 
-      {/* Painel do Mapa Google Maps */}
+      {/* Painel do Mapa */}
       <div style={{ height }} className="relative w-full">
-        {hasBillingError && (
+        {isBillingError && (
           <div className="absolute top-4 left-4 right-4 z-[1000] p-4 bg-amber-500/90 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 text-xs font-bold">
-            <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError).</span>
+            <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError). Exibindo mapa OpenStreetMap.</span>
             <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white text-amber-700 rounded-xl hover:bg-amber-50 transition-all shrink-0">
               Ativar Faturamento
             </a>
           </div>
         )}
-        <APIProvider 
-          apiKey={effectiveApiKey}
-          solutionChannel="gmp_mcp_codeassist_v1_aistudio"
-          onError={() => setHasBillingError(true)}
-        >
-          <Map
-            defaultCenter={{ lat: -7.1197, lng: -34.8550 }}
-            defaultZoom={13}
-            mapId="DEMO_MAP_ID"
-            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-            mapTypeId={mapType}
-            gestureHandling="greedy"
-            disableDefaultUI={false}
-            style={{ width: '100%', height: '100%' }}
+        {effectiveApiKey && !isBillingError && mapEngine === 'google' ? (
+          <APIProvider 
+            apiKey={effectiveApiKey}
+            solutionChannel="gmp_mcp_codeassist_v1_aistudio"
+            onError={() => {
+              setHasBillingError(true);
+              setThemeBillingError(true);
+              setMapEngine('leaflet');
+            }}
           >
-            <MapCameraController 
-              selectedVehicle={selectedVehicle}
-              activeRoutePath={routePath}
-            />
-
-            {/* Linha da Rota entre paradas */}
-            {routePath.length > 1 && (
-              <RoutePolyline 
-                path={routePath} 
-                color={selectedVehicle?.vehicle_type === 'caminhao' ? '#2563eb' : '#10b981'} 
-              />
-            )}
-
-            {/* Marcador do Centro de Distribuição / Base */}
-            <AdvancedMarker
-              position={{ lat: WAREHOUSE_DEPOT.lat, lng: WAREHOUSE_DEPOT.lng }}
-              title={WAREHOUSE_DEPOT.name}
+            <Map
+              defaultCenter={{ lat: -7.1197, lng: -34.8550 }}
+              defaultZoom={13}
+              mapId="DEMO_MAP_ID"
+              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+              mapTypeId={mapType}
+              gestureHandling="greedy"
+              disableDefaultUI={false}
+              style={{ width: '100%', height: '100%' }}
             >
-              <div className="bg-slate-900 text-white border-2 border-white rounded-2xl px-2.5 py-1 text-[11px] font-black shadow-xl flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-blue-400" />
-                <span>Base Central</span>
-              </div>
-            </AdvancedMarker>
+              <MapCameraController 
+                selectedVehicle={selectedVehicle}
+                activeRoutePath={routePath}
+              />
 
-            {/* Marcadores dos Veículos / Caminhões */}
-            {vehicles.map(vehicle => {
-              const isSelected = vehicle.id === selectedVehicleId;
-              return (
-                <AdvancedMarker
-                  key={vehicle.id}
-                  position={{ lat: vehicle.lat, lng: vehicle.lng }}
-                  onClick={() => {
-                    setSelectedVehicleId(vehicle.id);
-                    setActiveInfoWindow(vehicle);
-                  }}
-                  title={`${vehicle.vehicle_name} (${vehicle.plate})`}
-                >
-                  <div className="relative cursor-pointer group">
-                    {/* Anel de Pulso de GPS Ativo */}
-                    <div className="absolute -inset-2.5 rounded-full bg-blue-500/30 animate-ping pointer-events-none" />
-                    
-                    {/* Badge do Veículo com Indicador de Velocidade */}
-                    <div className={`relative px-3 py-1.5 rounded-2xl border-2 flex items-center gap-2 shadow-2xl transition-all duration-300 ${
-                      isSelected 
-                        ? 'bg-blue-600 border-white text-white scale-110 shadow-blue-500/50' 
-                        : 'bg-slate-900/90 border-blue-400 text-white hover:scale-105'
-                    }`}>
-                      <Truck size={16} className={vehicle.speed_kmh > 0 ? 'animate-bounce' : ''} />
-                      <div className="flex flex-col text-left leading-none">
-                        <span className="text-[10px] font-black uppercase tracking-tight">{vehicle.plate}</span>
-                        <span className="text-[9px] font-bold text-blue-200 mt-0.5">
-                          {vehicle.speed_kmh > 0 ? `${vehicle.speed_kmh} km/h` : 'Parado'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </AdvancedMarker>
-              );
-            })}
+              {/* Linha da Rota entre paradas */}
+              {routePath.length > 1 && (
+                <RoutePolyline 
+                  path={routePath} 
+                  color={selectedVehicle?.vehicle_type === 'caminhao' ? '#2563eb' : '#10b981'} 
+                />
+              )}
 
-            {/* Marcadores das Paradas da Rota (Sequência 1, 2, 3...) */}
-            {selectedVehicle?.stops?.map(stop => (
+              {/* Marcador do Centro de Distribuição / Base */}
               <AdvancedMarker
-                key={String(stop.id)}
-                position={{ lat: stop.lat, lng: stop.lng }}
-                onClick={() => setActiveInfoWindow(stop)}
-                title={`${stop.seq}º Parada: ${stop.title}`}
+                position={{ lat: WAREHOUSE_DEPOT.lat, lng: WAREHOUSE_DEPOT.lng }}
+                title={WAREHOUSE_DEPOT.name}
               >
-                <div className={`flex items-center justify-center w-7 h-7 rounded-full text-white font-black text-xs shadow-lg border-2 border-white transition-transform hover:scale-125 cursor-pointer ${
-                  stop.status === 'Concluída' 
-                    ? 'bg-emerald-600' 
-                    : stop.status === 'A caminho' 
-                    ? 'bg-blue-600 ring-4 ring-blue-500/30 animate-pulse' 
-                    : 'bg-amber-500'
-                }`}>
-                  {stop.status === 'Concluída' ? '✓' : stop.seq}
+                <div className="bg-slate-900 text-white border-2 border-white rounded-2xl px-2.5 py-1 text-[11px] font-black shadow-xl flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-400" />
+                  <span>Base Central</span>
                 </div>
               </AdvancedMarker>
-            ))}
 
-            {/* InfoWindow Informativa */}
-            {activeInfoWindow && (
-              <InfoWindow
-                position={{
-                  lat: 'lat' in activeInfoWindow ? activeInfoWindow.lat : 0,
-                  lng: 'lng' in activeInfoWindow ? activeInfoWindow.lng : 0,
-                }}
-                onCloseClick={() => setActiveInfoWindow(null)}
-              >
-                <div className="p-2 min-w-[220px] max-w-[280px] text-slate-900 font-sans">
-                  {'vehicle_name' in activeInfoWindow ? (
-                    <div>
-                      <div className="flex items-center justify-between gap-2 border-b pb-1.5 mb-1.5">
-                        <h4 className="font-extrabold text-xs text-blue-700">
-                          {activeInfoWindow.vehicle_name}
-                        </h4>
-                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
-                          {activeInfoWindow.status}
+              {/* Marcadores dos Veículos / Caminhões */}
+              {vehicles.map(vehicle => {
+                const isSelected = vehicle.id === selectedVehicleId;
+                return (
+                  <AdvancedMarker
+                    key={vehicle.id}
+                    position={{ lat: vehicle.lat, lng: vehicle.lng }}
+                    onClick={() => {
+                      setSelectedVehicleId(vehicle.id);
+                      setActiveInfoWindow(vehicle);
+                    }}
+                    title={`${vehicle.vehicle_name} (${vehicle.plate})`}
+                  >
+                    <div className="relative cursor-pointer group">
+                      {/* Anel de Pulso de GPS Ativo */}
+                      <div className="absolute -inset-2.5 rounded-full bg-blue-500/30 animate-ping pointer-events-none" />
+                      
+                      {/* Badge do Veículo com Indicador de Velocidade */}
+                      <div className={`relative px-3 py-1.5 rounded-2xl border-2 flex items-center gap-2 shadow-2xl transition-all duration-300 ${
+                        isSelected 
+                          ? 'bg-blue-600 border-white text-white scale-110 shadow-blue-500/50' 
+                          : 'bg-slate-900/90 border-blue-400 text-white hover:scale-105'
+                      }`}>
+                        <Truck size={16} className={vehicle.speed_kmh > 0 ? 'animate-bounce' : ''} />
+                        <div className="flex flex-col text-left leading-none">
+                          <span className="text-[10px] font-black uppercase tracking-tight">{vehicle.plate}</span>
+                          <span className="text-[9px] font-bold text-blue-200 mt-0.5">
+                            {vehicle.speed_kmh > 0 ? `${vehicle.speed_kmh} km/h` : 'Parado'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </AdvancedMarker>
+                );
+              })}
+
+              {/* Marcadores das Paradas da Rota (Sequência 1, 2, 3...) */}
+              {selectedVehicle?.stops?.map(stop => (
+                <AdvancedMarker
+                  key={String(stop.id)}
+                  position={{ lat: stop.lat, lng: stop.lng }}
+                  onClick={() => setActiveInfoWindow(stop)}
+                  title={`${stop.seq}º Parada: ${stop.title}`}
+                >
+                  <div className={`flex items-center justify-center w-7 h-7 rounded-full text-white font-black text-xs shadow-lg border-2 border-white transition-transform hover:scale-125 cursor-pointer ${
+                    stop.status === 'Concluída' 
+                      ? 'bg-emerald-600' 
+                      : stop.status === 'A caminho' 
+                      ? 'bg-blue-600 ring-4 ring-blue-500/30 animate-pulse' 
+                      : 'bg-amber-500'
+                  }`}>
+                    {stop.status === 'Concluída' ? '✓' : stop.seq}
+                  </div>
+                </AdvancedMarker>
+              ))}
+
+              {/* InfoWindow Informativa */}
+              {activeInfoWindow && (
+                <InfoWindow
+                  position={{
+                    lat: 'lat' in activeInfoWindow ? activeInfoWindow.lat : 0,
+                    lng: 'lng' in activeInfoWindow ? activeInfoWindow.lng : 0,
+                  }}
+                  onCloseClick={() => setActiveInfoWindow(null)}
+                >
+                  <div className="p-2 min-w-[220px] max-w-[280px] text-slate-900 font-sans">
+                    {'vehicle_name' in activeInfoWindow ? (
+                      <div>
+                        <div className="flex items-center justify-between gap-2 border-b pb-1.5 mb-1.5">
+                          <h4 className="font-extrabold text-xs text-blue-700">
+                            {activeInfoWindow.vehicle_name}
+                          </h4>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
+                            {activeInfoWindow.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-700 font-bold mb-1">
+                          Motorista: {activeInfoWindow.driver_name}
+                        </p>
+                        <p className="text-[11px] text-slate-600 mb-1 flex items-center gap-1">
+                          <Gauge size={12} className="text-blue-500" /> Velocidade: <strong>{activeInfoWindow.speed_kmh} km/h</strong>
+                        </p>
+                        <p className="text-[11px] text-slate-600 flex items-center gap-1">
+                          <MapPin size={12} className="text-rose-500" /> Próxima Parada: <strong>{activeInfoWindow.next_stop_name || 'Em trânsito'}</strong>
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="text-[10px] font-black text-blue-600 uppercase">
+                          {activeInfoWindow.seq}ª Parada da Rota
                         </span>
+                        <h4 className="font-bold text-xs text-slate-900 mt-0.5">
+                          {activeInfoWindow.title}
+                        </h4>
+                        <p className="text-[11px] text-slate-600 mt-1">
+                          {activeInfoWindow.address}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between border-t pt-1 text-[10px]">
+                          <span className="font-bold">Status: {activeInfoWindow.status}</span>
+                          <span className="text-slate-500">Prev: {activeInfoWindow.estimated_arrival}</span>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-700 font-bold mb-1">
-                        Motorista: {activeInfoWindow.driver_name}
-                      </p>
-                      <p className="text-[11px] text-slate-600 mb-1 flex items-center gap-1">
-                        <Gauge size={12} className="text-blue-500" /> Velocidade: <strong>{activeInfoWindow.speed_kmh} km/h</strong>
-                      </p>
-                      <p className="text-[11px] text-slate-600 flex items-center gap-1">
-                        <MapPin size={12} className="text-rose-500" /> Próxima Parada: <strong>{activeInfoWindow.next_stop_name || 'Em trânsito'}</strong>
-                      </p>
-                    </div>
-                  ) : (
-                    <div>
-                      <span className="text-[10px] font-black text-blue-600 uppercase">
-                        {activeInfoWindow.seq}ª Parada da Rota
-                      </span>
-                      <h4 className="font-bold text-xs text-slate-900 mt-0.5">
-                        {activeInfoWindow.title}
-                      </h4>
-                      <p className="text-[11px] text-slate-600 mt-1">
-                        {activeInfoWindow.address}
-                      </p>
-                      <div className="mt-2 flex items-center justify-between border-t pt-1 text-[10px]">
-                        <span className="font-bold">Status: {activeInfoWindow.status}</span>
-                        <span className="text-slate-500">Prev: {activeInfoWindow.estimated_arrival}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </InfoWindow>
-            )}
-          </Map>
-        </APIProvider>
+                    )}
+                  </div>
+                </InfoWindow>
+              )}
+            </Map>
+          </APIProvider>
+        ) : (
+          <div className="w-full h-full [&>#map]:h-full [&>#map]:rounded-none [&>#map]:border-0">
+            <LiveMap points={liveMapPoints} />
+          </div>
+        )}
 
         {/* Floating Telemetry & Controls Overlay */}
         <div className="absolute top-3 left-3 z-10 flex flex-col gap-2 pointer-events-auto">

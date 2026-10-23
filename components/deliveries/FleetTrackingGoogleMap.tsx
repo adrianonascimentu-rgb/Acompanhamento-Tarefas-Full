@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { 
   APIProvider, 
   Map as GoogleMap, 
@@ -37,6 +38,17 @@ import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
 import { supabase } from '@/lib/supabase';
 import { PB_NEIGHBORHOOD_COORDS } from '@/lib/neighborhoodCoords';
+import type { CheckInPoint } from '@/components/LiveMap';
+
+const LiveMap = dynamic(() => import('@/components/LiveMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800/50 text-xs text-slate-500 p-4 text-center">
+      <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-2" />
+      <span className="font-medium">Carregando mapa da frota...</span>
+    </div>
+  )
+});
 
 export interface DeliveryStop {
   id: string | number;
@@ -97,10 +109,22 @@ const SIMULATION_WAYPOINTS: [number, number][] = [
   [-7.1202, -34.8845], // Retorno ao Centro
 ];
 
+function computeHaversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Inner Controller para desenhar rota otimizada e centralizar
 function DirectionsAndRouteLayer({
   selectedTruck,
-  optimizedRoute,
   onRouteCalculated,
   followVehicle
 }: {
@@ -116,31 +140,7 @@ function DirectionsAndRouteLayer({
 }) {
   const map = useMap();
   const routesLib = useMapsLibrary('routes');
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-
-  // Instancia DirectionsRenderer
-  useEffect(() => {
-    if (!map || !routesLib) return;
-
-    if (!directionsRendererRef.current) {
-      directionsRendererRef.current = new routesLib.DirectionsRenderer({
-        map,
-        suppressMarkers: true, // usamos marcadores customizados
-        polylineOptions: {
-          strokeColor: '#2563eb',
-          strokeWeight: 5,
-          strokeOpacity: 0.85,
-        }
-      });
-    }
-
-    return () => {
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setMap(null);
-        directionsRendererRef.current = null;
-      }
-    };
-  }, [map, routesLib]);
+  const polylinesRef = useRef<google.maps.Polyline[]>([]);
 
   // Se o modo Seguir Veículo estiver ativo
   useEffect(() => {
@@ -149,12 +149,12 @@ function DirectionsAndRouteLayer({
     }
   }, [followVehicle, selectedTruck?.lat, selectedTruck?.lng, map]);
 
-  // Otimização de Rota com Google Maps DirectionsService
+  // Cálculo e renderização de rota
   useEffect(() => {
-    if (!routesLib || !selectedTruck || !selectedTruck.assignedStops || selectedTruck.assignedStops.length === 0) {
-      if (directionsRendererRef.current) {
-        directionsRendererRef.current.setDirections({ routes: [] } as any);
-      }
+    polylinesRef.current.forEach(p => p.setMap(null));
+    polylinesRef.current = [];
+
+    if (!map || !selectedTruck || !selectedTruck.assignedStops || selectedTruck.assignedStops.length === 0) {
       onRouteCalculated(null);
       return;
     }
@@ -168,69 +168,78 @@ function DirectionsAndRouteLayer({
       return;
     }
 
-    const service = new routesLib.DirectionsService();
     const origin = { lat: selectedTruck.lat, lng: selectedTruck.lng };
+    const finalOrderedStops = stops.map((s, idx) => ({ ...s, order: idx + 1 }));
 
-    // Se tiver mais de 1 parada, o destino é a última ou retorno
-    let destination: google.maps.LatLngLiteral;
-    let waypoints: google.maps.DirectionsWaypoint[] = [];
+    const renderFallbackPolyline = () => {
+      const path = [origin, ...finalOrderedStops.map(s => ({ lat: s.lat, lng: s.lng }))];
+      const poly = new google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: '#2563eb',
+        strokeOpacity: 0.85,
+        strokeWeight: 5,
+      });
+      poly.setMap(map);
+      polylinesRef.current = [poly];
 
-    if (stops.length === 1) {
-      destination = { lat: stops[0].lat, lng: stops[0].lng };
-    } else {
-      destination = { lat: stops[stops.length - 1].lat, lng: stops[stops.length - 1].lng };
-      waypoints = stops.slice(0, stops.length - 1).map(s => ({
+      let distKm = 0;
+      for (let i = 0; i < path.length - 1; i++) {
+        distKm += computeHaversineKm(path[i].lat, path[i].lng, path[i + 1].lat, path[i + 1].lng) * 1.25;
+      }
+      onRouteCalculated({
+        totalDistanceKm: Number(distKm.toFixed(1)),
+        totalDurationMin: Math.max(5, Math.round((distKm / 35) * 60)),
+        optimizedStops: finalOrderedStops,
+        polylineOverview: '',
+      });
+    };
+
+    if (routesLib && (routesLib as any).Route?.computeRoutes) {
+      const destination = { lat: stops[stops.length - 1].lat, lng: stops[stops.length - 1].lng };
+      const intermediates = stops.slice(0, stops.length - 1).map(s => ({
         location: { lat: s.lat, lng: s.lng },
-        stopover: true
       }));
-    }
 
-    service.route(
-      {
+      (routesLib as any).Route.computeRoutes({
         origin,
         destination,
-        waypoints,
-        optimizeWaypoints: true,
-        travelMode: google.maps.TravelMode.DRIVING
-      },
-      (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK && result) {
-          if (directionsRendererRef.current) {
-            directionsRendererRef.current.setDirections(result);
+        intermediates,
+        travelMode: 'DRIVING',
+        fields: ['path', 'distanceMeters', 'durationMillis', 'viewport'],
+      })
+        .then(({ routes }: { routes: any[] }) => {
+          if (!routes || routes.length === 0) {
+            renderFallbackPolyline();
+            return;
           }
-
-          const route = result.routes[0];
-          let totalDist = 0;
-          let totalDur = 0;
-
-          route.legs.forEach(leg => {
-            totalDist += leg.distance?.value || 0;
-            totalDur += leg.duration?.value || 0;
+          const primaryRoute = routes[0];
+          const newPolys = primaryRoute.createPolylines ? primaryRoute.createPolylines() : [];
+          newPolys.forEach((p: google.maps.Polyline) => {
+            p.setOptions({ strokeColor: '#2563eb', strokeWeight: 5, strokeOpacity: 0.85 });
+            p.setMap(map);
           });
-
-          // Reordena as paradas de acordo com waypoint_order
-          const order = route.waypoint_order || [];
-          const intermediateStops = stops.slice(0, stops.length - 1);
-          const orderedIntermediates = order.map(idx => intermediateStops[idx]);
-          const lastStop = stops[stops.length - 1];
-
-          const finalOrderedStops = [...orderedIntermediates, lastStop].map((s, idx) => ({
-            ...s,
-            order: idx + 1
-          }));
+          polylinesRef.current = newPolys;
 
           onRouteCalculated({
-            totalDistanceKm: Number((totalDist / 1000).toFixed(1)),
-            totalDurationMin: Math.round(totalDur / 60),
+            totalDistanceKm: Number(((primaryRoute.distanceMeters || 0) / 1000).toFixed(1)),
+            totalDurationMin: Math.max(1, Math.round((primaryRoute.durationMillis || 0) / 60000)),
             optimizedStops: finalOrderedStops,
-            polylineOverview: route.overview_polyline
+            polylineOverview: '',
           });
-        } else {
-          console.warn('Google Maps Directions status:', status);
-        }
-      }
-    );
-  }, [routesLib, selectedTruck?.id, selectedTruck?.assignedStops?.length, onRouteCalculated]);
+        })
+        .catch(() => {
+          renderFallbackPolyline();
+        });
+    } else {
+      renderFallbackPolyline();
+    }
+
+    return () => {
+      polylinesRef.current.forEach(p => p.setMap(null));
+      polylinesRef.current = [];
+    };
+  }, [map, routesLib, selectedTruck?.id, selectedTruck?.assignedStops?.length, onRouteCalculated]);
 
   return null;
 }
@@ -244,36 +253,17 @@ export function FleetTrackingGoogleMap({
   const { user, isAdmin, role } = useRole();
   const isManagerOrAdmin = isAdmin || (role as string) === 'gerente' || (role as string) === 'supervisor' || (role as string) === 'administrador';
 
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+  const rawKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = rawKey === 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY' ? '' : rawKey;
   const [hasBillingError, setHasBillingError] = useState(false);
-  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>('google');
-  const [LeafletComponents, setLeafletComponents] = useState<any>(null);
-  const [L, setL] = useState<any>(null);
-
   const isBillingError = hasBillingError || themeBillingError;
+  const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => (effectiveApiKey && !isBillingError) ? 'google' : 'leaflet');
 
   useEffect(() => {
-    if (isBillingError) {
+    if (isBillingError || !effectiveApiKey) {
       setMapEngine('leaflet');
     }
-  }, [isBillingError]);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (mapEngine === 'leaflet' || isBillingError) {
-      Promise.all([
-        import('react-leaflet'),
-        import('leaflet')
-      ]).then(([rl, leaflet]) => {
-        if (!isMounted) return;
-        setLeafletComponents(rl);
-        setL(leaflet.default || leaflet);
-      }).catch(err => {
-        console.error('Erro ao carregar mapa Leaflet:', err);
-      });
-    }
-    return () => { isMounted = false; };
-  }, [mapEngine, isBillingError]);
+  }, [isBillingError, effectiveApiKey]);
 
   // Frota ativa
   const [vehicles, setVehicles] = useState<TruckVehicle[]>([]);
@@ -713,190 +703,228 @@ export function FleetTrackingGoogleMap({
         </div>
       )}
 
-      {/* Área do Mapa Google Maps */}
+      {/* Área do Mapa */}
       <div className="relative w-full h-[520px] md:h-[600px]">
-        {hasBillingError && (
+        {isBillingError && (
           <div className="absolute top-4 left-4 right-4 z-[1000] p-4 bg-amber-500/90 text-white rounded-2xl shadow-xl flex items-center justify-between gap-4 text-xs font-bold">
-            <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError).</span>
+            <span>A chave da API do Google Maps requer que o faturamento esteja ativado no Google Cloud Platform (BillingNotEnabledMapError). Exibindo mapa OpenStreetMap.</span>
             <a href="https://console.cloud.google.com/billing" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-white text-amber-700 rounded-xl hover:bg-amber-50 transition-all shrink-0">
               Ativar Faturamento
             </a>
           </div>
         )}
-        <APIProvider 
-          apiKey={effectiveApiKey}
-          solutionChannel="gmp_mcp_codeassist_v1_aistudio"
-          onError={() => setHasBillingError(true)}
-        >
-          <GoogleMap
-            defaultCenter={selectedTruck ? { lat: selectedTruck.lat, lng: selectedTruck.lng } : DEFAULT_CENTER}
-            defaultZoom={13}
-            mapId="DEMO_MAP_ID"
-            internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-            gestureHandling="greedy"
-            disableDefaultUI={false}
-            style={{ width: '100%', height: '100%' }}
+        {effectiveApiKey && !isBillingError && mapEngine === 'google' ? (
+          <APIProvider 
+            apiKey={effectiveApiKey}
+            solutionChannel="gmp_mcp_codeassist_v1_aistudio"
+            onError={() => {
+              setHasBillingError(true);
+              setThemeBillingError(true);
+              setMapEngine('leaflet');
+            }}
           >
-            {/* Camada controladora de rota e centralização */}
-            <DirectionsAndRouteLayer
-              selectedTruck={selectedTruck}
-              optimizedRoute={optimizedRouteData}
-              onRouteCalculated={setOptimizedRouteData}
-              followVehicle={followVehicle}
-            />
+            <GoogleMap
+              defaultCenter={selectedTruck ? { lat: selectedTruck.lat, lng: selectedTruck.lng } : DEFAULT_CENTER}
+              defaultZoom={13}
+              mapId="DEMO_MAP_ID"
+              internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+              gestureHandling="greedy"
+              disableDefaultUI={false}
+              style={{ width: '100%', height: '100%' }}
+            >
+              {/* Camada controladora de rota e centralização */}
+              <DirectionsAndRouteLayer
+                selectedTruck={selectedTruck}
+                optimizedRoute={optimizedRouteData}
+                onRouteCalculated={setOptimizedRouteData}
+                followVehicle={followVehicle}
+              />
 
-            {/* Marcadores dos Veículos / Caminhões */}
-            {vehicles.map(veh => {
-              const isSelected = veh.id === selectedTruckId;
-              return (
-                <AdvancedMarker
-                  key={veh.id}
-                  position={{ lat: veh.lat, lng: veh.lng }}
-                  onClick={() => {
-                    setSelectedTruckId(veh.id);
-                    setActiveMarkerInfo({ type: 'truck', data: veh });
-                  }}
-                  title={`${veh.name} - ${veh.speedKmH} km/h`}
+              {/* Marcadores dos Veículos / Caminhões */}
+              {vehicles.map(veh => {
+                const isSelected = veh.id === selectedTruckId;
+                return (
+                  <AdvancedMarker
+                    key={veh.id}
+                    position={{ lat: veh.lat, lng: veh.lng }}
+                    onClick={() => {
+                      setSelectedTruckId(veh.id);
+                      setActiveMarkerInfo({ type: 'truck', data: veh });
+                    }}
+                    title={`${veh.name} - ${veh.speedKmH} km/h`}
+                  >
+                    <div className="relative flex flex-col items-center cursor-pointer transition-transform duration-300 hover:scale-110">
+                      {/* Badge flutuante de velocidade */}
+                      <span className="mb-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-900 text-white shadow-md border border-white/20 whitespace-nowrap flex items-center gap-1">
+                        <span className={`size-1.5 rounded-full ${veh.speedKmH > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                        {veh.speedKmH} km/h
+                      </span>
+
+                      {/* Ícone de Veículo com indicador de direção */}
+                      <div className={`p-2.5 rounded-2xl shadow-xl border-2 flex items-center justify-center transition-all ${
+                        isSelected 
+                          ? 'bg-blue-600 text-white border-white scale-110 shadow-blue-500/50 ring-4 ring-blue-500/30' 
+                          : 'bg-slate-900 text-yellow-300 border-yellow-400 shadow-black/40'
+                      }`}>
+                        <Truck size={22} className={veh.speedKmH > 5 ? 'animate-bounce' : ''} />
+                      </div>
+
+                      {/* Placa do caminhão */}
+                      <span className="mt-1 px-1.5 py-0.2 rounded bg-white text-slate-900 font-extrabold text-[9px] shadow-sm border border-slate-300">
+                        {veh.plate}
+                      </span>
+                    </div>
+                  </AdvancedMarker>
+                );
+              })}
+
+              {/* Marcadores das Paradas de Entrega / Reposição */}
+              {selectedTruck?.assignedStops?.map((stop, idx) => {
+                const stopNumber = stop.order || idx + 1;
+                return (
+                  <AdvancedMarker
+                    key={String(stop.id)}
+                    position={{ lat: stop.lat, lng: stop.lng }}
+                    onClick={() => {
+                      setActiveMarkerInfo({ type: 'stop', data: stop });
+                      if (onSelectDelivery) onSelectDelivery(stop.id);
+                    }}
+                    title={`Parada ${stopNumber}: ${stop.customerName}`}
+                  >
+                    <div className="relative flex flex-col items-center cursor-pointer transition-transform hover:scale-110">
+                      <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-emerald-500/30">
+                        {stopNumber}
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-white/95 text-slate-900 shadow-sm border border-slate-200 mt-0.5 max-w-[90px] truncate">
+                        {stop.neighborhood}
+                      </span>
+                    </div>
+                  </AdvancedMarker>
+                );
+              })}
+
+              {/* Janela de Informações (InfoWindow) */}
+              {activeMarkerInfo && (
+                <InfoWindow
+                  position={
+                    activeMarkerInfo.type === 'truck'
+                      ? { lat: activeMarkerInfo.data.lat, lng: activeMarkerInfo.data.lng }
+                      : { lat: activeMarkerInfo.data.lat, lng: activeMarkerInfo.data.lng }
+                  }
+                  onCloseClick={() => setActiveMarkerInfo(null)}
                 >
-                  <div className="relative flex flex-col items-center cursor-pointer transition-transform duration-300 hover:scale-110">
-                    {/* Badge flutuante de velocidade */}
-                    <span className="mb-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-900 text-white shadow-md border border-white/20 whitespace-nowrap flex items-center gap-1">
-                      <span className={`size-1.5 rounded-full ${veh.speedKmH > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                      {veh.speedKmH} km/h
-                    </span>
-
-                    {/* Ícone de Veículo com indicador de direção */}
-                    <div className={`p-2.5 rounded-2xl shadow-xl border-2 flex items-center justify-center transition-all ${
-                      isSelected 
-                        ? 'bg-blue-600 text-white border-white scale-110 shadow-blue-500/50 ring-4 ring-blue-500/30' 
-                        : 'bg-slate-900 text-yellow-300 border-yellow-400 shadow-black/40'
-                    }`}>
-                      <Truck size={22} className={veh.speedKmH > 5 ? 'animate-bounce' : ''} />
-                    </div>
-
-                    {/* Placa do caminhão */}
-                    <span className="mt-1 px-1.5 py-0.2 rounded bg-white text-slate-900 font-extrabold text-[9px] shadow-sm border border-slate-300">
-                      {veh.plate}
-                    </span>
-                  </div>
-                </AdvancedMarker>
-              );
-            })}
-
-            {/* Marcadores das Paradas de Entrega / Reposição */}
-            {selectedTruck?.assignedStops?.map((stop, idx) => {
-              const stopNumber = stop.order || idx + 1;
-              return (
-                <AdvancedMarker
-                  key={String(stop.id)}
-                  position={{ lat: stop.lat, lng: stop.lng }}
-                  onClick={() => {
-                    setActiveMarkerInfo({ type: 'stop', data: stop });
-                    if (onSelectDelivery) onSelectDelivery(stop.id);
-                  }}
-                  title={`Parada ${stopNumber}: ${stop.customerName}`}
-                >
-                  <div className="relative flex flex-col items-center cursor-pointer transition-transform hover:scale-110">
-                    <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-emerald-500/30">
-                      {stopNumber}
-                    </div>
-                    <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-white/95 text-slate-900 shadow-sm border border-slate-200 mt-0.5 max-w-[90px] truncate">
-                      {stop.neighborhood}
-                    </span>
-                  </div>
-                </AdvancedMarker>
-              );
-            })}
-
-            {/* Janela de Informações (InfoWindow) */}
-            {activeMarkerInfo && (
-              <InfoWindow
-                position={
-                  activeMarkerInfo.type === 'truck'
-                    ? { lat: activeMarkerInfo.data.lat, lng: activeMarkerInfo.data.lng }
-                    : { lat: activeMarkerInfo.data.lat, lng: activeMarkerInfo.data.lng }
-                }
-                onCloseClick={() => setActiveMarkerInfo(null)}
-              >
-                <div className="p-2 min-w-[220px] max-w-[280px] text-slate-900 font-sans">
-                  {activeMarkerInfo.type === 'truck' ? (
-                    <div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-700">
-                          Caminhão de Reposição
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-500">
-                          {activeMarkerInfo.data.plate}
-                        </span>
-                      </div>
-                      <h4 className="font-extrabold text-sm text-slate-900 mb-1">
-                        {activeMarkerInfo.data.name}
-                      </h4>
-                      <p className="text-xs text-slate-600 mb-1">
-                        Motorista: <strong>{activeMarkerInfo.data.driverName}</strong>
-                      </p>
-                      <p className="text-xs text-slate-600 mb-2">
-                        Velocidade: <strong className="text-emerald-600">{activeMarkerInfo.data.speedKmH} km/h</strong>
-                      </p>
-                      <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">
-                        {activeMarkerInfo.data.driverPhone && (
-                          <a
-                            href={`tel:${activeMarkerInfo.data.driverPhone}`}
-                            className="flex-1 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[11px] text-center flex items-center justify-center gap-1"
-                          >
-                            <Phone size={12} /> Ligar
-                          </a>
-                        )}
-                        <button
-                          onClick={handleOpenGoogleMapsExternal}
-                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] text-center flex items-center justify-center gap-1"
-                        >
-                          <Navigation size={12} /> Navegar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
-                          Parada #{activeMarkerInfo.data.order || 1}
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-500">
-                          {activeMarkerInfo.data.status}
-                        </span>
-                      </div>
-                      <h4 className="font-extrabold text-sm text-slate-900 mb-1">
-                        {activeMarkerInfo.data.customerName || 'Ponto de Entrega'}
-                      </h4>
-                      <p className="text-xs text-slate-600 mb-1 flex items-start gap-1">
-                        <MapPin size={12} className="mt-0.5 shrink-0 text-slate-400" />
-                        <span>{activeMarkerInfo.data.address}</span>
-                      </p>
-                      {activeMarkerInfo.data.product && (
-                        <p className="text-[11px] text-slate-500 mb-2">
-                          Carga: {activeMarkerInfo.data.product}
+                  <div className="p-2 min-w-[220px] max-w-[280px] text-slate-900 font-sans">
+                    {activeMarkerInfo.type === 'truck' ? (
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-700">
+                            Caminhão de Reposição
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500">
+                            {activeMarkerInfo.data.plate}
+                          </span>
+                        </div>
+                        <h4 className="font-extrabold text-sm text-slate-900 mb-1">
+                          {activeMarkerInfo.data.name}
+                        </h4>
+                        <p className="text-xs text-slate-600 mb-1">
+                          Motorista: <strong>{activeMarkerInfo.data.driverName}</strong>
                         </p>
-                      )}
-                      <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
-                        <span className="text-xs font-black text-slate-900">
-                          {activeMarkerInfo.data.value ? `R$ ${activeMarkerInfo.data.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}
-                        </span>
-                        <a
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${activeMarkerInfo.data.lat},${activeMarkerInfo.data.lng}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
-                        >
-                          GPS <ExternalLink size={10} />
-                        </a>
+                        <p className="text-xs text-slate-600 mb-2">
+                          Velocidade: <strong className="text-emerald-600">{activeMarkerInfo.data.speedKmH} km/h</strong>
+                        </p>
+                        <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">
+                          {activeMarkerInfo.data.driverPhone && (
+                            <a
+                              href={`tel:${activeMarkerInfo.data.driverPhone}`}
+                              className="flex-1 px-2.5 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[11px] text-center flex items-center justify-center gap-1"
+                            >
+                              <Phone size={12} /> Ligar
+                            </a>
+                          )}
+                          <button
+                            onClick={handleOpenGoogleMapsExternal}
+                            className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px] text-center flex items-center justify-center gap-1"
+                          >
+                            <Navigation size={12} /> Navegar
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              </InfoWindow>
-            )}
-          </GoogleMap>
-        </APIProvider>
+                    ) : (
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                            Parada #{activeMarkerInfo.data.order || 1}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500">
+                            {activeMarkerInfo.data.status}
+                          </span>
+                        </div>
+                        <h4 className="font-extrabold text-sm text-slate-900 mb-1">
+                          {activeMarkerInfo.data.customerName || 'Ponto de Entrega'}
+                        </h4>
+                        <p className="text-xs text-slate-600 mb-1 flex items-start gap-1">
+                          <MapPin size={12} className="mt-0.5 shrink-0 text-slate-400" />
+                          <span>{activeMarkerInfo.data.address}</span>
+                        </p>
+                        {activeMarkerInfo.data.product && (
+                          <p className="text-[11px] text-slate-500 mb-2">
+                            Carga: {activeMarkerInfo.data.product}
+                          </p>
+                        )}
+                        <div className="pt-2 border-t border-slate-100 flex justify-between items-center">
+                          <span className="text-xs font-black text-slate-900">
+                            {activeMarkerInfo.data.value ? `R$ ${activeMarkerInfo.data.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}
+                          </span>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${activeMarkerInfo.data.lat},${activeMarkerInfo.data.lng}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                          >
+                            GPS <ExternalLink size={10} />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </InfoWindow>
+              )}
+            </GoogleMap>
+          </APIProvider>
+        ) : (
+          <div className="w-full h-full [&>#map]:h-full [&>#map]:rounded-none [&>#map]:border-0">
+            <LiveMap
+              points={[
+                ...vehicles.map<CheckInPoint>(v => ({
+                  id: v.id,
+                  title: `${v.name} (${v.plate}) • ${v.speedKmH} km/h`,
+                  checkin_lat: v.lat,
+                  checkin_lng: v.lng,
+                  checkin_at: new Date().toISOString(),
+                  collaborator_name: v.driverName,
+                  source: 'delivery',
+                  route:
+                    v.id === selectedTruck?.id && v.assignedStops?.length > 0
+                      ? [[v.lat, v.lng] as [number, number], ...v.assignedStops.map(s => [s.lat, s.lng] as [number, number])]
+                      : undefined,
+                })),
+                ...(selectedTruck?.assignedStops || []).map<CheckInPoint>((s, idx) => ({
+                  id: `stop-${s.id}`,
+                  title: `Parada #${s.order || idx + 1}: ${s.customerName || 'Entrega'} (${s.status})`,
+                  checkin_lat: s.lat,
+                  checkin_lng: s.lng,
+                  checkin_at: new Date().toISOString(),
+                  collaborator_name: selectedTruck?.driverName || 'Entregador',
+                  source: 'task',
+                  address: s.address,
+                  neighborhood: s.neighborhood,
+                  city: s.city,
+                })),
+              ]}
+            />
+          </div>
+        )}
 
         {/* Floating Action Button: Abrir Navegação Completa no Google Maps */}
         <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">

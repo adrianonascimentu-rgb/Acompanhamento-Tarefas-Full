@@ -6,6 +6,8 @@ import { renderToString } from 'react-dom/server';
 import { getNeighborhoodCoords } from '@/lib/neighborhoodCoords';
 import { useTheme } from '@/hooks/useTheme';
 import { APIProvider, Map as GoogleMap, AdvancedMarker, Pin, InfoWindow } from '@vis.gl/react-google-maps';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip, useMap } from 'react-leaflet';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 interface Delivery {
@@ -25,8 +27,8 @@ interface DeliveriesMapProps {
   deliveries: Delivery[];
 }
 
-const MapController = ({ selectedCoords, L }: { selectedCoords: [number, number] | null, L: any }) => {
-  const map = (window as any).MapComponents?.useMap();
+const MapController = ({ selectedCoords }: { selectedCoords: [number, number] | null, L?: any }) => {
+  const map = useMap();
   useEffect(() => {
     if (selectedCoords && map) {
       map.flyTo(selectedCoords, 16, {
@@ -38,10 +40,10 @@ const MapController = ({ selectedCoords, L }: { selectedCoords: [number, number]
 };
 
 // Auto-fit bounds controller for all deliveries
-const BoundsController = ({ deliveries, L }: { deliveries: Delivery[], L: any }) => {
-  const map = (window as any).MapComponents?.useMap();
+const BoundsController = ({ deliveries }: { deliveries: Delivery[], L?: any }) => {
+  const map = useMap();
   useEffect(() => {
-    if (map && L && deliveries.length > 0) {
+    if (map && deliveries.length > 0) {
       const validPoints = deliveries
         .filter(d => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng) && d.lat !== 0)
         .map(d => [d.lat!, d.lng!] as [number, number]);
@@ -53,7 +55,7 @@ const BoundsController = ({ deliveries, L }: { deliveries: Delivery[], L: any })
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
       }
     }
-  }, [deliveries, map, L]);
+  }, [deliveries, map]);
   return null;
 };
 
@@ -62,28 +64,20 @@ const clientGeocodeCache = new Map<string, [number, number]>();
 
 export function DeliveriesMap({ deliveries }: DeliveriesMapProps) {
   const { mapsApiKey, hasBillingError, setHasBillingError } = useTheme();
-  const effectiveApiKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+  const rawKey = mapsApiKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const effectiveApiKey = rawKey === 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY' ? '' : rawKey;
   const [mapEngine, setMapEngine] = useState<'google' | 'leaflet'>(() => (effectiveApiKey && !hasBillingError) ? 'google' : 'leaflet');
   const [activeGoogleDelivery, setActiveGoogleDelivery] = useState<Delivery | null>(null);
-  const [MapComponents, setMapComponents] = useState<any>(null);
-  const [L, setL] = useState<any>(null);
   const [geocodedDeliveries, setGeocodedDeliveries] = useState<Delivery[]>([]);
   const [selectedDriverId, setSelectedDriverId] = useState<number | string | null>(null);
   const [showSidebar, setShowSidebar] = useState(true);
 
   // Auto-switch to leaflet on billing error
   useEffect(() => {
-    if (hasBillingError) {
+    if (hasBillingError || !effectiveApiKey) {
       setMapEngine('leaflet');
     }
-  }, [hasBillingError]);
-
-  // Expose useMap for inner controllers
-  useEffect(() => {
-    if (MapComponents) {
-      (window as any).MapComponents = MapComponents;
-    }
-  }, [MapComponents]);
+  }, [hasBillingError, effectiveApiKey]);
 
   useEffect(() => {
     let isMounted = true;
@@ -181,16 +175,6 @@ export function DeliveriesMap({ deliveries }: DeliveriesMapProps) {
     };
   }, [deliveries]);
 
-  useEffect(() => {
-    Promise.all([
-      import('react-leaflet'),
-      import('leaflet')
-    ]).then(([leaflet, leafletCore]) => {
-      setMapComponents({ ...leaflet });
-      setL(leafletCore);
-    });
-  }, []);
-
   // Filter deliveries that have lat/lng
   const mapDeliveries = useMemo(() => 
     geocodedDeliveries.filter(d => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng)),
@@ -207,10 +191,6 @@ export function DeliveriesMap({ deliveries }: DeliveriesMapProps) {
     const delivery = mapDeliveries.find(d => d.id === selectedDriverId);
     return delivery ? [delivery.lat!, delivery.lng!] as [number, number] : null;
   }, [selectedDriverId, mapDeliveries]);
-
-  if (!MapComponents || !L) return null;
-
-  const { MapContainer, TileLayer, Marker, Popup, Polyline, Tooltip } = MapComponents;
 
   const getNavigationIcon = () => {
     return L.divIcon({

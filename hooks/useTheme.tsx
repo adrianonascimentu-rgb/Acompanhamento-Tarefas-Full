@@ -15,12 +15,21 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+const INVALID_FALLBACK_KEY = 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
+
+function sanitizeMapsKey(key?: string | null): string {
+  if (!key) return '';
+  const trimmed = key.trim();
+  if (trimmed === INVALID_FALLBACK_KEY) return '';
+  return trimmed;
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [location, setLocation] = useState('Escritório Central');
   const [hasBillingError, setHasBillingError] = useState(false);
   const [mapsApiKey, setMapsApiKey] = useState(
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY'
+    sanitizeMapsKey(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY)
   );
 
   const toggleDarkMode = (val: boolean) => {
@@ -44,18 +53,29 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   };
 
   const updateMapsApiKey = (val: string) => {
-    setMapsApiKey(val);
+    const clean = sanitizeMapsKey(val);
+    setMapsApiKey(clean);
     setHasBillingError(false);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('GOOGLE_MAPS_PLATFORM_KEY', val);
-      window.dispatchEvent(new CustomEvent('gmp-key-updated', { detail: { key: val } }));
+      if (clean) {
+        localStorage.setItem('GOOGLE_MAPS_PLATFORM_KEY', clean);
+      } else {
+        localStorage.removeItem('GOOGLE_MAPS_PLATFORM_KEY');
+      }
+      window.dispatchEvent(new CustomEvent('gmp-key-updated', { detail: { key: clean } }));
     }
   };
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     const savedLocation = localStorage.getItem('user-location');
-    const savedMapsKey = localStorage.getItem('GOOGLE_MAPS_PLATFORM_KEY');
+    const rawSavedMapsKey = localStorage.getItem('GOOGLE_MAPS_PLATFORM_KEY');
+    if (rawSavedMapsKey === INVALID_FALLBACK_KEY) {
+      try {
+        localStorage.removeItem('GOOGLE_MAPS_PLATFORM_KEY');
+      } catch {}
+    }
+    const savedMapsKey = sanitizeMapsKey(rawSavedMapsKey);
     
     let isDark = false;
     if (savedTheme === 'dark') {
@@ -77,10 +97,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (savedLocation) {
       setTimeout(() => setLocation(savedLocation), 0);
     }
-    const effectiveKey = savedMapsKey || process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY';
-    if (effectiveKey) {
-      setTimeout(() => setMapsApiKey(effectiveKey), 0);
-    }
+    const effectiveKey = savedMapsKey || sanitizeMapsKey(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY);
+    setTimeout(() => setMapsApiKey(effectiveKey), 0);
 
     // Monitor Google Maps auth/billing failures
     const handleMapsError = () => {
@@ -100,12 +118,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     const origConsoleError = console.error;
     console.error = (...args: any[]) => {
-      origConsoleError.apply(console, args);
       const str = args.map(a => String(a?.message || a || '')).join(' ');
       if (str.includes('BillingNotEnabledMapError') || str.includes('BillingNotEnabled') || str.includes('billing-not-enabled')) {
         setHasBillingError(true);
         window.dispatchEvent(new CustomEvent('gmp-billing-error', { detail: { type: 'BillingNotEnabledMapError' } }));
+        return;
       }
+      origConsoleError.apply(console, args);
     };
 
     // Listen for system preference changes
@@ -138,7 +157,7 @@ export function useTheme() {
       toggleDarkMode: () => {},
       location: 'Escritório Central',
       updateLocation: () => {},
-      mapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || 'AIzaSyCTfBfDPDjif_Es8txvqsLsjXvH9G8TjrY',
+      mapsApiKey: sanitizeMapsKey(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY),
       updateMapsApiKey: () => {},
       hasBillingError: false,
       setHasBillingError: () => {}
