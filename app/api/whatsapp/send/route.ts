@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
     if (!auth.authorized) return auth.response;
 
     const body = await req.json();
-    const { to, message, providerMode, altServerUrl, altApiKey, altInstance } = body;
+    const { providerMode, altServerUrl, altApiKey, altInstance } = body;
+    const to = body.to || body.phone || body.number;
+    const message = body.message || body.text;
 
     if (!to || !message) {
       return NextResponse.json({ error: "Número e mensagem são obrigatórios" }, { status: 400 });
@@ -40,7 +42,15 @@ export async function POST(req: NextRequest) {
       const targetUrl = (altServerUrl || process.env.WHATSAPP_ALT_API_URL || "https://api.w-api.app").trim();
       const rawKey = (altApiKey || process.env.WHATSAPP_ALT_API_KEY || "").trim();
       const cleanToken = rawKey.replace(/^Bearer\s+/i, "").trim();
-      const instance = (altInstance || process.env.WHATSAPP_ALT_INSTANCE || "").trim();
+      let instance = (altInstance || process.env.WHATSAPP_ALT_INSTANCE || "").trim();
+
+      // If user pasted a full W-API URL containing ?instanceId=... into the Instance ID field or Server URL field, extract the ID automatically
+      const urlInstanceMatch =
+        instance.match(/[?&]instanceId=([^&\s]+)/i) ||
+        targetUrl.match(/[?&]instanceId=([^&\s]+)/i);
+      if (urlInstanceMatch && urlInstanceMatch[1]) {
+        instance = decodeURIComponent(urlInstanceMatch[1].trim());
+      }
 
       const isPlaceholderInstance = !instance || instance === "instancia_vendas_01" || instance === "default";
 
@@ -56,7 +66,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const cleanUrl = targetUrl.replace(/\/$/, "");
+        const cleanUrl = targetUrl.split("?")[0].replace(/\/$/, "");
         const isWApi =
           cleanUrl.toLowerCase().includes("w-api") ||
           cleanUrl === "https://api.z-api.io"; // If user left default URL but filled W-API token & instance
@@ -65,9 +75,7 @@ export async function POST(req: NextRequest) {
         if (isWApi) {
           const baseWApiUrl = cleanUrl.includes("w-api") ? cleanUrl : "https://api.w-api.app";
           if (baseWApiUrl.includes("/send-text")) {
-            sendEndpoint = baseWApiUrl.includes("instanceId=")
-              ? baseWApiUrl
-              : `${baseWApiUrl}?instanceId=${encodeURIComponent(instance)}`;
+            sendEndpoint = `${baseWApiUrl}?instanceId=${encodeURIComponent(instance)}`;
           } else {
             sendEndpoint = `${baseWApiUrl}/v1/message/send-text?instanceId=${encodeURIComponent(instance)}`;
           }
@@ -116,18 +124,27 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        const gatewayErrMsg =
+        let gatewayErrMsg =
           resData?.message ||
           resData?.error ||
           resData?.reason ||
           `Gateway respondeu com status HTTP ${res.status}`;
+
+        if (
+          typeof gatewayErrMsg === "string" &&
+          (gatewayErrMsg.toLowerCase().includes("não encontrada") ||
+            gatewayErrMsg.toLowerCase().includes("nao encontrada") ||
+            instance.includes(" "))
+        ) {
+          gatewayErrMsg = `${gatewayErrMsg} — Você digitou o NOME da instância ("${instance}") em vez do código ID da Instância. No painel da W-API, copie o código ID (sem espaços, ex: LITE-... ou 3B9X...) que fica ao lado/abaixo do nome "${instance}".`;
+        }
 
         return NextResponse.json({
           success: false,
           simulated: false,
           provider: isWApi ? "w-api" : "alternative",
           to: cleanTo,
-          error: `Falha no envio via Gateway (${gatewayErrMsg})`,
+          error: gatewayErrMsg,
           details: resData
         }, { status: 400 });
       } catch (altErr: any) {

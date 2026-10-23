@@ -313,7 +313,19 @@ export default function WhatsAppAutomations() {
     setIsModalOpen(false);
   };
 
-  const isWapiConfigured = Boolean(wapiInstanceId.trim() && wapiToken.trim());
+  const sanitizeWapiInstanceId = (raw: string): string => {
+    const trimmed = raw.trim();
+    const match = trimmed.match(/[?&]instanceId=([^&\s"']+)/i);
+    if (match && match[1]) {
+      return decodeURIComponent(match[1].trim());
+    }
+    return raw;
+  };
+
+  const isInstanceNameInsteadOfId = Boolean(wapiInstanceId.trim().includes(' '));
+  const isWapiConfigured = Boolean(
+    wapiInstanceId.trim() && !isInstanceNameInsteadOfId && wapiToken.trim()
+  );
   const isAdminPhoneReal = Boolean(
     directory.adminPhone &&
       directory.adminPhone.replace(/\D/g, '').length >= 10 &&
@@ -323,6 +335,11 @@ export default function WhatsAppAutomations() {
   const persistWapiAndDirectory = (nextDir = directory) => {
     const normalizedAdmin = normalizeBrazilPhone(nextDir.adminPhone);
     const normalizedGroup = normalizeBrazilPhone(nextDir.logisticsGroupPhone);
+    const cleanedInstance = sanitizeWapiInstanceId(wapiInstanceId).trim();
+    if (cleanedInstance !== wapiInstanceId) {
+      setWapiInstanceId(cleanedInstance);
+    }
+
     const updatedDir = {
       ...nextDir,
       adminPhone: normalizedAdmin || nextDir.adminPhone,
@@ -332,13 +349,13 @@ export default function WhatsAppAutomations() {
     saveDirectoryConfig(updatedDir);
 
     if (typeof window !== 'undefined') {
-      if (wapiInstanceId.trim() && wapiToken.trim()) {
+      if (cleanedInstance && wapiToken.trim()) {
         localStorage.setItem('whatsapp_provider_mode', 'alternative');
         localStorage.setItem(
           'whatsapp_alt_server_url',
           wapiServerUrl.trim() || 'https://api.w-api.app'
         );
-        localStorage.setItem('whatsapp_alt_instance', wapiInstanceId.trim());
+        localStorage.setItem('whatsapp_alt_instance', cleanedInstance);
         localStorage.setItem(
           'whatsapp_alt_api_key',
           wapiToken.trim().replace(/^Bearer\s+/i, '')
@@ -350,6 +367,7 @@ export default function WhatsAppAutomations() {
 
   const handleDirectAdminTestSend = async () => {
     const savedDir = persistWapiAndDirectory(directory);
+    const cleanedInstance = sanitizeWapiInstanceId(wapiInstanceId).trim();
     setLastDiagnosticError(null);
 
     if (!savedDir.adminPhone || isPlaceholderPhone(savedDir.adminPhone)) {
@@ -361,12 +379,19 @@ export default function WhatsAppAutomations() {
       return;
     }
 
-    if (!wapiInstanceId.trim() || !wapiToken.trim()) {
+    if (!cleanedInstance || !wapiToken.trim()) {
       const msg =
-        'Para a mensagem chegar no seu celular, preencha o "Instance ID" e o "Token Bearer" da sua conta W-API.';
+        'Para a mensagem chegar no seu celular, preencha o código "ID da Instância" e o "Token Bearer" da sua conta W-API.';
       setLastDiagnosticError(msg);
       showToast(msg, 'warning');
       setActiveSubView('directory');
+      return;
+    }
+
+    if (cleanedInstance.includes(' ')) {
+      const msg = `"${cleanedInstance}" é o NOME da sua instância, e não o código ID! No painel da W-API, copie o código "ID da Instância" (um código sem espaços, ex: LITE-... ou 3B9X8Z...) que fica ao lado ou abaixo do nome "${cleanedInstance}".`;
+      setLastDiagnosticError(msg);
+      showToast(msg, 'warning');
       return;
     }
 
@@ -376,12 +401,15 @@ export default function WhatsAppAutomations() {
       const cleanUrl = (wapiServerUrl.trim() || 'https://api.w-api.app').replace(/\/$/, '');
       const targetPhone = normalizeBrazilPhone(savedDir.adminPhone);
 
+      const testMsg = `✅ *Teste de Recebimento do Administrador*\n\nOlá *${savedDir.adminName}*! Seu número (*+${targetPhone}*) e sua instância *W-API (${wapiInstanceId.trim()})* estão configurados e prontos para receber alertas automáticos de tarefas e entregas.`;
+
       const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: targetPhone,
-          text: `✅ *Teste de Recebimento do Administrador*\n\nOlá *${savedDir.adminName}*! Seu número (*+${targetPhone}*) e sua instância *W-API (${wapiInstanceId.trim()})* estão configurados e prontos para receber alertas automáticos de tarefas e entregas.`,
+          message: testMsg,
+          text: testMsg,
           providerMode: 'alternative',
           altServerUrl: cleanUrl,
           altApiKey: cleanToken,
@@ -796,15 +824,22 @@ export default function WhatsAppAutomations() {
 
               <div>
                 <label className="block text-[11px] font-bold mb-1">
-                  2. Instance ID (W-API) *
+                  2. Código ID da Instância (Não o nome) *
                 </label>
                 <input
                   type="text"
                   value={wapiInstanceId}
-                  onChange={e => setWapiInstanceId(e.target.value)}
-                  placeholder="Ex: 3B9X8Z..."
-                  className={`${inputBaseClass} font-mono`}
+                  onChange={e => setWapiInstanceId(sanitizeWapiInstanceId(e.target.value))}
+                  placeholder="Ex: LITE-9X8Z... (ou cole a URL)"
+                  className={`${inputBaseClass} font-mono ${
+                    isInstanceNameInsteadOfId ? 'border-rose-500 ring-1 ring-rose-500/40' : ''
+                  }`}
                 />
+                {isInstanceNameInsteadOfId && (
+                  <p className="text-[11px] font-semibold text-rose-500 mt-1 leading-snug">
+                    ⚠️ &quot;{wapiInstanceId.trim()}&quot; é o NOME. Cole o código ID (sem espaços) ou a URL da W-API.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1438,15 +1473,26 @@ export default function WhatsAppAutomations() {
 
                   <div>
                     <label className="block text-xs font-bold mb-1">
-                      Instance ID da W-API
+                      Código ID da Instância da W-API (Não o nome)
                     </label>
                     <input
                       type="text"
                       value={wapiInstanceId}
-                      onChange={e => setWapiInstanceId(e.target.value)}
-                      placeholder="Ex: 3B9X8Z..."
-                      className={`${inputBaseClass} font-mono`}
+                      onChange={e => setWapiInstanceId(sanitizeWapiInstanceId(e.target.value))}
+                      placeholder="Ex: LITE-9X8Z... (ou cole a URL da W-API)"
+                      className={`${inputBaseClass} font-mono ${
+                        isInstanceNameInsteadOfId ? 'border-rose-500 ring-1 ring-rose-500/40' : ''
+                      }`}
                     />
+                    {isInstanceNameInsteadOfId ? (
+                      <p className="text-[11px] font-semibold text-rose-500 mt-1 leading-snug">
+                        ⚠️ Você digitou o nome (&quot;{wapiInstanceId.trim()}&quot;). No painel w-api.app, copie o código ID da instância (sem espaços) que aparece abaixo/ao lado do nome.
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Dica: Você também pode colar a URL inteira da W-API que extraímos o ID automaticamente.
+                      </p>
+                    )}
                   </div>
 
                   <div>
