@@ -369,30 +369,6 @@ export function LoginForm({ onLogin }: LoginFormProps) {
                 </>
               )}
             </button>
-
-            <div className="relative flex py-2 items-center">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink mx-3 text-xs text-slate-400 font-semibold uppercase">ou</span>
-              <div className="flex-grow border-t border-slate-200"></div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                onLogin('admin', {
-                  id: '77777777-7777-7777-7777-777777777777',
-                  name: 'Adriano Nascimento',
-                  email: 'adrianonascimentu@gmail.com',
-                  type: 'admin',
-                  role: 'Administrador Geral',
-                  status: 'Ativo'
-                });
-              }}
-              className="w-full py-3.5 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              <Shield size={16} className="text-emerald-600" />
-              <span>Entrar como Adriano Nascimento (Admin)</span>
-            </button>
           </form>
         </div>
         

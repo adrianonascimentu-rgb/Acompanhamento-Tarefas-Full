@@ -50,6 +50,7 @@ import TaskComments from '@/components/tasks/TaskComments';
 import DemandDetailsModal from '@/components/tasks/DemandDetailsModal';
 import { ProgressBar } from '@/components/tasks/ProgressBar';
 import { DateFilterSelect } from '@/components/DateFilterSelect';
+import { triggerWhatsAppAutomation } from '@/lib/whatsappAutomation';
 
 const TasksMapView = nextDynamic(() => import('@/components/tasks/TasksMapView').then(mod => mod.TasksMapView), {
   ssr: false,
@@ -1260,6 +1261,15 @@ function TasksContent() {
           `status_change_${taskIdStr}_${newStatus}`
         );
       }
+
+      // Disparo automático via WhatsApp para o Administrador / Criador da Tarefa
+      await triggerWhatsAppAutomation('task_status_changed', {
+        colaborador: user?.name || task.assignees?.[0]?.name || 'Colaborador',
+        tarefa: task.title,
+        status: newStatus,
+        progresso: updates.progress !== undefined ? String(updates.progress) : String(task.progress || 0),
+        prioridade: task.priority || 'Média'
+      });
     } catch (error: any) {
       console.error('Error updating status:', error);
       showToast('Erro ao atualizar status: ' + (error?.message || JSON.stringify(error)), 'error');
@@ -1357,6 +1367,14 @@ function TasksContent() {
             `status_change_${taskIdStr}_${updates.status}`
           );
         }
+
+        await triggerWhatsAppAutomation('task_status_changed', {
+          colaborador: user?.name || currentTask.assignees?.[0]?.name || 'Colaborador',
+          tarefa: currentTask.title,
+          status: updates.status,
+          progresso: String(newProgress),
+          prioridade: currentTask.priority || 'Média'
+        });
       }
     } catch (error: any) {
       console.error('Error updating progress:', error.message || error);
@@ -1458,7 +1476,7 @@ function TasksContent() {
         
         if (error) throw error;
 
-        // Send push notification
+        // Send push notification & WhatsApp automation
         const task = tasks.find(t => t.id.toString() === taskId.toString());
         if (task) {
           fetch('/api/push', {
@@ -1471,6 +1489,16 @@ function TasksContent() {
               url: `${window.location.origin}/tasks`
             })
           }).catch(err => console.error('Error sending push notification:', err));
+
+          const collabObj = collaborators.find(c => c.id === profileId);
+          await triggerWhatsAppAutomation('task_created', {
+            colaborador: collabObj?.name || 'Colaborador',
+            criador: user?.name || 'Administrador',
+            tarefa: task.title,
+            prioridade: task.priority || 'Média',
+            prazo: task.due || 'Sem prazo',
+            descricao: task.description || 'Sem descrição'
+          });
         }
       }
 

@@ -17,6 +17,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { getCurrentPosition } from '@/lib/navigation';
 import { DeliveryProductItemsInput } from '@/components/deliveries/DeliveryProductItemsInput';
+import { triggerWhatsAppAutomation, getAutomationRules } from '@/lib/whatsappAutomation';
 
 const DeliveriesMap = dynamic(() => import('@/components/deliveries/DeliveriesMap').then(mod => mod.DeliveriesMap), { 
   ssr: false,
@@ -763,6 +764,32 @@ function DeliveriesContent() {
       showToast(`Status da entrega alterado para "${newStatus}" com sucesso!`, 'success');
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
+
+      if (delivery) {
+        await triggerWhatsAppAutomation('delivery_finalized', {
+          motorista: delivery.driver || 'Motorista',
+          veiculo: delivery.vehicle || 'Frota',
+          status: newStatus,
+          produto: delivery.product || 'Pedido',
+          endereco: delivery.address || 'Endereço não informado',
+          bairro: delivery.neighborhood || '',
+          cidade: delivery.city || '',
+          vendedor: delivery.seller || 'Comercial'
+        });
+
+        if (newStatus === 'Em Andamento') {
+          await triggerWhatsAppAutomation('delivery_out_for_client', {
+            produto: delivery.product || 'Pedido',
+            motorista: delivery.driver || 'Motorista',
+            veiculo: delivery.vehicle || 'Frota',
+            endereco: delivery.address || '',
+            bairro: delivery.neighborhood || '',
+            cidade: delivery.city || '',
+            turno: delivery.shift || 'Comercial',
+            cliente_telefone: delivery.phone || ''
+          });
+        }
+      }
     } catch (err) {
       console.error('Error updating status:', err);
       showToast('Erro ao atualizar status da entrega.', 'error');
@@ -858,6 +885,16 @@ function DeliveriesContent() {
       setDeliveries(deliveries.map(d => d.id === id ? { ...d, ...updateData } : d));
       if (isWithin50m) {
         showToast(`🎉 Destino alcançado (${Math.round(distMeters)}m < 50m)! Entrega finalizada automaticamente.`, 'success');
+        await triggerWhatsAppAutomation('delivery_finalized', {
+          motorista: delivery.driver || 'Motorista',
+          veiculo: delivery.vehicle || 'Frota',
+          status: 'Finalizada (GPS Automático)',
+          produto: delivery.product || 'Pedido',
+          endereco: delivery.address || '',
+          bairro: delivery.neighborhood || '',
+          cidade: delivery.city || '',
+          vendedor: delivery.seller || 'Comercial'
+        });
       } else {
         showToast('Posição atualizada!', 'success');
       }
@@ -990,11 +1027,147 @@ function DeliveriesContent() {
         })
       }).catch(err => console.warn('Erro ao disparar push especial:', err));
 
+      await triggerWhatsAppAutomation('special_delivery_alert', {
+        data: dateFormatted,
+        turno: delivery.shift || 'Integral',
+        motorista: delivery.driver || 'A definir',
+        veiculo: delivery.vehicle || 'Frota',
+        produto: delivery.product || 'Entrega Especial',
+        endereco: `${delivery.address || ''} - ${delivery.neighborhood || ''}/${delivery.city || ''}`
+      });
+
       showToast(`Aviso emitido: Entrega Especial reservada para ${dateFormatted}!`, 'warning');
     } catch (e) {
       console.warn('Erro ao disparar notificações de entrega especial:', e);
     }
   };
+
+  const handleDispatchDailyScheduleToDrivers = useCallback(async (silent = false) => {
+    const todayStr = getTodayLocalDateString();
+    const todayDeliveries = deliveries.filter(
+      d => d.date === todayStr && d.status !== 'Finalizada' && d.driver
+    );
+
+    if (todayDeliveries.length === 0) {
+      if (!silent) {
+        showToast('Não há entregas agendadas pendentes para hoje com motorista definido.', 'info');
+      }
+      return;
+    }
+
+    const groupedByDriver: Record<string, any[]> = {};
+    todayDeliveries.forEach(d => {
+      const driverName = d.driver.trim();
+      if (!groupedByDriver[driverName]) groupedByDriver[driverName] = [];
+      groupedByDriver[driverName].push(d);
+    });
+
+    let totalSent = 0;
+    for (const [driverName, driverDeliveries] of Object.entries(groupedByDriver)) {
+      const listFormatted = driverDeliveries
+        .map(
+          (item, idx) =>
+            `${idx + 1}. *${item.address || item.neighborhood}* (${item.neighborhood}/${item.city}) - ${item.product} [${item.shift}]`
+        )
+        .join('\n');
+
+      const res = await triggerWhatsAppAutomation('driver_daily_schedule', {
+        motorista: driverName,
+        veiculo: driverDeliveries[0]?.vehicle || 'Frota',
+        data: formatLocalDate(todayStr),
+        total_entregas: String(driverDeliveries.length),
+        lista_entregas: listFormatted
+      });
+      totalSent += res.triggeredCount;
+    }
+
+    if (!silent) {
+      if (totalSent > 0) {
+        showToast(`Roteiro do dia enviado no WhatsApp para ${Object.keys(groupedByDriver).length} motorista(s)!`, 'success');
+      } else {
+        showToast('A regra "Roteiro Diário de Entregas" está desativada na Central WhatsApp.', 'warning');
+      }
+    }
+  }, [deliveries, showToast]);
+
+  const handleRemindUnfinalizedDeliveries = useCallback(async (silent = false) => {
+    const todayStr = getTodayLocalDateString();
+    const unfinalized = deliveries.filter(
+      d => d.date <= todayStr && d.status !== 'Finalizada' && d.driver
+    );
+
+    if (unfinalized.length === 0) {
+      if (!silent) {
+        showToast('Todas as entregas de hoje já foram finalizadas pelos motoristas!', 'success');
+      }
+      return;
+    }
+
+    const groupedByDriver: Record<string, any[]> = {};
+    unfinalized.forEach(d => {
+      const driverName = d.driver.trim();
+      if (!groupedByDriver[driverName]) groupedByDriver[driverName] = [];
+      groupedByDriver[driverName].push(d);
+    });
+
+    let totalSent = 0;
+    for (const [driverName, pendingList] of Object.entries(groupedByDriver)) {
+      const listFormatted = pendingList
+        .map(
+          (item, idx) =>
+            `${idx + 1}. *${item.product}* — ${item.address || item.neighborhood} (${item.status})`
+        )
+        .join('\n');
+
+      const res = await triggerWhatsAppAutomation('driver_unfinalized_reminder', {
+        motorista: driverName,
+        quantidade_pendente: String(pendingList.length),
+        lista_entregas: listFormatted
+      });
+      totalSent += res.triggeredCount;
+    }
+
+    if (!silent) {
+      if (totalSent > 0) {
+        showToast(`Lembrete de baixa pendente enviado no WhatsApp para ${Object.keys(groupedByDriver).length} motorista(s)!`, 'success');
+      } else {
+        showToast('A regra de "Lembrete de Entrega Pendente" está desativada na Central WhatsApp.', 'warning');
+      }
+    }
+  }, [deliveries, showToast]);
+
+  // Verificador automático dos horários pré-definidos pelo administrador (Roteiro Diário e Lembrete de Baixa)
+  useEffect(() => {
+    if (typeof window === 'undefined' || deliveries.length === 0) return;
+
+    const checkScheduledRules = () => {
+      const now = new Date();
+      const currentHHMM = now.toTimeString().slice(0, 5);
+      const todayKey = getTodayLocalDateString();
+      const rules = getAutomationRules();
+
+      const dailyRule = rules.find(r => r.trigger === 'driver_daily_schedule' && r.enabled && r.scheduleTime);
+      if (dailyRule && dailyRule.scheduleTime === currentHHMM) {
+        const sentFlag = `wa_auto_daily_${todayKey}_${dailyRule.scheduleTime}`;
+        if (!localStorage.getItem(sentFlag)) {
+          localStorage.setItem(sentFlag, 'true');
+          handleDispatchDailyScheduleToDrivers(true);
+        }
+      }
+
+      const reminderRule = rules.find(r => r.trigger === 'driver_unfinalized_reminder' && r.enabled && r.scheduleTime);
+      if (reminderRule && reminderRule.scheduleTime === currentHHMM) {
+        const sentFlag = `wa_auto_unfinalized_${todayKey}_${reminderRule.scheduleTime}`;
+        if (!localStorage.getItem(sentFlag)) {
+          localStorage.setItem(sentFlag, 'true');
+          handleRemindUnfinalizedDeliveries(true);
+        }
+      }
+    };
+
+    const timer = setInterval(checkScheduledRules, 30000);
+    return () => clearInterval(timer);
+  }, [deliveries, handleDispatchDailyScheduleToDrivers, handleRemindUnfinalizedDeliveries]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1407,6 +1580,28 @@ function DeliveriesContent() {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {(isAdmin || hookIsGerente) && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleDispatchDailyScheduleToDrivers(false)}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-xs transition-all"
+                  title="Enviar lista de entregas do dia no WhatsApp dos motoristas escalados"
+                >
+                  <Phone size={13} />
+                  <span className="hidden md:inline">Enviar Roteiro WhatsApp</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemindUnfinalizedDeliveries(false)}
+                  className="px-3 py-1.5 rounded-full text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-xs transition-all"
+                  title="Enviar lembrete no WhatsApp para motoristas com entregas ainda não finalizadas"
+                >
+                  <Clock size={13} />
+                  <span className="hidden md:inline">Cobrar Baixa WhatsApp</span>
+                </button>
+              </>
+            )}
             <Link
               href="/shipping-calculator"
               className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center gap-1.5 shadow-sm transition-all"

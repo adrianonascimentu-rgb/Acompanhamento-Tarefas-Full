@@ -40,6 +40,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import WhatsAppAnalytics from '@/components/whatsapp/WhatsAppAnalytics';
+import WhatsAppAutomations from '@/components/whatsapp/WhatsAppAutomations';
+import { getAutomatedInboxMessages } from '@/lib/whatsappAutomation';
 
 interface WhatsAppMessage {
   id: string;
@@ -164,7 +166,7 @@ const QUICK_REPLIES = [
 export default function WhatsAppPage() {
   const { isDarkMode } = useTheme();
   const { canAccessWhatsapp } = useRole();
-  const [viewMode, setViewMode] = useState<'chat' | 'analytics'>('chat');
+  const [viewMode, setViewMode] = useState<'chat' | 'automations' | 'analytics'>('chat');
   const [chats, setChats] = useState<ChatContact[]>(INITIAL_CHATS);
   const [selectedChatId, setSelectedChatId] = useState<string | null>('1');
   const [searchQuery, setSearchQuery] = useState('');
@@ -228,6 +230,76 @@ export default function WhatsAppPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages, selectedChatId, isTyping]);
+
+  // Sync automated messages dispatched by WhatsAppAutomation rules into chat inbox
+  useEffect(() => {
+    const syncAutomatedMessages = () => {
+      const autoMsgs = getAutomatedInboxMessages();
+      if (!autoMsgs || autoMsgs.length === 0) return;
+
+      setChats(prevChats => {
+        const nextChats = [...prevChats];
+        autoMsgs.forEach(item => {
+          const existingIdx = nextChats.findIndex(
+            c =>
+              c.phone.replace(/\D/g, '') === item.recipientPhone.replace(/\D/g, '') ||
+              c.name.toLowerCase() === item.recipientName.toLowerCase()
+          );
+          if (existingIdx === -1) {
+            const newChatId = `auto-chat-${item.recipientPhone.replace(/\D/g, '')}`;
+            if (!nextChats.some(c => c.id === newChatId)) {
+              nextChats.unshift({
+                id: newChatId,
+                name: item.recipientName,
+                phone: item.recipientPhone,
+                lastMessage: item.text,
+                lastMessageSender: 'user',
+                lastMessageStatus: 'read',
+                time: item.time,
+                unread: 0,
+                online: true,
+                type: 'contact',
+                roleOrDept: 'Automação WhatsApp',
+                tags: ['Automático', 'Regra Ativa']
+              });
+            }
+          }
+        });
+        return nextChats;
+      });
+
+      setChatMessages(prevMsgs => {
+        const nextMsgs = { ...prevMsgs };
+        autoMsgs.forEach(item => {
+          const cleanPhone = item.recipientPhone.replace(/\D/g, '');
+          const matchedInitial = INITIAL_CHATS.find(
+            c =>
+              c.phone.replace(/\D/g, '') === cleanPhone ||
+              c.name.toLowerCase() === item.recipientName.toLowerCase()
+          );
+          const chatId = matchedInitial ? matchedInitial.id : `auto-chat-${cleanPhone}`;
+          const currentList = nextMsgs[chatId] || [];
+          if (!currentList.some(m => m.id === item.id)) {
+            nextMsgs[chatId] = [
+              ...currentList,
+              {
+                id: item.id,
+                text: item.text,
+                sender: 'user',
+                time: item.time,
+                status: 'read'
+              }
+            ];
+          }
+        });
+        return nextMsgs;
+      });
+    };
+
+    syncAutomatedMessages();
+    window.addEventListener('whatsapp-automation-message-sent', syncAutomatedMessages);
+    return () => window.removeEventListener('whatsapp-automation-message-sent', syncAutomatedMessages);
+  }, []);
 
   const checkApiStatus = async () => {
     try {
@@ -395,46 +467,64 @@ export default function WhatsAppPage() {
   return (
     <div className={`flex flex-col w-full h-[calc(100dvh-5.5rem)] md:h-[calc(100dvh-2.5rem)] overflow-hidden ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-900'}`}>
       {/* Top Workspace Subheader */}
-      <header className={`px-4 py-2.5 border-b shrink-0 flex flex-wrap items-center justify-between gap-3 ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white border-slate-200'}`}>
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-500 shrink-0">
-            <MessageCircle size={20} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold tracking-tight">Central WhatsApp Business</h1>
-              <span className="text-xs text-slate-400">·</span>
-              <span className="text-xs font-medium text-emerald-500 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                {providerMode === 'alternative'
-                  ? 'Gateway QR Ativo'
-                  : providerMode === 'meta'
-                  ? 'Meta Cloud Oficial'
-                  : 'Sandbox Simulação'}
-              </span>
+      <header className={`px-4 py-3 border-b shrink-0 flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-500 shrink-0">
+              <MessageCircle size={20} />
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">
-              Atendimento omnichannel, expedição de pedidos e métricas em tempo real
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-base font-bold tracking-tight truncate">Central WhatsApp Business</h1>
+                <span className="text-xs text-slate-400 hidden sm:inline">·</span>
+                <span className="text-xs font-semibold text-emerald-500 flex items-center gap-1.5 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {providerMode === 'alternative'
+                    ? 'Gateway QR Ativo'
+                    : providerMode === 'meta'
+                    ? 'Meta Cloud Oficial'
+                    : 'Sandbox Simulação'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block truncate">
+                Atendimento omnichannel, expedição de pedidos e automações em tempo real
+              </p>
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setIsConfiguring(true)}
+            className={`lg:hidden px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors shrink-0 ${
+              isDarkMode
+                ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+            }`}
+            title="Configurar Gateway ou API Oficial"
+          >
+            <QrCode size={14} className="text-emerald-500" />
+            <span>Conexão</span>
+          </button>
         </div>
 
         {/* Center / Right Navigation & Quick Actions */}
-        <div className="flex items-center gap-2">
-          <div className={`flex items-center p-1 rounded-xl border ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200/80'}`}>
+        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5">
+          <div className={`grid grid-cols-3 sm:flex items-center gap-1 p-1 rounded-xl border w-full sm:w-auto ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200/80'}`}>
             <button
               type="button"
               onClick={() => setViewMode('chat')}
-              className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
                 viewMode === 'chat'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
               }`}
             >
-              <MessageCircle size={14} />
+              <MessageCircle size={14} className="shrink-0" />
               <span>Conversas</span>
               {totalUnreadCount > 0 && (
-                <span className={`ml-1 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md ${
+                <span className={`ml-0.5 text-[10px] font-mono tabular-nums font-bold px-1.5 py-0.2 rounded-md ${
                   viewMode === 'chat' ? 'bg-white/20 text-white' : 'bg-emerald-500/15 text-emerald-500'
                 }`}>
                   {totalUnreadCount}
@@ -443,14 +533,30 @@ export default function WhatsAppPage() {
             </button>
             <button
               type="button"
-              onClick={() => setViewMode('analytics')}
-              className={`flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all ${
-                viewMode === 'analytics'
+              onClick={() => setViewMode('automations')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                viewMode === 'automations'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
               }`}
             >
-              <BarChart3 size={14} />
+              <Zap size={14} className="shrink-0" />
+              <span>Automações & Regras</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('analytics')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                viewMode === 'analytics'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+            >
+              <BarChart3 size={14} className="shrink-0" />
               <span>Análise de Tráfego</span>
             </button>
           </div>
@@ -458,21 +564,25 @@ export default function WhatsAppPage() {
           <button
             type="button"
             onClick={() => setIsConfiguring(true)}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors ${
+            className={`hidden lg:flex px-3.5 py-2.5 rounded-xl text-xs font-semibold items-center gap-2 border transition-colors whitespace-nowrap shrink-0 ${
               isDarkMode
-                ? 'bg-slate-800/90 border-slate-700 text-slate-200 hover:bg-slate-800'
+                ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs'
             }`}
             title="Configurar Gateway ou API Oficial"
           >
-            <QrCode size={14} className="text-emerald-500" />
-            <span className="hidden md:inline">Configurar Conexão</span>
+            <QrCode size={15} className="text-emerald-500 shrink-0" />
+            <span>Configurar Conexão</span>
           </button>
         </div>
       </header>
 
       {/* Main Content Split View */}
-      {viewMode === 'analytics' ? (
+      {viewMode === 'automations' ? (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <WhatsAppAutomations />
+        </div>
+      ) : viewMode === 'analytics' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <WhatsAppAnalytics onBackToChat={() => setViewMode('chat')} />
         </div>

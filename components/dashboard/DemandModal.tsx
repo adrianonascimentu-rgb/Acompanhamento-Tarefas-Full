@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useUI } from '@/hooks/useUI';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useTheme } from '@/hooks/useTheme';
+import { triggerWhatsAppAutomation } from '@/lib/whatsappAutomation';
 
 interface DemandModalProps {
   isOpen: boolean;
@@ -119,6 +120,12 @@ export function DemandModal({ isOpen, onClose, user }: DemandModalProps) {
           );
         }
       }
+
+      await triggerWhatsAppAutomation('demand_created', {
+        colaborador: user?.name || 'Colaborador',
+        categoria: category,
+        descricao: finalContent
+      });
 
       showToast('Demanda enviada com sucesso!', 'success');
       setContent('');

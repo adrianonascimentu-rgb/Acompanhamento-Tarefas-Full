@@ -13,6 +13,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { applyStatusToProfiles } from '@/lib/collaboratorStatus';
 import { TaskTemplateModal } from '@/components/tasks/TaskTemplateModal';
 import { TaskTemplate } from '@/lib/taskTemplates';
+import { triggerWhatsAppAutomation } from '@/lib/whatsappAutomation';
 
 export default function CreateTaskForm() {
   const router = useRouter();
@@ -376,10 +377,23 @@ export default function CreateTaskForm() {
           `${isRoutine ? 'routine' : 'new_task'}_${task.id}`,
           formData.notifyPush
         );
+
+        const collabObj = collaborators.find(c => c.id === profileId);
+        await triggerWhatsAppAutomation('task_created', {
+          colaborador: collabObj?.name || 'Colaborador',
+          collaboratorPhone: collabObj?.phone || collabObj?.whatsapp,
+          criador: user?.name || 'Administrador',
+          tarefa: formData.title,
+          prioridade: formData.priority,
+          prazo: formData.dueDate
+            ? new Date(formData.dueDate + 'T00:00:00').toLocaleDateString('pt-BR')
+            : 'Rotina Permanente',
+          descricao: formData.description || 'Sem descrição adicional'
+        });
       }
 
       setShowSuccess(true);
-      showToast('Tarefa delegada com sucesso!', 'success');
+      showToast('Tarefa delegada e aviso enviado no WhatsApp!', 'success');
       setTimeout(() => {
         router.push('/tasks');
       }, 1500);
