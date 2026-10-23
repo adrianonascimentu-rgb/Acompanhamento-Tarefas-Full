@@ -150,41 +150,55 @@ export default function CollaboratorsPage() {
     }
 
     try {
-      let query = supabase
-        .from('profiles')
-        .select('*')
-        .not('role', 'ilike', '%entrega%')
-        .not('type', 'eq', 'entregador')
-        .order('name');
-      
-      if (searchTarget) {
-        query = query.ilike('location', `%${searchTarget}%`);
+      let data: any[] | null = null;
+      let error: any = null;
+
+      try {
+        const res = await authFetch(`/api/collaborators?t=${Date.now()}`, { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json?.collaborators)) {
+            let apiList = json.collaborators.filter((c: any) => {
+              const r = String(c.role || '').toLowerCase().trim();
+              return r !== 'entregador avulso';
+            });
+            if (searchTarget) {
+              const q = searchTarget.toLowerCase().trim();
+              apiList = apiList.filter((c: any) =>
+                String(c.location || '').toLowerCase().includes(q) ||
+                String(c.name || '').toLowerCase().includes(q) ||
+                String(c.role || '').toLowerCase().includes(q)
+              );
+            }
+            data = apiList.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Falha ao buscar via /api/collaborators, usando fallback Supabase:', apiErr);
       }
 
-      query = query.range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
-      
-      let { data, error } = await query;
-      
-      if (error) {
-        if (error.code === '42P17' || error.message?.includes('infinite recursion') || error.code === 'PGRST303' || error.message?.includes('JWT expired') || error.message?.includes('jwt expired')) {
+      if (!data) {
+        let query = supabase
+          .from('profiles')
+          .select('*')
+          .order('name');
+        
+        if (searchTarget) {
+          query = query.ilike('location', `%${searchTarget}%`);
+        }
+
+        query = query.range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
+        
+        const sbRes = await query;
+        data = (sbRes.data || []).filter((c: any) => String(c.role || '').toLowerCase().trim() !== 'entregador avulso');
+        error = sbRes.error;
+        
+        if (error) {
           if (error.code === 'PGRST303' || error.message?.includes('JWT expired') || error.message?.includes('jwt expired')) {
             await handleSupabaseAuthError(error);
           }
-          console.warn('Erro ou JWT expirado em profiles. Ativando rota de contingência /api/collaborators...');
-          try {
-            const res = await authFetch('/api/collaborators');
-            const json = await res.json();
-            if (json?.collaborators?.length) {
-              data = json.collaborators.filter((c: any) => 
-                c.type !== 'entregador' && !c.role?.toLowerCase()?.includes('entrega')
-              );
-              error = null;
-            }
-          } catch (apiErr) {
-            console.warn('Falha no fallback de colaboradores:', apiErr);
-          }
+          throw error;
         }
-        if (error) throw error;
       }
       
       if (data) {
@@ -539,7 +553,39 @@ export default function CollaboratorsPage() {
                 
                 <div className="text-center min-w-0 w-full">
                   <p className={`text-xs font-bold truncate ${isInactive ? 'text-rose-600 dark:text-rose-400' : isDarkMode ? 'text-slate-200' : 'text-slate-900'}`}>{person.name}</p>
-                  <p className={`text-[10px] truncate mt-0.5 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>{person.role}</p>
+                  {(() => {
+                    const validLevels = ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'entregador', 'estoque', 'user'];
+                    const savedLevel = String(person.access_level || '').toLowerCase().trim();
+                    const typeStr = String(person.type || '').toLowerCase().trim();
+                    const roleStr = String(person.role || '').toLowerCase().trim();
+                    const effectiveLevel =
+                      savedLevel && validLevels.includes(savedLevel) ? savedLevel :
+                      typeStr && validLevels.includes(typeStr) && typeStr !== 'user' ? typeStr :
+                      typeStr === 'admin' || roleStr.includes('administrador') ? 'admin' :
+                      roleStr.includes('gerente') ? 'gerente' :
+                      roleStr.includes('supervisor') ? 'supervisor' :
+                      roleStr.includes('caixa') || roleStr.includes('financeiro') ? 'caixa' :
+                      roleStr.includes('vendedor') ? 'vendedor' :
+                      roleStr.includes('entreg') || roleStr.includes('motorista') ? 'entregador' :
+                      roleStr.includes('estoq') ? 'estoque' : 'user';
+
+                    const levelLabelMap: Record<string, string> = {
+                      admin: 'Administrador',
+                      gerente: 'Gerente',
+                      supervisor: 'Supervisor',
+                      caixa: 'Caixa',
+                      vendedor: 'Vendedor',
+                      entregador: 'Entrega',
+                      estoque: 'Estoquista',
+                      user: 'Colaborador'
+                    };
+                    const displayRole = person.role || levelLabelMap[effectiveLevel] || 'Colaborador';
+                    return (
+                      <p className={`text-[10px] truncate mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {displayRole}
+                      </p>
+                    );
+                  })()}
                   
                   {isInactive ? (
                     <span className="mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400 inline-block">

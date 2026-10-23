@@ -110,27 +110,34 @@ class DataPrefetchCache {
       try {
         let resultData: any[] = [];
         
-        // 1. Tentar via Supabase
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .not('role', 'ilike', '%entrega%')
-          .not('type', 'eq', 'entregador')
-          .order('name');
-
-        if (!error && data) {
-          resultData = applyStatusToProfiles(data);
-        } else {
-          // 2. Contingência via API interna
-          const res = await fetch('/api/collaborators');
+        // 1. Tentar via API interna (inclui access_level e submodules de system_settings)
+        try {
+          const res = await fetch(`/api/collaborators?t=${Date.now()}`, { cache: 'no-store' });
           if (res.ok) {
             const json = await res.json();
-            if (json?.collaborators?.length) {
-              const filtered = json.collaborators.filter((c: any) => 
-                c.type !== 'entregador' && !c.role?.toLowerCase()?.includes('entrega')
+            if (Array.isArray(json?.collaborators) && json.collaborators.length > 0) {
+              const filtered = json.collaborators.filter((c: any) =>
+                String(c.role || '').toLowerCase().trim() !== 'entregador avulso'
               );
               resultData = applyStatusToProfiles(filtered);
             }
+          }
+        } catch (apiErr) {
+          // fallback abaixo
+        }
+
+        // 2. Fallback via Supabase
+        if (resultData.length === 0) {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('name');
+
+          if (!error && data) {
+            const filtered = data.filter((c: any) =>
+              String(c.role || '').toLowerCase().trim() !== 'entregador avulso'
+            );
+            resultData = applyStatusToProfiles(filtered);
           }
         }
 

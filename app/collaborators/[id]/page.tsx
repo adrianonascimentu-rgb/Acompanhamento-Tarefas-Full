@@ -14,6 +14,8 @@ import { useUI } from '@/hooks/useUI';
 import { isWithinInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, subWeeks, startOfYear, endOfYear, isSameDay, addDays, startOfDay } from 'date-fns';
 import { DateFilterSelect } from '@/components/DateFilterSelect';
 import { getInactiveCollaboratorIds, saveCollaboratorStatusLocal } from '@/lib/collaboratorStatus';
+import { authFetch } from '@/lib/authFetch';
+import { prefetchCache } from '@/lib/prefetchCache';
 
 export const dynamic = 'force-dynamic';
 
@@ -222,15 +224,51 @@ export default function ProfilePage() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
-      if (profileError) {
-        console.error('Profile fetch error:', profileError.message, profileError.details);
-        throw profileError;
+      let profile: any = null;
+      let savedAccessEntry: any = null;
+      let apiSkills: any[] | null = null;
+
+      try {
+        const apiRes = await authFetch(`/api/collaborators?id=${id}&t=${Date.now()}`, { cache: 'no-store' });
+        if (apiRes.ok) {
+          const apiJson = await apiRes.json();
+          if (apiJson?.collaborator) {
+            profile = apiJson.collaborator;
+            savedAccessEntry = apiJson.accessConfig || {
+              accessLevel: apiJson.collaborator.access_level,
+              submodules: apiJson.collaborator.submodules
+            };
+            if (Array.isArray(apiJson.skills)) {
+              apiSkills = apiJson.skills;
+            }
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Fallback to direct Supabase query in profile:', apiErr);
+      }
+
+      if (!profile) {
+        const [{ data: sbProfile, error: profileError }, { data: accessConfigRow }] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', id)
+            .single(),
+          supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'collaborator_access_config')
+            .maybeSingle()
+        ]);
+        
+        if (profileError) {
+          console.error('Profile fetch error:', profileError.message, profileError.details);
+          throw profileError;
+        }
+        profile = sbProfile;
+        savedAccessEntry = accessConfigRow?.value && typeof accessConfigRow.value === 'object'
+          ? (accessConfigRow.value as Record<string, any>)[id]
+          : null;
       }
 
       let tasksData: any[] = [];
@@ -260,12 +298,16 @@ export default function ProfilePage() {
       
       if (reviewsError) throw reviewsError;
 
-      const { data: skills, error: skillsError } = await supabase
-        .from('profile_skills')
-        .select('id, skill')
-        .eq('profile_id', id);
-      
-      if (skillsError) throw skillsError;
+      let skills = apiSkills;
+      if (!skills) {
+        const { data: sbSkills, error: skillsError } = await supabase
+          .from('profile_skills')
+          .select('id, skill')
+          .eq('profile_id', id);
+        
+        if (skillsError) throw skillsError;
+        skills = sbSkills || [];
+      }
 
       const completedTasks = tasksData.filter(t => t.status === 'Concluída');
       const activeTasks = tasksData.filter(t => t.status !== 'Concluída');
@@ -298,6 +340,8 @@ export default function ProfilePage() {
 
       setUser({
         ...profile,
+        access_level: savedAccessEntry?.accessLevel || profile.type || 'user',
+        submodules: savedAccessEntry?.submodules || null,
         status: isInactive ? 'Inativo' : 'Ativo',
         activeTasks: tasksData,
         reviews: reviews || [],
@@ -445,7 +489,7 @@ export default function ProfilePage() {
       setTimeout(() => setShowSkillSuccess(false), 3000);
     } catch (error) {
       console.error('Error adding skill:', error);
-      alert('Erro ao adicionar habilidade.');
+      showToast('Erro ao adicionar habilidade.', 'error');
     } finally {
       setIsAddingSkill(false);
     }
@@ -456,16 +500,39 @@ export default function ProfilePage() {
     const newStatus = !user[field];
     
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ [field]: newStatus })
-        .eq('id', id);
-        
-      if (error) throw error;
-      setUser((prev: any) => ({ ...prev, [field]: newStatus }));
+      const apiRes = await authFetch('/api/collaborators', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          [field]: newStatus,
+          submodules: {
+            ...(user.submodules || {}),
+            [module]: newStatus
+          }
+        })
+      });
+
+      if (!apiRes.ok) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ [field]: newStatus })
+          .eq('id', id);
+        if (error) throw error;
+      }
+
+      prefetchCache.invalidateCache();
+      setUser((prev: any) => ({
+        ...prev,
+        [field]: newStatus,
+        submodules: {
+          ...(prev.submodules || {}),
+          [module]: newStatus
+        }
+      }));
     } catch (error) {
       console.error('Error toggling module access:', error);
-      alert('Erro ao atualizar acesso ao módulo.');
+      showToast('Erro ao atualizar acesso ao módulo.', 'error');
     }
   };
 
@@ -849,18 +916,55 @@ export default function ProfilePage() {
             <div className="flex flex-col items-center justify-center w-full px-2">
               <div className="flex flex-col sm:flex-row items-center gap-2">
                 <p className={`text-xl sm:text-2xl font-bold leading-tight tracking-tight text-center ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{user.name}</p>
-                <span className={`px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                  user.type === 'admin' 
-                    ? (isDarkMode ? 'bg-indigo-900/30 text-indigo-400' : 'bg-indigo-100 text-indigo-700') 
-                    : user.type === 'vendedor'
-                    ? (isDarkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-100 text-emerald-700')
-                    : (isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600')
-                }`}>
-                  {user.type === 'admin' ? <ShieldCheck size={10} /> : 
-                   user.type === 'vendedor' ? <Target size={10} /> : <Users size={10} />}
-                  {user.type === 'admin' ? 'Admin' : 
-                   user.type === 'vendedor' ? 'Vendedor' : 'Colaborador'}
-                </span>
+                {(() => {
+                  const validLevels = ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'entregador', 'estoque', 'user'];
+                  const savedLevel = String(user.access_level || '').toLowerCase().trim();
+                  const typeStr = String(user.type || '').toLowerCase().trim();
+                  const roleStr = String(user.role || '').toLowerCase().trim();
+
+                  const effectiveLevel =
+                    savedLevel && validLevels.includes(savedLevel) ? savedLevel :
+                    typeStr && validLevels.includes(typeStr) && typeStr !== 'user' ? typeStr :
+                    typeStr === 'admin' || roleStr.includes('administrador') ? 'admin' :
+                    roleStr.includes('gerente') ? 'gerente' :
+                    roleStr.includes('supervisor') ? 'supervisor' :
+                    roleStr.includes('caixa') || roleStr.includes('financeiro') ? 'caixa' :
+                    roleStr.includes('vendedor') ? 'vendedor' :
+                    roleStr.includes('entreg') || roleStr.includes('motorista') ? 'entregador' :
+                    roleStr.includes('estoq') ? 'estoque' : 'user';
+
+                  const badgeLabel =
+                    effectiveLevel === 'admin' ? 'Admin' :
+                    effectiveLevel === 'gerente' ? 'Gerente' :
+                    effectiveLevel === 'supervisor' ? 'Supervisor' :
+                    effectiveLevel === 'caixa' ? 'Caixa' :
+                    effectiveLevel === 'vendedor' ? 'Vendedor' :
+                    effectiveLevel === 'entregador' ? 'Entrega' :
+                    effectiveLevel === 'estoque' ? 'Estoquista' : 'Colaborador';
+
+                  const badgeStyle =
+                    effectiveLevel === 'admin'
+                      ? (isDarkMode ? 'bg-indigo-900/30 text-indigo-400' : 'bg-indigo-100 text-indigo-700')
+                      : effectiveLevel === 'gerente' || effectiveLevel === 'supervisor'
+                      ? (isDarkMode ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-700')
+                      : effectiveLevel === 'caixa'
+                      ? (isDarkMode ? 'bg-amber-900/30 text-amber-400' : 'bg-amber-100 text-amber-700')
+                      : effectiveLevel === 'vendedor'
+                      ? (isDarkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-100 text-emerald-700')
+                      : effectiveLevel === 'entregador'
+                      ? (isDarkMode ? 'bg-sky-900/30 text-sky-400' : 'bg-sky-100 text-sky-700')
+                      : effectiveLevel === 'estoque'
+                      ? (isDarkMode ? 'bg-teal-900/30 text-teal-400' : 'bg-teal-100 text-teal-700')
+                      : (isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600');
+
+                  return (
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 ${badgeStyle}`}>
+                      {effectiveLevel === 'admin' || effectiveLevel === 'gerente' || effectiveLevel === 'supervisor' ? <ShieldCheck size={10} /> :
+                       effectiveLevel === 'vendedor' ? <Target size={10} /> : <Users size={10} />}
+                      {badgeLabel}
+                    </span>
+                  );
+                })()}
                 <span className={`px-2 py-0.5 rounded-md text-[10px] sm:text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 ${
                   user.status === 'Inativo'
                     ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'

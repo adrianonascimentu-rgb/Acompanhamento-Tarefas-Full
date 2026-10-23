@@ -174,21 +174,40 @@ export default function NewCollaboratorPage() {
 
   const handleRoleChange = (role: typeof userRole) => {
     setUserRole(role);
+    const roleLabelMap: Record<string, string> = {
+      admin: 'Administrador',
+      gerente: 'Gerente',
+      supervisor: 'Supervisor',
+      caixa: 'Caixa',
+      vendedor: 'Vendedor',
+      entregador: 'Entregador',
+      estoque: 'Estoquista',
+      user: 'Colaborador'
+    };
+    const knownRoleLabels = Object.values(roleLabelMap).map(l => l.toLowerCase());
+    setFormData(prev => {
+      const currentRole = (prev.role || '').trim();
+      const shouldUpdateRoleTitle = !currentRole || knownRoleLabels.includes(currentRole.toLowerCase()) || currentRole.toLowerCase() === 'secretaria' || currentRole.toLowerCase() === 'secretária';
+      return {
+        ...prev,
+        role: shouldUpdateRoleTitle ? (roleLabelMap[role] || 'Colaborador') : prev.role
+      };
+    });
     let defaults: Record<string, boolean> = {};
     if (role === 'admin') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, price_research: true, sales: true, reports: true, live_panel: true, team: true, commissions: true, settings: true };
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: true, commissions: true, settings: true, adriano_commissions: true, permanent_tasks: true };
     } else if (role === 'gerente' || role === 'supervisor') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, price_research: true, sales: true, reports: true, live_panel: true, team: true, commissions: false, settings: false };
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: false, commissions: role === 'gerente', settings: false, adriano_commissions: false, permanent_tasks: true };
     } else if (role === 'vendedor') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: false, transfers: false, warranties: true, price_research: true, sales: true, reports: true, live_panel: false, team: false, commissions: false, settings: false };
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: true, leads: true, social_media: false, deliveries: true, truck_history: false, transfers: false, warranties: true, assistances: true, price_research: true, sales: true, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
     } else if (role === 'entregador') {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: true, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: false, warranties: false, price_research: false, sales: false, reports: false, live_panel: false, team: false, commissions: false, settings: false };
+      defaults = { home: true, products: true, tasks: false, demands: false, routes: true, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
     } else if (role === 'estoque') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: true, warranties: true, price_research: true, sales: false, reports: false, live_panel: false, team: false, commissions: false, settings: false };
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
     } else if (role === 'caixa') {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: false, transfers: true, warranties: true, price_research: false, sales: true, reports: true, live_panel: false, team: false, commissions: false, settings: false };
+      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: false, transfers: true, warranties: true, assistances: false, price_research: false, sales: true, reports: true, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
     } else {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: false, truck_history: false, transfers: false, warranties: false, price_research: false, sales: false, reports: false, live_panel: false, team: false, commissions: false, settings: false };
+      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: false, truck_history: false, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
     }
     setSubmodules(defaults);
     setCanAccessLeads(defaults.leads);
@@ -322,8 +341,9 @@ export default function NewCollaboratorPage() {
         }
       }
 
-      // Database constraint profiles_type_check expects 'admin' or 'user'
-      const dbType = userRole === 'admin' ? 'admin' : 'user';
+      // Database constraint profiles_type_check allows: admin, user, vendedor, entregador, estoque, gerente, supervisor
+      const allowedProfileTypes = ['admin', 'user', 'vendedor', 'entregador', 'estoque', 'gerente', 'supervisor'];
+      const dbType = allowedProfileTypes.includes(userRole) ? userRole : 'user';
 
       let avatarUrl = photo || `https://picsum.photos/seed/${cleanName.toLowerCase().replace(/\s+/g, '-')}/200`;
 
@@ -374,6 +394,7 @@ export default function NewCollaboratorPage() {
           phone: cleanPhone,
           location: cleanLocation,
           type: dbType,
+          access_level: userRole,
           password: cleanPassword,
           image_url: avatarUrl,
           skills: selectedSkills,

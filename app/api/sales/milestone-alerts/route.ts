@@ -345,7 +345,7 @@ export async function evaluateAndDispatchSalesMilestones(options?: {
   }
 
   // Also check daily sales in [startDate, endDate]
-  let dailySalesBySeller: Record<string, { amount: number; name?: string }> = {};
+  const dailySalesBySeller: Record<string, { amount: number; name?: string }> = {};
   try {
     const { data: dailySetting } = await supabase
       .from('system_settings')

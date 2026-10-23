@@ -13,13 +13,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
 import { useUI } from '@/hooks/useUI';
 import { authFetch } from '@/lib/authFetch';
+import { prefetchCache } from '@/lib/prefetchCache';
 
 export default function EditCollaboratorPage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
   const { isDarkMode } = useTheme();
-  const { isAdmin: isSystemAdmin } = useRole();
+  const { isAdmin: isSystemAdmin, user: loggedInUser, refreshUser } = useRole();
   const { showToast, showConfirm } = useUI();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,24 +63,41 @@ export default function EditCollaboratorPage() {
     permanent_tasks: false
   });
 
+  const ROLE_LABELS: Record<typeof userRole, string> = {
+    admin: 'Administrador',
+    gerente: 'Gerente',
+    supervisor: 'Supervisor',
+    caixa: 'Caixa',
+    vendedor: 'Vendedor',
+    entregador: 'Entregador',
+    estoque: 'Estoquista',
+    user: 'Colaborador'
+  };
+
+  const getRoleSubmoduleDefaults = (role: typeof userRole): Record<string, boolean> => {
+    if (role === 'admin') {
+      return { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: true, commissions: true, settings: true, adriano_commissions: true, permanent_tasks: true };
+    } else if (role === 'gerente' || role === 'supervisor') {
+      return { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: true, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: true };
+    } else if (role === 'vendedor') {
+      return { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: false, transfers: false, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+    } else if (role === 'entregador') {
+      return { home: true, products: true, tasks: true, demands: false, routes: true, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+    } else if (role === 'estoque') {
+      return { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+    } else if (role === 'caixa') {
+      return { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: false, transfers: true, warranties: true, assistances: false, price_research: false, sales: true, reports: true, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+    }
+    return { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: false, truck_history: false, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+  };
+
   const handleRoleChange = (role: typeof userRole) => {
     setUserRole(role);
-    let defaults: Record<string, boolean> = {};
-    if (role === 'admin') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: true, commissions: true, settings: true, adriano_commissions: true, permanent_tasks: true };
-    } else if (role === 'gerente' || role === 'supervisor') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: true, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: true };
-    } else if (role === 'vendedor') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: false, transfers: false, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
-    } else if (role === 'entregador') {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: true, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
-    } else if (role === 'estoque') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
-    } else if (role === 'caixa') {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: false, transfers: true, warranties: true, assistances: false, price_research: false, sales: true, reports: true, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
-    } else {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: false, truck_history: false, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
-    }
+    setFormData(prev => ({
+      ...prev,
+      role: ROLE_LABELS[role] || 'Colaborador'
+    }));
+    const defaults = getRoleSubmoduleDefaults(role);
     setSubmodules(defaults);
   };
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
@@ -103,92 +121,143 @@ export default function EditCollaboratorPage() {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!id || !uuidRegex.test(id)) {
         console.error('Invalid UUID format:', id);
-        alert('ID do colaborador inválido.');
+        showToast('ID do colaborador inválido.', 'error');
         router.push('/collaborators');
         return;
       }
       try {
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', id)
-          .single();
-        
-        if (profileError) throw profileError;
+        let profile: any = null;
+        let skills: any[] = [];
+        let savedAccessEntry: any = null;
 
-        const { data: skills, error: skillsError } = await supabase
-          .from('profile_skills')
-          .select('skill')
-          .eq('profile_id', id);
-        
-        if (skillsError) throw skillsError;
+        // 1. Tentar buscar via API com service_role (ignora cache/RLS/JWT expirado)
+        try {
+          const apiRes = await authFetch(`/api/collaborators?id=${id}&t=${Date.now()}`, {
+            cache: 'no-store'
+          });
+          if (apiRes.ok) {
+            const apiJson = await apiRes.json();
+            if (apiJson?.collaborator) {
+              profile = apiJson.collaborator;
+              skills = apiJson.skills || [];
+              savedAccessEntry = apiJson.accessConfig || null;
+            }
+          }
+        } catch (apiFetchErr) {
+          console.warn('Fallback para busca direta de colaborador:', apiFetchErr);
+        }
+
+        // 2. Fallback direto no cliente Supabase se necessário
+        if (!profile) {
+          const [{ data: sbProfile, error: profileError }, { data: sbSkills }, { data: accessConfigRow }] = await Promise.all([
+            supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', id)
+              .single(),
+            supabase
+              .from('profile_skills')
+              .select('skill')
+              .eq('profile_id', id),
+            supabase
+              .from('system_settings')
+              .select('value')
+              .eq('key', 'collaborator_access_config')
+              .maybeSingle()
+          ]);
+
+          if (profileError) throw profileError;
+          profile = sbProfile;
+          skills = sbSkills || [];
+          savedAccessEntry =
+            accessConfigRow?.value && typeof accessConfigRow.value === 'object'
+              ? accessConfigRow.value[id]
+              : null;
+        }
+
+        let derivedRole: typeof userRole = 'user';
+        const savedLevel = (savedAccessEntry?.accessLevel || profile.access_level || '').toLowerCase().trim();
+        const pRole = (profile.role || '').toLowerCase().trim();
+        const pType = (profile.type || '').toLowerCase().trim();
+
+        const validLevels = ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'entregador', 'estoque', 'user'];
+        if (savedLevel && validLevels.includes(savedLevel)) {
+          derivedRole = savedLevel as typeof userRole;
+        } else if (pType && validLevels.includes(pType) && pType !== 'user') {
+          derivedRole = pType as typeof userRole;
+        } else if (pType === 'admin' || pRole.includes('admin') || pRole.includes('administrador')) {
+          derivedRole = 'admin';
+        } else if (pRole.includes('gerente') || pRole.includes('gestor')) {
+          derivedRole = 'gerente';
+        } else if (pRole.includes('supervisor') || pRole.includes('coordenador')) {
+          derivedRole = 'supervisor';
+        } else if (pRole.includes('caixa') || pRole.includes('financeiro') || pRole.includes('secretaria')) {
+          derivedRole = 'caixa';
+        } else if (pRole.includes('vendedor') || pRole.includes('venda')) {
+          derivedRole = 'vendedor';
+        } else if (pRole.includes('entregador') || pRole.includes('entrega') || pRole.includes('motorista')) {
+          derivedRole = 'entregador';
+        } else if (pRole.includes('estoque') || pRole.includes('estoquista')) {
+          derivedRole = 'estoque';
+        }
+
+        const fallbackUsername =
+          profile.username ||
+          (profile.email ? String(profile.email).split('@')[0] : '') ||
+          (profile.name ? String(profile.name).trim().toLowerCase().replace(/\s+/g, '.') : '');
 
         setFormData({
           name: profile.name || '',
-          username: profile.username || '',
-          role: profile.role || '',
+          username: fallbackUsername,
+          role: profile.role && profile.role.toLowerCase() !== 'user' ? profile.role : (ROLE_LABELS[derivedRole] || 'Colaborador'),
           email: profile.email || '',
           phone: profile.phone || '',
           location: profile.location || '',
           password: profile.password || ''
         });
         setInitialPassword(profile.password || '');
-        let derivedRole = 'user';
-        const pRole = (profile.role || '').toLowerCase();
-        const pType = (profile.type || '').toLowerCase();
-        if (pType === 'admin' || pRole.includes('admin') || pRole.includes('administrador')) {
-          derivedRole = 'admin';
-        } else if (pRole.includes('gerente')) {
-          derivedRole = 'gerente';
-        } else if (pRole.includes('supervisor')) {
-          derivedRole = 'supervisor';
-        } else if (pRole.includes('caixa')) {
-          derivedRole = 'caixa';
-        } else if (pRole.includes('vendedor')) {
-          derivedRole = 'vendedor';
-        } else if (pRole.includes('entregador') || pRole.includes('entrega')) {
-          derivedRole = 'entregador';
-        } else if (pRole.includes('estoque') || pRole.includes('estoquista')) {
-          derivedRole = 'estoque';
-        }
-        setUserRole(derivedRole as any);
+        setUserRole(derivedRole);
         const isInactive = getInactiveCollaboratorIds().includes(id as string) || profile.status === 'Inativo';
         setStatus(isInactive ? 'Inativo' : 'Ativo');
+
+        const roleDefaults = getRoleSubmoduleDefaults(derivedRole);
+        const savedSubs = savedAccessEntry?.submodules || profile.submodules || {};
+
         setSubmodules({
-          home: profile.can_access_home ?? true,
-          products: profile.can_access_products ?? true,
-          tasks: profile.can_access_tasks ?? true,
-          demands: profile.can_access_demands ?? true,
-          routes: profile.can_access_routes ?? true,
-          whatsapp: profile.can_access_whatsapp ?? false,
-          leads: profile.can_access_leads ?? false,
-          social_media: profile.can_access_social_media ?? false,
-          deliveries: profile.can_access_deliveries ?? false,
-          truck_history: profile.can_access_truck_history ?? false,
-          transfers: profile.can_access_transfers ?? false,
-          warranties: profile.can_access_warranties ?? false,
-          assistances: profile.can_access_assistances ?? false,
-          price_research: profile.can_access_price_research ?? false,
-          sales: profile.can_access_sales ?? false,
-          reports: profile.can_access_reports ?? false,
-          live_panel: profile.can_access_live_panel ?? false,
-          collaborators: profile.can_access_collaborators ?? false,
-          commissions: profile.can_access_commissions ?? false,
-          settings: profile.can_access_settings ?? false,
-          adriano_commissions: profile.can_access_adriano_commissions ?? false,
-          permanent_tasks: profile.can_access_permanent_tasks ?? false,
+          home: savedSubs.home ?? profile.can_access_home ?? roleDefaults.home ?? true,
+          products: savedSubs.products ?? profile.can_access_products ?? roleDefaults.products ?? true,
+          tasks: savedSubs.tasks ?? profile.can_access_tasks ?? roleDefaults.tasks ?? true,
+          demands: savedSubs.demands ?? profile.can_access_demands ?? roleDefaults.demands ?? true,
+          routes: savedSubs.routes ?? profile.can_access_routes ?? roleDefaults.routes ?? true,
+          whatsapp: savedSubs.whatsapp ?? profile.can_access_whatsapp ?? roleDefaults.whatsapp ?? false,
+          leads: savedSubs.leads ?? profile.can_access_leads ?? roleDefaults.leads ?? false,
+          social_media: savedSubs.social_media ?? profile.can_access_social_media ?? roleDefaults.social_media ?? false,
+          deliveries: savedSubs.deliveries ?? profile.can_access_deliveries ?? roleDefaults.deliveries ?? false,
+          truck_history: savedSubs.truck_history ?? profile.can_access_truck_history ?? roleDefaults.truck_history ?? false,
+          transfers: savedSubs.transfers ?? profile.can_access_transfers ?? roleDefaults.transfers ?? false,
+          warranties: savedSubs.warranties ?? profile.can_access_warranties ?? roleDefaults.warranties ?? false,
+          assistances: savedSubs.assistances ?? profile.can_access_assistances ?? roleDefaults.assistances ?? false,
+          price_research: savedSubs.price_research ?? profile.can_access_price_research ?? roleDefaults.price_research ?? false,
+          sales: savedSubs.sales ?? profile.can_access_sales ?? roleDefaults.sales ?? false,
+          reports: savedSubs.reports ?? profile.can_access_reports ?? roleDefaults.reports ?? false,
+          live_panel: savedSubs.live_panel ?? profile.can_access_live_panel ?? roleDefaults.live_panel ?? false,
+          collaborators: savedSubs.collaborators ?? profile.can_access_collaborators ?? roleDefaults.collaborators ?? false,
+          commissions: savedSubs.commissions ?? profile.can_access_commissions ?? roleDefaults.commissions ?? false,
+          settings: savedSubs.settings ?? profile.can_access_settings ?? roleDefaults.settings ?? false,
+          adriano_commissions: savedSubs.adriano_commissions ?? profile.can_access_adriano_commissions ?? roleDefaults.adriano_commissions ?? false,
+          permanent_tasks: savedSubs.permanent_tasks ?? profile.can_access_permanent_tasks ?? roleDefaults.permanent_tasks ?? false,
         });
         setReceivesLeads(profile.receives_leads !== false);
         setPhoto(profile.image_url);
         setInitialPhoto(profile.image_url);
-        setSelectedSkills(skills?.map(s => s.skill) || []);
+        setSelectedSkills(skills?.map((s: any) => s.skill) || []);
       } catch (error: any) {
         if (error?.code === 'PGRST303' || error?.message?.includes('JWT expired') || error?.message?.includes('jwt expired')) {
           await handleSupabaseAuthError(error);
           return;
         }
         console.error('Error fetching collaborator:', error);
-        alert('Erro ao carregar dados do colaborador.');
+        showToast('Erro ao carregar dados do colaborador.', 'error');
         router.push('/collaborators');
       } finally {
         setLoading(false);
@@ -292,12 +361,7 @@ export default function EditCollaboratorPage() {
     e.preventDefault();
     
     if (!isSupabaseConfigured) {
-      alert('Configuração do Supabase ausente. Por favor, adicione as chaves de API nas configurações do projeto.');
-      return;
-    }
-
-    if (!formData.username.trim()) {
-      alert('O nome de usuário é obrigatório.');
+      showToast('Configuração do Supabase ausente.', 'error');
       return;
     }
 
@@ -305,11 +369,12 @@ export default function EditCollaboratorPage() {
     
     try {
       saveCollaboratorStatusLocal(id as string, status);
-      const isPasswordChanged = formData.password !== initialPassword;
 
       const cleanName = formData.name?.trim();
       const cleanEmail = formData.email?.trim() ? formData.email.trim().toLowerCase() : null;
-      const cleanUsername = formData.username?.trim() ? formData.username.trim().toLowerCase() : null;
+      const cleanUsername = formData.username?.trim()
+        ? formData.username.trim().toLowerCase()
+        : (cleanEmail ? cleanEmail.split('@')[0] : (cleanName ? cleanName.toLowerCase().replace(/\s+/g, '.') : null));
       const cleanPhone = formData.phone?.trim() ? formData.phone.trim() : null;
       const cleanLocation = formData.location?.trim() ? formData.location.trim() : null;
       const cleanPassword = formData.password?.trim() ? formData.password.trim() : null;
@@ -322,36 +387,9 @@ export default function EditCollaboratorPage() {
         throw new Error('A nova senha deve ter pelo menos 6 caracteres.');
       }
 
-      // Pre-flight check: Verify if email is already in use by ANOTHER collaborator
-      if (cleanEmail) {
-        const { data: existingEmail } = await supabase
-          .from('profiles')
-          .select('id, name')
-          .ilike('email', cleanEmail)
-          .neq('id', id)
-          .maybeSingle();
-
-        if (existingEmail) {
-          throw new Error(`O e-mail "${cleanEmail}" já está em uso pelo colaborador "${existingEmail.name}". Por favor, utilize outro endereço de e-mail.`);
-        }
-      }
-
-      // Pre-flight check: Verify if username is already in use by ANOTHER collaborator
-      if (cleanUsername) {
-        const { data: existingUser } = await supabase
-          .from('profiles')
-          .select('id, name')
-          .ilike('username', cleanUsername)
-          .neq('id', id)
-          .maybeSingle();
-
-        if (existingUser) {
-          throw new Error(`O nome de usuário "${cleanUsername}" já está em uso pelo colaborador "${existingUser.name}". Por favor, escolha outro nome de usuário.`);
-        }
-      }
-
-      // Database constraint profiles_type_check expects 'admin' or 'user'
-      const dbType = userRole === 'admin' ? 'admin' : 'user';
+      // profiles_type_check aceita: 'admin', 'user', 'vendedor', 'entregador', 'estoque', 'gerente', 'supervisor'
+      const dbType = userRole === 'caixa' ? 'user' : userRole;
+      const resolvedRoleTitle = formData.role?.trim() || ROLE_LABELS[userRole] || 'Colaborador';
 
       let finalImageUrl = photo;
 
@@ -392,8 +430,32 @@ export default function EditCollaboratorPage() {
         }
       }
 
-      // Envia atualização para a API segura com service_role (atualiza Supabase Auth e tabela profiles)
-      let apiSuccess = false;
+      const finalSubmodules = {
+        home: userRole === 'admin' ? true : !!submodules.home,
+        products: userRole === 'admin' ? true : !!submodules.products,
+        tasks: userRole === 'admin' ? true : !!submodules.tasks,
+        demands: userRole === 'admin' ? true : !!submodules.demands,
+        routes: userRole === 'admin' ? true : !!submodules.routes,
+        whatsapp: userRole === 'admin' ? true : !!submodules.whatsapp,
+        leads: userRole === 'admin' ? true : !!submodules.leads,
+        social_media: userRole === 'admin' ? true : !!submodules.social_media,
+        deliveries: userRole === 'admin' ? true : !!submodules.deliveries,
+        truck_history: userRole === 'admin' ? true : !!submodules.truck_history,
+        transfers: userRole === 'admin' ? true : !!submodules.transfers,
+        warranties: userRole === 'admin' ? true : !!submodules.warranties,
+        assistances: userRole === 'admin' ? true : !!submodules.assistances,
+        price_research: userRole === 'admin' ? true : !!submodules.price_research,
+        sales: userRole === 'admin' ? true : !!submodules.sales,
+        reports: userRole === 'admin' ? true : !!submodules.reports,
+        live_panel: userRole === 'admin' ? true : !!submodules.live_panel,
+        collaborators: userRole === 'admin' ? true : !!submodules.collaborators,
+        commissions: userRole === 'admin' ? true : !!submodules.commissions,
+        settings: userRole === 'admin' ? true : !!submodules.settings,
+        adriano_commissions: userRole === 'admin' ? true : !!submodules.adriano_commissions,
+        permanent_tasks: userRole === 'admin' ? true : !!submodules.permanent_tasks,
+      };
+
+      // Envia atualização para a API segura com service_role (atualiza Supabase Auth, profiles e system_settings)
       try {
         const apiResponse = await authFetch('/api/collaborators', {
           method: 'PUT',
@@ -402,58 +464,56 @@ export default function EditCollaboratorPage() {
             id,
             name: cleanName,
             username: cleanUsername,
-            role: formData.role?.trim() || (userRole === 'admin' ? 'Administrador' : userRole === 'gerente' ? 'Gerente' : userRole === 'supervisor' ? 'Supervisor' : userRole === 'caixa' ? 'Caixa' : userRole === 'vendedor' ? 'Vendedor' : userRole === 'entregador' ? 'Entregador' : userRole === 'estoque' ? 'Estoquista' : 'Colaborador'),
+            role: resolvedRoleTitle,
             email: cleanEmail,
             phone: cleanPhone,
             location: cleanLocation,
             status: status,
             type: dbType,
+            access_level: userRole,
             password: cleanPassword || undefined,
             image_url: finalImageUrl,
             skills: selectedSkills,
-            can_access_home: userRole === 'admin' ? true : !!submodules.home,
-            can_access_products: userRole === 'admin' ? true : !!submodules.products,
-            can_access_tasks: userRole === 'admin' ? true : !!submodules.tasks,
-            can_access_demands: userRole === 'admin' ? true : !!submodules.demands,
-            can_access_routes: userRole === 'admin' ? true : !!submodules.routes,
-            can_access_whatsapp: userRole === 'admin' ? true : !!submodules.whatsapp,
-            can_access_leads: userRole === 'admin' ? true : !!submodules.leads,
-            can_access_social_media: userRole === 'admin' ? true : !!submodules.social_media,
-            can_access_deliveries: userRole === 'admin' ? true : !!submodules.deliveries,
-            can_access_truck_history: userRole === 'admin' ? true : !!submodules.truck_history,
-            can_access_transfers: userRole === 'admin' ? true : !!submodules.transfers,
-            can_access_warranties: userRole === 'admin' ? true : !!submodules.warranties,
-            can_access_assistances: userRole === 'admin' ? true : !!submodules.assistances,
-            can_access_price_research: userRole === 'admin' ? true : !!submodules.price_research,
-            can_access_sales: userRole === 'admin' ? true : !!submodules.sales,
-            can_access_reports: userRole === 'admin' ? true : !!submodules.reports,
-            can_access_live_panel: userRole === 'admin' ? true : !!submodules.live_panel,
-            can_access_collaborators: userRole === 'admin' ? true : !!submodules.collaborators,
-            can_access_commissions: userRole === 'admin' ? true : !!submodules.commissions,
-            can_access_settings: userRole === 'admin' ? true : !!submodules.settings,
-            can_access_adriano_commissions: userRole === 'admin' ? true : !!submodules.adriano_commissions,
-            can_access_permanent_tasks: userRole === 'admin' ? true : !!submodules.permanent_tasks,
+            can_access_home: finalSubmodules.home,
+            can_access_products: finalSubmodules.products,
+            can_access_tasks: finalSubmodules.tasks,
+            can_access_demands: finalSubmodules.demands,
+            can_access_routes: finalSubmodules.routes,
+            can_access_whatsapp: finalSubmodules.whatsapp,
+            can_access_leads: finalSubmodules.leads,
+            can_access_social_media: finalSubmodules.social_media,
+            can_access_deliveries: finalSubmodules.deliveries,
+            can_access_truck_history: finalSubmodules.truck_history,
+            can_access_transfers: finalSubmodules.transfers,
+            can_access_warranties: finalSubmodules.warranties,
+            can_access_assistances: finalSubmodules.assistances,
+            can_access_price_research: finalSubmodules.price_research,
+            can_access_sales: finalSubmodules.sales,
+            can_access_reports: finalSubmodules.reports,
+            can_access_live_panel: finalSubmodules.live_panel,
+            can_access_collaborators: finalSubmodules.collaborators,
+            can_access_commissions: finalSubmodules.commissions,
+            can_access_settings: finalSubmodules.settings,
+            can_access_adriano_commissions: finalSubmodules.adriano_commissions,
+            can_access_permanent_tasks: finalSubmodules.permanent_tasks,
             receives_leads: receivesLeads
           })
         });
 
         const apiResult = await apiResponse.json();
-
-        if (apiResponse.ok && apiResult?.success) {
-          apiSuccess = true;
-        } else if (!apiResponse.ok && apiResult?.error) {
+        if (!apiResponse.ok && apiResult?.error) {
           console.warn('Aviso retornado pela API /api/collaborators:', apiResult.error);
         }
       } catch (apiErr) {
         console.warn('Falha na chamada da API /api/collaborators (tentando sincronização direta):', apiErr);
       }
 
-      // Sincronização direta de garantia na tabela profiles pelo cliente do Supabase
+      // Sincronização direta de garantia na tabela profiles (apenas colunas reais existentes em profiles)
       try {
         const clientPayload: any = {
           name: cleanName,
           username: cleanUsername,
-          role: formData.role?.trim() || (userRole === 'admin' ? 'Administrador' : userRole === 'vendedor' ? 'Vendedor' : userRole === 'estoque' ? 'Estoque' : 'Colaborador'),
+          role: resolvedRoleTitle,
           email: cleanEmail,
           phone: cleanPhone,
           location: cleanLocation,
@@ -461,58 +521,83 @@ export default function EditCollaboratorPage() {
           type: dbType,
           image_url: finalImageUrl,
           receives_leads: receivesLeads,
-          can_access_home: userRole === 'admin' ? true : !!submodules.home,
-          can_access_products: userRole === 'admin' ? true : !!submodules.products,
-          can_access_tasks: userRole === 'admin' ? true : !!submodules.tasks,
-          can_access_demands: userRole === 'admin' ? true : !!submodules.demands,
-          can_access_routes: userRole === 'admin' ? true : !!submodules.routes,
-          can_access_whatsapp: userRole === 'admin' ? true : !!submodules.whatsapp,
-          can_access_leads: userRole === 'admin' ? true : !!submodules.leads,
-          can_access_social_media: userRole === 'admin' ? true : !!submodules.social_media,
-          can_access_deliveries: userRole === 'admin' ? true : !!submodules.deliveries,
-          can_access_truck_history: userRole === 'admin' ? true : !!submodules.truck_history,
-          can_access_transfers: userRole === 'admin' ? true : !!submodules.transfers,
-          can_access_warranties: userRole === 'admin' ? true : !!submodules.warranties,
-          can_access_assistances: userRole === 'admin' ? true : !!submodules.assistances,
-          can_access_price_research: userRole === 'admin' ? true : !!submodules.price_research,
-          can_access_sales: userRole === 'admin' ? true : !!submodules.sales,
-          can_access_reports: userRole === 'admin' ? true : !!submodules.reports,
-          can_access_live_panel: userRole === 'admin' ? true : !!submodules.live_panel,
-          can_access_collaborators: userRole === 'admin' ? true : !!submodules.collaborators,
-          can_access_commissions: userRole === 'admin' ? true : !!submodules.commissions,
-          can_access_settings: userRole === 'admin' ? true : !!submodules.settings,
-          can_access_adriano_commissions: userRole === 'admin' ? true : !!submodules.adriano_commissions,
-          can_access_permanent_tasks: userRole === 'admin' ? true : !!submodules.permanent_tasks,
+          can_access_whatsapp: finalSubmodules.whatsapp,
+          can_access_leads: finalSubmodules.leads,
+          can_access_social_media: finalSubmodules.social_media,
+          can_access_deliveries: finalSubmodules.deliveries,
+          can_access_transfers: finalSubmodules.transfers,
+          can_access_warranties: finalSubmodules.warranties,
+          can_access_sales: finalSubmodules.sales,
+          can_access_reports: finalSubmodules.reports,
         };
-
-        if (cleanPassword) {
-          clientPayload.password = cleanPassword;
-        }
 
         const { error: directError } = await supabase
           .from('profiles')
           .update(clientPayload)
           .eq('id', id);
 
-        if (directError && (directError.message?.includes('password') || directError.code === '42703')) {
-          delete clientPayload.password;
-          await supabase.from('profiles').update(clientPayload).eq('id', id);
+        if (directError) {
+          await supabase
+            .from('profiles')
+            .update({
+              ...clientPayload,
+              type: userRole === 'admin' ? 'admin' : 'user',
+            })
+            .eq('id', id);
         }
+
+        // Persistir também em system_settings para preservar accessLevel exato (ex: caixa) e todos os submódulos
+        const { data: existingConfig } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'collaborator_access_config')
+          .maybeSingle();
+
+        const currentMap =
+          existingConfig?.value && typeof existingConfig.value === 'object'
+            ? existingConfig.value
+            : {};
+
+        await supabase.from('system_settings').upsert({
+          key: 'collaborator_access_config',
+          value: {
+            ...currentMap,
+            [id]: {
+              accessLevel: userRole,
+              submodules: finalSubmodules,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+          updated_at: new Date().toISOString(),
+        });
       } catch (directErr) {
         console.warn('Aviso ao sincronizar profiles diretamente:', directErr);
       }
 
+      // Invalidar caches em memória e sessionStorage para refletir imediatamente na listagem
+      try {
+        prefetchCache.invalidateCache();
+        sessionStorage.removeItem('prefetch_collaborators');
+        sessionStorage.removeItem('prefetch_cache_collaborators');
+      } catch {}
+
+      if (loggedInUser?.id === id) {
+        await refreshUser();
+      }
+
       setIsSubmitting(false);
       setShowSuccess(true);
+      showToast('Alterações salvas com sucesso!', 'success');
       setTimeout(() => {
+        router.refresh();
         router.push(`/collaborators/${id}`);
-      }, 1500);
+      }, 900);
     } catch (error: any) {
       console.error('Error updating collaborator:', error);
       setIsSubmitting(false);
       
       const errorMessage = error instanceof Error ? error.message : (error?.message || error?.details || 'Erro ao atualizar colaborador.');
-      alert(errorMessage);
+      showToast(errorMessage, 'error');
     }
   };
 

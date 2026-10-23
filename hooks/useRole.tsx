@@ -170,6 +170,18 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           console.warn('Error fetching profile for authUser:', profileErr);
         }
 
+        let savedAccessEntry: any = null;
+        try {
+          const { data: accessConfigRow } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'collaborator_access_config')
+            .maybeSingle();
+          if (accessConfigRow?.value && typeof accessConfigRow.value === 'object') {
+            savedAccessEntry = (accessConfigRow.value as Record<string, any>)[authUser.id] || null;
+          }
+        } catch {}
+
         const emailPrefix = authUser.email ? authUser.email.split('@')[0] : '';
         const formattedEmailName = emailPrefix ? emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1) : '';
         const resolvedName = 
@@ -180,11 +192,12 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           formattedEmailName || 
           'Usuário';
 
-        // Preserva o cargo real descritivo do perfil (ex: "Entregas e Estoque", "Vendedor", "Gerente")
+        // Preserva o cargo real descritivo do perfil ou o nível de acesso salvo
         const rawRoleTitle = (
+          savedAccessEntry?.accessLevel ||
           (profile?.role && profile.role.toLowerCase() !== 'user' ? profile.role : null) ||
-          authUser.user_metadata?.role ||
           (profile?.type && profile.type.toLowerCase() !== 'user' ? profile.type : null) ||
+          authUser.user_metadata?.role ||
           authUser.user_metadata?.type ||
           profile?.role ||
           profile?.type ||
@@ -193,16 +206,16 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
         const normalizedRoleName = normalizeRole(rawRoleTitle);
 
-        const isUserAdriana = resolvedName.toLowerCase().includes('adriana') || (authUser.email || '').toLowerCase().includes('adriana');
-
         const enrichedUser = { 
           ...authUser, 
           ...(profile || {}),
           id: authUser.id,
           name: resolvedName,
-          type: isUserAdriana ? 'user' : (profile?.type || (normalizedRoleName === 'admin' ? 'admin' : 'user')),
-          role: isUserAdriana ? 'user' : rawRoleTitle,
-          normalizedRole: isUserAdriana ? 'user' : normalizedRoleName
+          type: savedAccessEntry?.accessLevel || profile?.type || (normalizedRoleName === 'admin' ? 'admin' : normalizedRoleName),
+          role: profile?.role || rawRoleTitle,
+          access_level: savedAccessEntry?.accessLevel || profile?.type || normalizedRoleName,
+          submodules: savedAccessEntry?.submodules || null,
+          normalizedRole: normalizedRoleName
         };
 
         setUser(enrichedUser);
@@ -283,6 +296,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         'Usuário';
 
       const rawRoleTitle = (
+        finalData.access_level ||
         (finalData.role && finalData.role.toLowerCase() !== 'user' ? finalData.role : null) ||
         finalData.user_metadata?.role ||
         (finalData.type && finalData.type.toLowerCase() !== 'user' ? finalData.type : null) ||
@@ -294,14 +308,13 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       );
 
       const normalizedRoleName = normalizeRole(rawRoleTitle);
-      const isUserAdriana = resolvedName.toLowerCase().includes('adriana') || (finalData.email || '').toLowerCase().includes('adriana');
 
       const enrichedUser = {
         ...finalData,
         name: resolvedName,
-        type: isUserAdriana ? 'user' : (finalData.type || (normalizedRoleName === 'admin' ? 'admin' : 'user')),
-        role: isUserAdriana ? 'user' : rawRoleTitle,
-        normalizedRole: isUserAdriana ? 'user' : normalizedRoleName
+        type: finalData.access_level || finalData.type || (normalizedRoleName === 'admin' ? 'admin' : normalizedRoleName),
+        role: finalData.role || rawRoleTitle,
+        normalizedRole: normalizedRoleName
       };
       setUser(enrichedUser);
       try {
@@ -322,14 +335,15 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const ownerEmail = (process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL || '').trim().toLowerCase();
   const userEmail = (user?.email || '').trim().toLowerCase();
-  const rawRole = (user?.role || user?.type || 'user').toLowerCase();
-  const normalizedRole = normalizeRole(user?.role || user?.type);
+  const rawRole = (user?.access_level || user?.role || user?.type || 'user').toLowerCase();
+  const normalizedRole = normalizeRole(user?.access_level || user?.role || user?.type);
 
   const isAdmin = 
     normalizedRole === 'admin' || 
     rawRole.includes('admin') || 
     rawRole.includes('administrador') ||
     user?.type?.toLowerCase() === 'admin' ||
+    user?.access_level?.toLowerCase() === 'admin' ||
     (!!ownerEmail && userEmail === ownerEmail);
 
   const isAdriano = Boolean(
@@ -383,6 +397,11 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const hasPermission = (module: string) => {
     if (isAdmin) return true;
     if (!user) return false;
+
+    // 0. Verificação explícita nos submódulos salvos do colaborador (collaborator_access_config)
+    if (user.submodules && typeof user.submodules[module] === 'boolean') {
+      return user.submodules[module];
+    }
     
     // 1. Verificação explícita na coluna de permissão do usuário
     const userAccessKey = `can_access_${module}`;
@@ -409,7 +428,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         allowedLower === normalizedRole ||
         normAllowed === normalizedRole ||
         rawRole.includes(allowedLower) ||
-        (user?.type && user.type.toLowerCase() === allowedLower)
+        (user?.type && user.type.toLowerCase() === allowedLower) ||
+        (user?.access_level && user.access_level.toLowerCase() === allowedLower)
       );
     });
   };
