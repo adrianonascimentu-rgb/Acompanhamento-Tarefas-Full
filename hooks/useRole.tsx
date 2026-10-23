@@ -340,8 +340,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = 
     normalizedRole === 'admin' || 
-    rawRole.includes('admin') || 
-    rawRole.includes('administrador') ||
+    ((rawRole.includes('admin') || rawRole.includes('administrador')) && !rawRole.includes('auxiliar') && !rawRole.includes('assistente')) ||
     user?.type?.toLowerCase() === 'admin' ||
     user?.access_level?.toLowerCase() === 'admin' ||
     (!!ownerEmail && userEmail === ownerEmail);
@@ -381,9 +380,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const isGerente = 
     normalizedRole === 'gerente' ||
-    normalizedRole === 'supervisor' ||
     rawRole.includes('gerente') ||
-    rawRole.includes('supervisor') ||
+    rawRole.includes('gerência') ||
+    rawRole.includes('gerencia') ||
     rawRole.includes('gestor');
 
   const isSupervisor = 

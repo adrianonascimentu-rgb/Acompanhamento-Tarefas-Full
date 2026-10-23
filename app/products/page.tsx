@@ -51,7 +51,7 @@ import {
 
 export default function ProductsCatalogPage() {
   const { isDarkMode } = useTheme();
-  const { user, isAdmin, isGerente, isSupervisor, canUploadCatalog: roleCanUpload } = useRole();
+  const { user, role, isAdmin, isGerente, isSupervisor, canUploadCatalog: roleCanUpload } = useRole();
 
   // Products state (loads from memory/localStorage, synced with Supabase for all collaborators)
   const [products, setProducts] = useState<CatalogProduct[]>(() => getAllCatalogProducts());
@@ -97,13 +97,28 @@ export default function ProductsCatalogPage() {
     items: CatalogProduct[];
   } | null>(null);
 
-  const currentUserRole = (user?.role || user?.type || '').toLowerCase();
+  const currentUserRole = (user?.access_level || user?.role || user?.type || '').toLowerCase();
   const isAdministrativeStaff = 
     currentUserRole.includes('auxiliar') || 
     currentUserRole.includes('assistente') || 
     currentUserRole.includes('administrativ') ||
     (user?.name || '').toLowerCase().includes('adriana') ||
     (user?.email || '').toLowerCase().includes('adriana');
+
+  // Regra de Negócio: Apenas Administrador e Gerente visualizam os cards de resumo (Total de Itens, Estoque Físico Total, Fabricantes, Preço Médio)
+  const canViewCatalogStats =
+    !isAdministrativeStaff && (
+      isAdmin ||
+      isGerente ||
+      role === 'admin' ||
+      role === 'gerente' ||
+      currentUserRole === 'admin' ||
+      currentUserRole === 'administrador' ||
+      currentUserRole.includes('gerente') ||
+      currentUserRole.includes('gerência') ||
+      currentUserRole.includes('gerencia') ||
+      currentUserRole.includes('gestor')
+    );
 
   // Regra de Negócio: Somente Administrador, Gerente e Supervisor podem enviar o arquivo para atualização dos produtos
   const canUploadCatalog = 
@@ -677,56 +692,58 @@ export default function ProductsCatalogPage() {
           </div>
         )}
 
-        {/* Quick KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
-          }`}>
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Total de Itens</span>
-              <Layers size={16} className="text-blue-500" />
+        {/* Quick KPI Cards - Visível apenas para Administrador e Gerente */}
+        {canViewCatalogStats && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className={`p-4 rounded-2xl border ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Total de Itens</span>
+                <Layers size={16} className="text-blue-500" />
+              </div>
+              <div className="text-xl sm:text-2xl font-black">{stats.totalItems.toLocaleString('pt-BR')}</div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Cadastrados no sistema</p>
             </div>
-            <div className="text-xl sm:text-2xl font-black">{stats.totalItems.toLocaleString('pt-BR')}</div>
-            <p className="text-[10px] text-slate-400 mt-0.5">Cadastrados no sistema</p>
-          </div>
 
-          <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
-          }`}>
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Estoque Físico Total</span>
-              <Boxes size={16} className="text-emerald-500" />
+            <div className={`p-4 rounded-2xl border ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Estoque Físico Total</span>
+                <Boxes size={16} className="text-emerald-500" />
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                {formatStock(stats.totalStock)}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Unidades e peças disponíveis</p>
             </div>
-            <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400">
-              {formatStock(stats.totalStock)}
-            </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">Unidades e peças disponíveis</p>
-          </div>
 
-          <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
-          }`}>
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Fabricantes</span>
-              <Building2 size={16} className="text-indigo-500" />
+            <div className={`p-4 rounded-2xl border ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Fabricantes</span>
+                <Building2 size={16} className="text-indigo-500" />
+              </div>
+              <div className="text-xl sm:text-2xl font-black">{manufacturers.length}</div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Marcas homologadas</p>
             </div>
-            <div className="text-xl sm:text-2xl font-black">{manufacturers.length}</div>
-            <p className="text-[10px] text-slate-400 mt-0.5">Marcas homologadas</p>
-          </div>
 
-          <div className={`p-4 rounded-2xl border ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
-          }`}>
-            <div className="flex items-center justify-between text-slate-400 mb-1.5">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Preço Médio</span>
-              <Tag size={16} className="text-purple-500" />
+            <div className={`p-4 rounded-2xl border ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between text-slate-400 mb-1.5">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Preço Médio</span>
+                <Tag size={16} className="text-purple-500" />
+              </div>
+              <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400">
+                {formatCurrency(stats.avgPrice)}
+              </div>
+              <p className="text-[10px] text-slate-400 mt-0.5">Base de cálculo (10X)</p>
             </div>
-            <div className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400">
-              {formatCurrency(stats.avgPrice)}
-            </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">Base de cálculo (10X)</p>
           </div>
-        </div>
+        )}
 
         {/* Search & Filter Controls Card */}
         <div className={`p-5 rounded-3xl border space-y-4 ${
