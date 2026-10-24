@@ -1,5 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "@/lib/serverAuth";
+import { getSafeSupabaseConfig } from "@/lib/supabase";
+
+const CLOUD_STATE_KEY = "whatsapp_cloud_state_v1";
+
+function getAdminClient() {
+  const { isConfigured, supabaseUrl, supabaseServiceKey, supabaseAnonKey } = getSafeSupabaseConfig();
+  if (!isConfigured) return null;
+  const keyToUse =
+    supabaseServiceKey && supabaseServiceKey !== "placeholder-key"
+      ? supabaseServiceKey
+      : supabaseAnonKey;
+  if (!keyToUse || keyToUse === "placeholder-key") return null;
+
+  return createClient(supabaseUrl, keyToUse, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
 
 function normalizeBrazilPhone(raw: string): string {
   const digits = String(raw || "").replace(/\D/g, "");
@@ -16,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (!auth.authorized) return auth.response;
 
     const body = await req.json();
-    const { providerMode, altServerUrl, altApiKey, altInstance } = body;
+    let { providerMode, altServerUrl, altApiKey, altInstance } = body;
     const to = body.to || body.phone || body.number;
     const message = body.message || body.text;
 
@@ -25,6 +46,29 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanTo = normalizeBrazilPhone(to);
+
+    // Fallback to Supabase cloud state if credentials are not passed in the request body
+    const adminClient = getAdminClient();
+    let cloudState: any = null;
+    if (adminClient && (!altApiKey || !altInstance)) {
+      try {
+        const { data } = await adminClient
+          .from("system_settings")
+          .select("value")
+          .eq("key", CLOUD_STATE_KEY)
+          .maybeSingle();
+        if (data?.value) {
+          cloudState = typeof data.value === "string" ? JSON.parse(data.value) : data.value;
+          const cloudProv = cloudState?.providerConfig;
+          if (cloudProv) {
+            if (!providerMode && cloudProv.providerMode) providerMode = cloudProv.providerMode;
+            if (!altServerUrl && cloudProv.altServerUrl) altServerUrl = cloudProv.altServerUrl;
+            if (!altApiKey && cloudProv.altApiKey) altApiKey = cloudProv.altApiKey;
+            if (!altInstance && cloudProv.altInstance) altInstance = cloudProv.altInstance;
+          }
+        }
+      } catch {}
+    }
 
     // If explicitly in simulation mode
     if (providerMode === "simulation") {

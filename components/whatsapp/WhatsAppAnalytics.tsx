@@ -176,14 +176,19 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     logs.forEach((log) => {
       const syntheticId = `log-${log.id}`;
       if (!existingIds.has(log.id) && !existingIds.has(syntheticId)) {
+        const isoTime = log.createdAt || new Date().toISOString();
         merged.push({
           id: syntheticId,
-          timestamp: log.timestamp,
+          createdAt: isoTime,
+          timestamp: isoTime,
+          timeLabel: log.timestamp || '',
           direction: 'outbound',
           mode: 'auto',
           status: log.status === 'failed' ? 'failed' : 'delivered',
           phone: log.recipientPhone,
+          recipientPhone: log.recipientPhone,
           recipientName: log.recipientName,
+          text: log.message,
           category: 'Automação & Regras'
         });
       }
@@ -198,10 +203,12 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     window.addEventListener('whatsapp-traffic-updated', handleUpdate);
     window.addEventListener('whatsapp-automation-updated', handleUpdate);
     window.addEventListener('whatsapp-inbox-updated', handleUpdate);
+    window.addEventListener('whatsapp-cloud-synced', handleUpdate);
     return () => {
       window.removeEventListener('whatsapp-traffic-updated', handleUpdate);
       window.removeEventListener('whatsapp-automation-updated', handleUpdate);
       window.removeEventListener('whatsapp-inbox-updated', handleUpdate);
+      window.removeEventListener('whatsapp-cloud-synced', handleUpdate);
     };
   }, [loadRealEvents]);
 

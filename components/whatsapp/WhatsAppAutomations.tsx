@@ -47,6 +47,9 @@ import {
   clearAutomationLogs,
   getDirectoryConfig,
   saveDirectoryConfig,
+  getProviderConfig,
+  saveProviderConfig,
+  syncWhatsAppStateWithCloud,
   triggerWhatsAppAutomation,
   interpolateTemplate,
   DEFAULT_AUTOMATION_RULES,
@@ -166,17 +169,23 @@ export default function WhatsAppAutomations() {
     setLogs(getAutomationLogs());
     setDirectory(getDirectoryConfig());
     if (typeof window !== 'undefined') {
-      setWapiInstanceId(localStorage.getItem('whatsapp_alt_instance') || '');
-      setWapiToken(localStorage.getItem('whatsapp_alt_api_key') || '');
-      setWapiServerUrl(localStorage.getItem('whatsapp_alt_server_url') || 'https://api.w-api.app');
+      const pc = getProviderConfig();
+      setWapiInstanceId(pc.altInstance || '');
+      setWapiToken(pc.altApiKey || '');
+      setWapiServerUrl(pc.altServerUrl || 'https://api.w-api.app');
     }
   };
 
   useEffect(() => {
     loadData();
+    void syncWhatsAppStateWithCloud();
     const handleUpdate = () => loadData();
     window.addEventListener('whatsapp-automation-updated', handleUpdate);
-    return () => window.removeEventListener('whatsapp-automation-updated', handleUpdate);
+    window.addEventListener('whatsapp-cloud-synced', handleUpdate);
+    return () => {
+      window.removeEventListener('whatsapp-automation-updated', handleUpdate);
+      window.removeEventListener('whatsapp-cloud-synced', handleUpdate);
+    };
   }, []);
 
   const filteredRules = useMemo(() => {
@@ -351,19 +360,19 @@ export default function WhatsAppAutomations() {
       logisticsGroupPhone: normalizedGroup || nextDir.logisticsGroupPhone
     };
     setDirectory(updatedDir);
-    saveDirectoryConfig(updatedDir);
+    saveDirectoryConfig(updatedDir, { syncCloud: true });
 
     if (typeof window !== 'undefined') {
-      if (cleanedInstance && wapiToken.trim()) {
-        localStorage.setItem('whatsapp_provider_mode', 'alternative');
-        localStorage.setItem(
-          'whatsapp_alt_server_url',
-          wapiServerUrl.trim() || 'https://api.w-api.app'
-        );
-        localStorage.setItem('whatsapp_alt_instance', cleanedInstance);
-        localStorage.setItem(
-          'whatsapp_alt_api_key',
-          wapiToken.trim().replace(/^Bearer\s+/i, '')
+      if (cleanedInstance || wapiToken.trim()) {
+        saveProviderConfig(
+          {
+            providerMode: 'alternative',
+            altServerUrl: wapiServerUrl.trim() || 'https://api.w-api.app',
+            altInstance: cleanedInstance,
+            altApiKey: wapiToken.trim().replace(/^Bearer\s+/i, ''),
+            qrPhoneConnected: normalizedAdmin || undefined
+          },
+          true
         );
       }
     }
@@ -605,7 +614,7 @@ export default function WhatsAppAutomations() {
     delete nextPhones[key];
     const updatedDir = { ...directory, collaboratorPhones: nextPhones };
     setDirectory(updatedDir);
-    saveDirectoryConfig(updatedDir);
+    saveDirectoryConfig(updatedDir, { syncCloud: true, replaceCollaboratorPhones: true });
     showToast(`Contato "${key}" removido da lista.`, 'info');
   };
 

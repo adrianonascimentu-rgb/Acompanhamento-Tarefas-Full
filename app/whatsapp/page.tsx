@@ -47,10 +47,16 @@ import {
   getAutomatedInboxMessages,
   getDirectoryConfig,
   saveDirectoryConfig,
+  getProviderConfig,
+  saveProviderConfig,
+  syncWhatsAppStateWithCloud,
+  pushWhatsAppCloudUpdate,
+  DELETED_CHATS_STORAGE_KEY,
   normalizeBrazilPhone,
   isPlaceholderPhone,
   recordWhatsAppTrafficEvent
 } from '@/lib/whatsappAutomation';
+import { supabase } from '@/lib/supabase';
 import { useUI } from '@/hooks/useUI';
 
 interface WhatsAppMessage {
@@ -128,21 +134,68 @@ export default function WhatsAppPage() {
   const [qrPhoneConnected, setQrPhoneConnected] = useState('');
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
-  // Load saved provider settings on mount
+  // Load saved provider settings from localStorage and sync with Supabase Cloud
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedMode = localStorage.getItem('whatsapp_provider_mode') as any;
-      if (savedMode) {
-        setProviderMode(savedMode);
-        setConfigTab(savedMode);
+    const loadProviderFromLocal = () => {
+      if (typeof window === 'undefined') return;
+      const pc = getProviderConfig();
+      if (pc.providerMode) {
+        setProviderMode(pc.providerMode);
+        setConfigTab(pc.providerMode);
       }
-      const savedUrl = localStorage.getItem('whatsapp_alt_server_url');
-      if (savedUrl) setAltServerUrl(savedUrl);
-      const savedKey = localStorage.getItem('whatsapp_alt_api_key');
-      if (savedKey) setAltApiKey(savedKey);
-      const savedInst = localStorage.getItem('whatsapp_alt_instance');
-      if (savedInst) setAltInstance(savedInst);
-    }
+      if (pc.altServerUrl) setAltServerUrl(pc.altServerUrl);
+      if (pc.altApiKey !== undefined) setAltApiKey(pc.altApiKey);
+      if (pc.altInstance !== undefined) setAltInstance(pc.altInstance);
+      if (pc.qrStatus) setQrStatus(pc.qrStatus);
+      if (pc.qrPhoneConnected) setQrPhoneConnected(pc.qrPhoneConnected);
+    };
+
+    loadProviderFromLocal();
+    void syncWhatsAppStateWithCloud();
+
+    window.addEventListener('whatsapp-cloud-synced', loadProviderFromLocal);
+    window.addEventListener('whatsapp-automation-updated', loadProviderFromLocal);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void syncWhatsAppStateWithCloud();
+      }
+    };
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    let realtimeChannel: any = null;
+    try {
+      realtimeChannel = supabase
+        .channel('public:system_settings-whatsapp-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'system_settings' },
+          (payload: any) => {
+            if (!payload?.new?.key || payload.new.key === 'whatsapp_cloud_state_v1') {
+              void syncWhatsAppStateWithCloud();
+            }
+          }
+        )
+        .subscribe();
+    } catch {}
+
+    const pollInterval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void syncWhatsAppStateWithCloud();
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('whatsapp-cloud-synced', loadProviderFromLocal);
+      window.removeEventListener('whatsapp-automation-updated', loadProviderFromLocal);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      clearInterval(pollInterval);
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -163,15 +216,20 @@ export default function WhatsAppPage() {
       : altInstance.trim();
     setAltInstance(finalInstance);
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('whatsapp_provider_mode', configTab);
-      localStorage.setItem('whatsapp_alt_server_url', altServerUrl.trim() || 'https://api.w-api.app');
-      localStorage.setItem('whatsapp_alt_api_key', altApiKey.trim().replace(/^Bearer\s+/i, ''));
-      localStorage.setItem('whatsapp_alt_instance', finalInstance);
-    }
+    saveProviderConfig(
+      {
+        providerMode: configTab,
+        altServerUrl: altServerUrl.trim() || 'https://api.w-api.app',
+        altApiKey: altApiKey.trim().replace(/^Bearer\s+/i, ''),
+        altInstance: finalInstance,
+        qrStatus,
+        qrPhoneConnected
+      },
+      true
+    );
     setProviderMode(configTab);
     setIsConfiguring(false);
-    showToast('Configurações de conexão salvas!', 'success');
+    showToast('Configurações de conexão salvas e sincronizadas em todos os dispositivos!', 'success');
   };
 
   useEffect(() => {
@@ -189,13 +247,25 @@ export default function WhatsAppPage() {
 
       let storedChats: ChatContact[] = [];
       let storedMsgs: Record<string, WhatsAppMessage[]> = {};
+      let deletedChatIds: string[] = [];
+
+      try {
+        const rawDel = localStorage.getItem(DELETED_CHATS_STORAGE_KEY);
+        if (rawDel) {
+          const parsedDel = JSON.parse(rawDel);
+          if (Array.isArray(parsedDel)) deletedChatIds = parsedDel;
+        }
+      } catch {}
+      const deletedSet = new Set(deletedChatIds);
 
       try {
         const rawChats = localStorage.getItem(REAL_CHATS_STORAGE_KEY);
         if (rawChats) {
           const parsed = JSON.parse(rawChats);
           if (Array.isArray(parsed)) {
-            storedChats = parsed.filter(c => c.phone && !isPlaceholderPhone(c.phone));
+            storedChats = parsed.filter(
+              c => c.phone && !isPlaceholderPhone(c.phone) && !deletedSet.has(c.id)
+            );
           }
         }
       } catch {}
@@ -221,6 +291,7 @@ export default function WhatsAppPage() {
         const cleanPhone = normalizeBrazilPhone(phoneRaw);
         if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return;
         const chatId = `chat-${cleanPhone}`;
+        if (deletedSet.has(chatId)) return;
         const existingIdx = storedChats.findIndex(
           c => normalizeBrazilPhone(c.phone) === cleanPhone || c.id === chatId
         );
@@ -288,12 +359,28 @@ export default function WhatsAppPage() {
         }
       });
 
-      // 4. Sync real automated messages sent
+      // 4. Also ensure any chat present in storedMsgs is represented in storedChats
+      Object.entries(storedMsgs).forEach(([chatIdKey, msgList]) => {
+        if (!Array.isArray(msgList) || msgList.length === 0 || deletedSet.has(chatIdKey)) return;
+        const phoneFromId = chatIdKey.replace(/^chat-/, '');
+        if (phoneFromId && !isPlaceholderPhone(phoneFromId)) {
+          ensureContactInList(
+            phoneFromId,
+            `Contato +${phoneFromId}`,
+            'Contato WhatsApp',
+            'contact',
+            ['Contato Real']
+          );
+        }
+      });
+
+      // 5. Sync real automated messages sent
       const autoMsgs = getAutomatedInboxMessages();
       autoMsgs.forEach(item => {
         const cleanPhone = normalizeBrazilPhone(item.recipientPhone);
         if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return;
         const chatId = `chat-${cleanPhone}`;
+        if (deletedSet.has(chatId)) return;
         ensureContactInList(
           cleanPhone,
           item.recipientName,
@@ -329,6 +416,22 @@ export default function WhatsAppPage() {
         }
       });
 
+      // Ensure each chat's lastMessage reflects the latest message in storedMsgs
+      storedChats = storedChats.map(c => {
+        const list = storedMsgs[c.id];
+        if (Array.isArray(list) && list.length > 0) {
+          const latest = list[list.length - 1];
+          return {
+            ...c,
+            lastMessage: latest.text || c.lastMessage,
+            lastMessageSender: latest.sender || c.lastMessageSender,
+            lastMessageStatus: latest.status || c.lastMessageStatus,
+            time: latest.time || c.time
+          };
+        }
+        return c;
+      });
+
       localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(storedChats));
       localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(storedMsgs));
 
@@ -343,9 +446,11 @@ export default function WhatsAppPage() {
     syncRealContactsAndMessages();
     window.addEventListener('whatsapp-automation-message-sent', syncRealContactsAndMessages);
     window.addEventListener('whatsapp-automation-updated', syncRealContactsAndMessages);
+    window.addEventListener('whatsapp-cloud-synced', syncRealContactsAndMessages);
     return () => {
       window.removeEventListener('whatsapp-automation-message-sent', syncRealContactsAndMessages);
       window.removeEventListener('whatsapp-automation-updated', syncRealContactsAndMessages);
+      window.removeEventListener('whatsapp-cloud-synced', syncRealContactsAndMessages);
     };
   }, []);
 
@@ -395,30 +500,50 @@ export default function WhatsAppPage() {
       tags: ['Contato Real']
     };
 
-    setChats(prev => {
-      const filtered = prev.filter(c => normalizeBrazilPhone(c.phone) !== cleanPhone);
-      const updated = [newChat, ...filtered];
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updated));
-      }
-      return updated;
-    });
+    // Remove from deletedChatIds if previously deleted
+    if (typeof window !== 'undefined') {
+      try {
+        const rawDel = localStorage.getItem(DELETED_CHATS_STORAGE_KEY);
+        if (rawDel) {
+          const parsedDel = JSON.parse(rawDel);
+          if (Array.isArray(parsedDel)) {
+            const nextDel = parsedDel.filter((id: string) => id !== chatId);
+            localStorage.setItem(DELETED_CHATS_STORAGE_KEY, JSON.stringify(nextDel));
+          }
+        }
+      } catch {}
+    }
+
+    const filtered = chats.filter(c => normalizeBrazilPhone(c.phone) !== cleanPhone);
+    const updatedChats = [newChat, ...filtered];
+    setChats(updatedChats);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updatedChats));
+    }
 
     // Also link in Automation Directory so automations can use this real contact
     const dir = getDirectoryConfig();
-    saveDirectoryConfig({
+    const updatedDir = {
       ...dir,
       collaboratorPhones: {
         ...dir.collaboratorPhones,
         [newContactName.trim().toLowerCase()]: cleanPhone
       }
+    };
+    saveDirectoryConfig(updatedDir, { syncCloud: false });
+
+    void pushWhatsAppCloudUpdate({
+      chats: updatedChats,
+      restoredChatId: chatId,
+      directory: updatedDir,
+      forceDirectoryUpdate: true
     });
 
     setSelectedChatId(chatId);
     setNewContactName('');
     setNewContactPhone('');
     setIsNewChatModalOpen(false);
-    showToast(`Contato ${newChat.name} (+${cleanPhone}) adicionado!`, 'success');
+    showToast(`Contato ${newChat.name} (+${cleanPhone}) adicionado e sincronizado!`, 'success');
   };
 
   const handleDeleteRealChat = (chatId: string, e: React.MouseEvent) => {
@@ -428,7 +553,17 @@ export default function WhatsAppPage() {
     setChats(nextChats);
     if (typeof window !== 'undefined') {
       localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(nextChats));
+      try {
+        const rawDel = localStorage.getItem(DELETED_CHATS_STORAGE_KEY);
+        const delList = rawDel ? JSON.parse(rawDel) : [];
+        const updatedDel = Array.from(new Set([...(Array.isArray(delList) ? delList : []), chatId]));
+        localStorage.setItem(DELETED_CHATS_STORAGE_KEY, JSON.stringify(updatedDel));
+      } catch {}
     }
+    void pushWhatsAppCloudUpdate({
+      chats: nextChats,
+      deletedChatIds: [chatId]
+    });
     if (selectedChatId === chatId) {
       setSelectedChatId(nextChats.length > 0 ? nextChats[0].id : null);
     }
@@ -460,16 +595,15 @@ export default function WhatsAppPage() {
       status: 'sending'
     };
 
-    setChatMessages(prev => {
-      const updated = {
-        ...prev,
-        [selectedChatId]: [...(prev[selectedChatId] || []), newMsg]
-      };
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(updated));
-      }
-      return updated;
-    });
+    const initialMessagesForChat = [...(chatMessages[selectedChatId] || []), newMsg];
+    const initialAllMessages = {
+      ...chatMessages,
+      [selectedChatId]: initialMessagesForChat
+    };
+    setChatMessages(initialAllMessages);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(initialAllMessages));
+    }
 
     const currentUrl =
       (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_server_url')) ||
@@ -515,47 +649,49 @@ export default function WhatsAppPage() {
     setIsSending(false);
 
     // Update message with real delivery status (NO fake simulated reply)
-    setChatMessages(prev => {
-      const updated = {
-        ...prev,
-        [selectedChatId]: (prev[selectedChatId] || []).map(m =>
-          m.id === msgId ? { ...m, status: finalStatus } : m
-        )
-      };
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(updated));
-      }
-      return updated;
-    });
+    const updatedMessages: Record<string, WhatsAppMessage[]> = {
+      ...initialAllMessages,
+      [selectedChatId]: initialMessagesForChat.map(m =>
+        m.id === msgId ? { ...m, status: finalStatus } : m
+      )
+    };
+    setChatMessages(updatedMessages);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(updatedMessages));
+    }
 
-    setChats(prev => {
-      const updated = prev.map(c =>
-        c.id === selectedChatId
-          ? {
-              ...c,
-              lastMessage: textToSend,
-              lastMessageSender: 'user' as const,
-              lastMessageStatus: finalStatus,
-              time: formattedTime
-            }
-          : c
-      );
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updated));
-      }
-      return updated;
-    });
+    const updatedChats = chats.map(c =>
+      c.id === selectedChatId
+        ? {
+            ...c,
+            lastMessage: textToSend,
+            lastMessageSender: 'user' as const,
+            lastMessageStatus: finalStatus,
+            time: formattedTime
+          }
+        : c
+    );
+    setChats(updatedChats);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updatedChats));
+    }
 
-    // Record real manual message in traffic analytics
-    recordWhatsAppTrafficEvent({
-      direction: 'outbound',
-      mode: 'manual',
-      status: finalStatus,
-      recipientName: chat.name,
-      recipientPhone: chat.phone,
-      text: textToSend,
-      category: 'manual_chat'
-    });
+    // Record real manual message in traffic analytics (without separate cloud call, we batch below)
+    recordWhatsAppTrafficEvent(
+      {
+        direction: 'outbound',
+        mode: 'manual',
+        status: finalStatus,
+        recipientName: chat.name,
+        recipientPhone: chat.phone,
+        text: textToSend,
+        category: 'manual_chat'
+      },
+      false
+    );
+
+    // Push updated chats, messages, and traffic events to Supabase cloud so all devices see it
+    void syncWhatsAppStateWithCloud();
   };
 
   const filteredChats = useMemo(() => {
@@ -1095,7 +1231,9 @@ export default function WhatsAppPage() {
                                   <Clock size={12} className="text-emerald-200/80 animate-pulse" />
                                 )}
                                 {msg.status === 'sent' && (
-                                  <CheckCheck size={14} className="text-emerald-100" title="Enviado via W-API" />
+                                  <span title="Enviado via W-API" className="inline-flex">
+                                    <CheckCheck size={14} className="text-emerald-100" />
+                                  </span>
                                 )}
                                 {msg.status === 'delivered' && (
                                   <CheckCheck size={14} className="text-emerald-100" />

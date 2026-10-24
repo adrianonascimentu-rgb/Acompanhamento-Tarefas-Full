@@ -58,14 +58,16 @@ export interface WhatsAppAutomationLog {
 export interface WhatsAppTrafficEvent {
   id: string;
   createdAt: string; // ISO string
+  timestamp: string; // ISO string for analytics compatibility
   timeLabel: string; // HH:mm
   direction: 'outbound' | 'inbound';
   mode: 'auto' | 'manual';
-  status: 'sent' | 'failed';
+  status: 'sent' | 'delivered' | 'failed';
   recipientName: string;
   recipientPhone: string;
-  text: string;
-  category: AutomationCategory | 'manual_chat';
+  phone: string;
+  text?: string;
+  category: AutomationCategory | 'manual_chat' | string;
   ruleName?: string;
 }
 
@@ -76,11 +78,23 @@ export interface AutomationDirectoryConfig {
   collaboratorPhones: Record<string, string>; // key: lowercase name or id -> phone
 }
 
-const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v2_real';
-const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v2_real';
-const DIRECTORY_STORAGE_KEY = 'whatsapp_automation_directory_v1';
-const CHATS_INBOX_SYNC_KEY = 'whatsapp_automated_inbox_messages_v2_real';
-const TRAFFIC_EVENTS_STORAGE_KEY = 'whatsapp_real_traffic_events_v1';
+export interface WhatsAppProviderConfig {
+  providerMode: 'meta' | 'alternative' | 'simulation';
+  altServerUrl: string;
+  altApiKey: string;
+  altInstance: string;
+  qrStatus?: 'idle' | 'generating' | 'waiting' | 'connected';
+  qrPhoneConnected?: string;
+}
+
+export const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v2_real';
+export const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v2_real';
+export const DIRECTORY_STORAGE_KEY = 'whatsapp_automation_directory_v1';
+export const CHATS_INBOX_SYNC_KEY = 'whatsapp_automated_inbox_messages_v2_real';
+export const TRAFFIC_EVENTS_STORAGE_KEY = 'whatsapp_real_traffic_events_v1';
+export const REAL_CHATS_STORAGE_KEY = 'whatsapp_real_chats_v2';
+export const REAL_MESSAGES_STORAGE_KEY = 'whatsapp_real_messages_v2';
+export const DELETED_CHATS_STORAGE_KEY = 'whatsapp_deleted_chat_ids_v1';
 
 export const DEFAULT_DIRECTORY_CONFIG: AutomationDirectoryConfig = {
   adminName: 'Adriano Nascimento (Admin)',
@@ -286,6 +300,63 @@ export const TRIGGER_METADATA: Record<
   }
 };
 
+export function getProviderConfig(): WhatsAppProviderConfig {
+  if (typeof window === 'undefined') {
+    return {
+      providerMode: 'alternative',
+      altServerUrl: 'https://api.w-api.app',
+      altApiKey: '',
+      altInstance: '',
+      qrStatus: 'connected',
+      qrPhoneConnected: ''
+    };
+  }
+  const providerMode = (localStorage.getItem('whatsapp_provider_mode') as any) || 'alternative';
+  const altServerUrl = localStorage.getItem('whatsapp_alt_server_url') || 'https://api.w-api.app';
+  const altApiKey = localStorage.getItem('whatsapp_alt_api_key') || '';
+  const altInstance = localStorage.getItem('whatsapp_alt_instance') || '';
+  const qrStatus = (localStorage.getItem('whatsapp_qr_status') as any) || 'connected';
+  const qrPhoneConnected = localStorage.getItem('whatsapp_qr_phone') || '';
+  return {
+    providerMode,
+    altServerUrl,
+    altApiKey,
+    altInstance,
+    qrStatus,
+    qrPhoneConnected
+  };
+}
+
+export function saveProviderConfig(config: Partial<WhatsAppProviderConfig>, syncCloud = true): WhatsAppProviderConfig {
+  const current = getProviderConfig();
+  const next: WhatsAppProviderConfig = {
+    providerMode: config.providerMode ?? current.providerMode ?? 'alternative',
+    altServerUrl: (config.altServerUrl ?? current.altServerUrl ?? 'https://api.w-api.app').trim() || 'https://api.w-api.app',
+    altApiKey: (config.altApiKey ?? current.altApiKey ?? '').trim().replace(/^Bearer\s+/i, ''),
+    altInstance: (config.altInstance ?? current.altInstance ?? '').trim(),
+    qrStatus: config.qrStatus ?? current.qrStatus ?? 'connected',
+    qrPhoneConnected: config.qrPhoneConnected ?? current.qrPhoneConnected ?? ''
+  };
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('whatsapp_provider_mode', next.providerMode);
+      localStorage.setItem('whatsapp_alt_server_url', next.altServerUrl);
+      localStorage.setItem('whatsapp_alt_api_key', next.altApiKey);
+      localStorage.setItem('whatsapp_alt_instance', next.altInstance);
+      if (next.qrStatus) localStorage.setItem('whatsapp_qr_status', next.qrStatus);
+      if (next.qrPhoneConnected !== undefined) localStorage.setItem('whatsapp_qr_phone', next.qrPhoneConnected);
+      window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    } catch {}
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({
+        providerConfig: next,
+        forceProviderUpdate: true
+      });
+    }
+  }
+  return next;
+}
+
 export function getAutomationRules(): WhatsAppAutomationRule[] {
   if (typeof window === 'undefined') return DEFAULT_AUTOMATION_RULES;
   try {
@@ -302,11 +373,17 @@ export function getAutomationRules(): WhatsAppAutomationRule[] {
   return DEFAULT_AUTOMATION_RULES;
 }
 
-export function saveAutomationRules(rules: WhatsAppAutomationRule[]): void {
+export function saveAutomationRules(rules: WhatsAppAutomationRule[], syncCloud = true): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(rules));
     window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({
+        rules,
+        forceRulesUpdate: true
+      });
+    }
   } catch (e) {
     console.warn('Error saving WhatsApp automation rules:', e);
   }
@@ -324,22 +401,28 @@ export function getAutomationLogs(): WhatsAppAutomationLog[] {
   }
 }
 
-export function saveAutomationLog(log: WhatsAppAutomationLog): void {
+export function saveAutomationLog(log: WhatsAppAutomationLog, syncCloud = true): void {
   if (typeof window === 'undefined') return;
   try {
     const current = getAutomationLogs();
     const updated = [log, ...current].slice(0, 100);
     localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({ logs: updated });
+    }
   } catch (e) {
     console.warn('Error saving WhatsApp automation log:', e);
   }
 }
 
-export function clearAutomationLogs(): void {
+export function clearAutomationLogs(syncCloud = true): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(LOGS_STORAGE_KEY);
   window.dispatchEvent(new Event('whatsapp-automation-updated'));
+  if (syncCloud) {
+    void pushWhatsAppCloudUpdate({ logs: [], clearLogs: true });
+  }
 }
 
 export function getDirectoryConfig(): AutomationDirectoryConfig {
@@ -374,11 +457,21 @@ export function getDirectoryConfig(): AutomationDirectoryConfig {
   }
 }
 
-export function saveDirectoryConfig(config: AutomationDirectoryConfig): void {
+export function saveDirectoryConfig(
+  config: AutomationDirectoryConfig,
+  options?: { syncCloud?: boolean; replaceCollaboratorPhones?: boolean }
+): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(DIRECTORY_STORAGE_KEY, JSON.stringify(config));
     window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    if (options?.syncCloud !== false) {
+      void pushWhatsAppCloudUpdate({
+        directory: config,
+        forceDirectoryUpdate: true,
+        replaceCollaboratorPhones: Boolean(options?.replaceCollaboratorPhones)
+      });
+    }
   } catch (e) {
     console.warn('Error saving directory config:', e);
   }
@@ -530,16 +623,34 @@ export function getWhatsAppTrafficEvents(): WhatsAppTrafficEvent[] {
     const raw = localStorage.getItem(TRAFFIC_EVENTS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((ev: WhatsAppTrafficEvent) => !isPlaceholderPhone(ev.recipientPhone))
-      : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((ev: any) => !isPlaceholderPhone(ev.recipientPhone || ev.phone))
+      .map((ev: any) => ({
+        ...ev,
+        createdAt: ev.createdAt || ev.timestamp || new Date().toISOString(),
+        timestamp: ev.timestamp || ev.createdAt || new Date().toISOString(),
+        recipientPhone: normalizeBrazilPhone(ev.recipientPhone || ev.phone),
+        phone: normalizeBrazilPhone(ev.phone || ev.recipientPhone),
+        status: ev.status === 'sent' ? 'delivered' : ev.status
+      }));
   } catch {
     return [];
   }
 }
 
 export function recordWhatsAppTrafficEvent(
-  event: Omit<WhatsAppTrafficEvent, 'id' | 'createdAt' | 'timeLabel'>
+  event: {
+    direction: 'outbound' | 'inbound';
+    mode: 'auto' | 'manual';
+    status: 'sent' | 'delivered' | 'failed';
+    recipientName: string;
+    recipientPhone: string;
+    text?: string;
+    category: AutomationCategory | 'manual_chat' | string;
+    ruleName?: string;
+  },
+  syncCloud = true
 ): WhatsAppTrafficEvent | null {
   if (typeof window === 'undefined') return null;
   const cleanPhone = normalizeBrazilPhone(event.recipientPhone);
@@ -547,17 +658,25 @@ export function recordWhatsAppTrafficEvent(
 
   try {
     const now = new Date();
+    const nowIso = now.toISOString();
+    const normalizedStatus = event.status === 'sent' ? 'delivered' : event.status;
     const newEvent: WhatsAppTrafficEvent = {
       ...event,
+      status: normalizedStatus,
       recipientPhone: cleanPhone,
+      phone: cleanPhone,
       id: `traffic-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      createdAt: now.toISOString(),
+      createdAt: nowIso,
+      timestamp: nowIso,
       timeLabel: now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     };
     const current = getWhatsAppTrafficEvents();
     const updated = [newEvent, ...current].slice(0, 500);
     localStorage.setItem(TRAFFIC_EVENTS_STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new Event('whatsapp-traffic-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({ trafficEvents: updated });
+    }
     return newEvent;
   } catch {
     return null;
@@ -568,7 +687,8 @@ export function recordMessageInWhatsAppFeed(
   recipientName: string,
   recipientPhone: string,
   text: string,
-  status: 'sent' | 'delivered' | 'read' | 'failed' = 'sent'
+  status: 'sent' | 'delivered' | 'read' | 'failed' = 'sent',
+  syncCloud = true
 ) {
   if (typeof window === 'undefined') return;
   const cleanPhone = normalizeBrazilPhone(recipientPhone);
@@ -577,7 +697,7 @@ export function recordMessageInWhatsAppFeed(
   try {
     const raw = localStorage.getItem(CHATS_INBOX_SYNC_KEY);
     const list = raw ? JSON.parse(raw) : [];
-    list.unshift({
+    const newItem = {
       id: 'auto-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
       recipientName,
       recipientPhone: cleanPhone,
@@ -585,9 +705,14 @@ export function recordMessageInWhatsAppFeed(
       status,
       time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       createdAt: new Date().toISOString()
-    });
-    localStorage.setItem(CHATS_INBOX_SYNC_KEY, JSON.stringify(list.slice(0, 100)));
+    };
+    list.unshift(newItem);
+    const trimmed = list.slice(0, 100);
+    localStorage.setItem(CHATS_INBOX_SYNC_KEY, JSON.stringify(trimmed));
     window.dispatchEvent(new Event('whatsapp-automation-message-sent'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({ automatedInboxMessages: trimmed });
+    }
   } catch {}
 }
 
@@ -612,6 +737,143 @@ export function getAutomatedInboxMessages(): Array<{
   }
 }
 
+export function applyCloudStateToLocalStorage(cloudState: any): void {
+  if (typeof window === 'undefined' || !cloudState || typeof cloudState !== 'object') return;
+  try {
+    if (cloudState.providerConfig && typeof cloudState.providerConfig === 'object') {
+      const pc = cloudState.providerConfig;
+      if (pc.providerMode) localStorage.setItem('whatsapp_provider_mode', pc.providerMode);
+      if (pc.altServerUrl) localStorage.setItem('whatsapp_alt_server_url', pc.altServerUrl);
+      if (pc.altApiKey !== undefined) localStorage.setItem('whatsapp_alt_api_key', pc.altApiKey);
+      if (pc.altInstance !== undefined) localStorage.setItem('whatsapp_alt_instance', pc.altInstance);
+      if (pc.qrStatus) localStorage.setItem('whatsapp_qr_status', pc.qrStatus);
+      if (pc.qrPhoneConnected !== undefined) localStorage.setItem('whatsapp_qr_phone', pc.qrPhoneConnected);
+    }
+
+    if (cloudState.directory && typeof cloudState.directory === 'object') {
+      localStorage.setItem(DIRECTORY_STORAGE_KEY, JSON.stringify(cloudState.directory));
+    }
+
+    if (Array.isArray(cloudState.rules) && cloudState.rules.length > 0) {
+      localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(cloudState.rules));
+    }
+
+    if (Array.isArray(cloudState.deletedChatIds)) {
+      localStorage.setItem(DELETED_CHATS_STORAGE_KEY, JSON.stringify(cloudState.deletedChatIds));
+    }
+
+    if (Array.isArray(cloudState.chats)) {
+      localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(cloudState.chats));
+    }
+
+    if (cloudState.chatMessages && typeof cloudState.chatMessages === 'object') {
+      localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(cloudState.chatMessages));
+    }
+
+    if (Array.isArray(cloudState.automatedInboxMessages)) {
+      localStorage.setItem(CHATS_INBOX_SYNC_KEY, JSON.stringify(cloudState.automatedInboxMessages));
+    }
+
+    if (Array.isArray(cloudState.logs)) {
+      localStorage.setItem(LOGS_STORAGE_KEY, JSON.stringify(cloudState.logs));
+    }
+
+    if (Array.isArray(cloudState.trafficEvents)) {
+      localStorage.setItem(TRAFFIC_EVENTS_STORAGE_KEY, JSON.stringify(cloudState.trafficEvents));
+    }
+
+    window.dispatchEvent(new Event('whatsapp-cloud-synced'));
+    window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    window.dispatchEvent(new Event('whatsapp-traffic-updated'));
+  } catch (err) {
+    console.warn('Error applying WhatsApp cloud state to localStorage:', err);
+  }
+}
+
+export async function pushWhatsAppCloudUpdate(payload: Record<string, any>): Promise<any> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const res = await fetch('/api/whatsapp/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.success && data?.state) {
+      applyCloudStateToLocalStorage(data.state);
+      return data.state;
+    }
+  } catch (err) {
+    console.warn('Error pushing WhatsApp cloud update:', err);
+  }
+  return null;
+}
+
+export async function syncWhatsAppStateWithCloud(): Promise<any> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const localProvider = getProviderConfig();
+    const localDirectory = getDirectoryConfig();
+    const localRules = getAutomationRules();
+    const localLogs = getAutomationLogs();
+    const localAutoInbox = getAutomatedInboxMessages();
+    const localTraffic = getWhatsAppTrafficEvents();
+
+    let localChats: any[] = [];
+    let localMessages: Record<string, any[]> = {};
+    let localDeletedIds: string[] = [];
+
+    try {
+      const rawChats = localStorage.getItem(REAL_CHATS_STORAGE_KEY);
+      if (rawChats) {
+        const parsed = JSON.parse(rawChats);
+        if (Array.isArray(parsed)) localChats = parsed;
+      }
+    } catch {}
+
+    try {
+      const rawMsgs = localStorage.getItem(REAL_MESSAGES_STORAGE_KEY);
+      if (rawMsgs) {
+        const parsed = JSON.parse(rawMsgs);
+        if (parsed && typeof parsed === 'object') localMessages = parsed;
+      }
+    } catch {}
+
+    try {
+      const rawDel = localStorage.getItem(DELETED_CHATS_STORAGE_KEY);
+      if (rawDel) {
+        const parsed = JSON.parse(rawDel);
+        if (Array.isArray(parsed)) localDeletedIds = parsed;
+      }
+    } catch {}
+
+    const res = await fetch('/api/whatsapp/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerConfig: localProvider,
+        directory: localDirectory,
+        rules: localRules,
+        chats: localChats,
+        deletedChatIds: localDeletedIds,
+        chatMessages: localMessages,
+        automatedInboxMessages: localAutoInbox,
+        logs: localLogs,
+        trafficEvents: localTraffic
+      })
+    });
+
+    const data = await res.json().catch(() => null);
+    if (res.ok && data?.success && data?.state) {
+      applyCloudStateToLocalStorage(data.state);
+      return data.state;
+    }
+  } catch (err) {
+    console.warn('Error syncing WhatsApp state with cloud:', err);
+  }
+  return null;
+}
+
 export async function triggerWhatsAppAutomation(
   trigger: AutomationTriggerType,
   variables: Record<string, any>,
@@ -621,6 +883,13 @@ export async function triggerWhatsAppAutomation(
     forceRecipientName?: string;
   }
 ): Promise<{ triggeredCount: number; logs: WhatsAppAutomationLog[]; lastError?: string }> {
+  // Ensure device has the latest cloud directory and W-API config before resolving recipients
+  const initialDir = getDirectoryConfig();
+  const initialProv = getProviderConfig();
+  if (!initialDir.adminPhone || !initialProv.altApiKey || !initialProv.altInstance) {
+    await syncWhatsAppStateWithCloud();
+  }
+
   const rules = getAutomationRules();
   const matchingRules = rules.filter(r => {
     if (options?.forceRuleId) return r.id === options.forceRuleId;
@@ -635,10 +904,11 @@ export async function triggerWhatsAppAutomation(
     return { triggeredCount: 0, logs: [] };
   }
 
-  const providerMode = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_provider_mode')) || 'alternative';
-  const altServerUrl = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_server_url')) || 'https://api.w-api.app';
-  const altApiKey = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_api_key')) || '';
-  const altInstance = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_instance')) || '';
+  const currentProv = getProviderConfig();
+  const providerMode = currentProv.providerMode || 'alternative';
+  const altServerUrl = currentProv.altServerUrl || 'https://api.w-api.app';
+  const altApiKey = currentProv.altApiKey || '';
+  const altInstance = currentProv.altInstance || '';
 
   const createdLogs: WhatsAppAutomationLog[] = [];
   const now = new Date();
