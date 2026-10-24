@@ -663,7 +663,7 @@ function TasksContent() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, type')
+          .select('id, name, type, phone')
           .not('type', 'eq', 'entregador')
           .not('role', 'ilike', '%entrega%')
           .order('name');
@@ -1184,7 +1184,7 @@ function TasksContent() {
             // Re-fetch collaborators if profiles change
             const fetchCollaborators = async () => {
               try {
-                const { data, error } = await supabase.from('profiles').select('id, name, type').order('name');
+                const { data, error } = await supabase.from('profiles').select('id, name, type, phone').order('name');
                 if (!error && data) setCollaborators(data);
               } catch (_) {}
             };
@@ -1492,7 +1492,9 @@ function TasksContent() {
 
           const collabObj = collaborators.find(c => c.id === profileId);
           await triggerWhatsAppAutomation('task_created', {
+            colaboradorId: profileId,
             colaborador: collabObj?.name || 'Colaborador',
+            collaboratorPhone: collabObj?.phone || collabObj?.whatsapp,
             criador: user?.name || 'Administrador',
             tarefa: task.title,
             prioridade: task.priority || 'Média',

@@ -90,7 +90,7 @@ export default function CreateTaskForm() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, location')
+          .select('id, name, location, phone')
           .order('name');
         
         if (error) {
@@ -380,6 +380,7 @@ export default function CreateTaskForm() {
 
         const collabObj = collaborators.find(c => c.id === profileId);
         await triggerWhatsAppAutomation('task_created', {
+          colaboradorId: profileId,
           colaborador: collabObj?.name || 'Colaborador',
           collaboratorPhone: collabObj?.phone || collabObj?.whatsapp,
           criador: user?.name || 'Administrador',

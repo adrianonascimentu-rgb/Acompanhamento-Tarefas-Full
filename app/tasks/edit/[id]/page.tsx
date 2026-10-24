@@ -15,6 +15,7 @@ import { applyStatusToProfiles } from '@/lib/collaboratorStatus';
 import TaskComments from '@/components/tasks/TaskComments';
 import { TaskTemplateModal } from '@/components/tasks/TaskTemplateModal';
 import { TaskTemplate } from '@/lib/taskTemplates';
+import { triggerWhatsAppAutomation } from '@/lib/whatsappAutomation';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,7 +87,7 @@ export default function EditTaskPage() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, name, location')
+          .select('id, name, location, phone')
           .order('name');
         
         if (error) {
@@ -365,7 +366,7 @@ export default function EditTaskPage() {
         }
       }
 
-      // 3. Trigger notifications for new assignees
+      // 3. Trigger notifications and WhatsApp message for new assignees
       const newAssignees = selectedCollaborators.filter(id => !initialAssigneeIds.includes(id));
       for (const assigneeId of newAssignees) {
         await createNotification(
@@ -376,6 +377,20 @@ export default function EditTaskPage() {
           taskId as string,
           `new_task_${taskId}`
         );
+
+        const collabObj = collaborators.find(c => c.id === assigneeId);
+        await triggerWhatsAppAutomation('task_created', {
+          colaboradorId: assigneeId,
+          colaborador: collabObj?.name || 'Colaborador',
+          collaboratorPhone: collabObj?.phone || collabObj?.whatsapp,
+          criador: currentUser?.name || 'Administrador',
+          tarefa: title,
+          prioridade: priority || 'Média',
+          prazo: dueDate
+            ? new Date(dueDate + 'T00:00:00').toLocaleDateString('pt-BR')
+            : 'Rotina Permanente',
+          descricao: description || 'Sem descrição adicional'
+        });
       }
 
       // 4. Trigger notifications if status changed

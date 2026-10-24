@@ -98,6 +98,94 @@ async function saveCollaboratorAccessConfig(
   }
 }
 
+async function syncCollaboratorPhoneToWhatsAppCloud(
+  client: any,
+  profile: { name?: string | null; phone?: string | null; role?: string | null; isAdmin?: boolean }
+) {
+  if (!client || !profile.name) return;
+  const digits = String(profile.phone || '').replace(/\D/g, '');
+  if (digits.length < 10) return;
+  const cleanPhone = (digits.length === 10 || digits.length === 11) && !digits.startsWith('55')
+    ? `55${digits}`
+    : digits;
+  const cleanName = String(profile.name).trim();
+  const nameKey = cleanName.toLowerCase();
+
+  try {
+    const { data: existing } = await client
+      .from('system_settings')
+      .select('value')
+      .eq('key', 'whatsapp_cloud_state_v1')
+      .maybeSingle();
+
+    const current = existing?.value && typeof existing.value === 'object' ? existing.value : {};
+    const directory = current.directory && typeof current.directory === 'object'
+      ? { ...current.directory }
+      : {
+          adminName: 'Adriano Nascimento (Admin)',
+          adminPhone: '',
+          logisticsGroupPhone: '',
+          collaboratorPhones: {}
+        };
+    const collabPhones = directory.collaboratorPhones && typeof directory.collaboratorPhones === 'object'
+      ? { ...directory.collaboratorPhones }
+      : {};
+
+    collabPhones[nameKey] = cleanPhone;
+    directory.collaboratorPhones = collabPhones;
+
+    if (profile.isAdmin && !directory.adminPhone) {
+      directory.adminPhone = cleanPhone;
+      directory.adminName = cleanName;
+    }
+
+    const chats: any[] = Array.isArray(current.chats) ? [...current.chats] : [];
+    const chatId = `chat-${cleanPhone}`;
+    const existingIdx = chats.findIndex((c: any) => c && (c.id === chatId || c.phone === cleanPhone));
+    if (existingIdx === -1) {
+      chats.push({
+        id: chatId,
+        name: cleanName,
+        phone: cleanPhone,
+        lastMessage: 'Conversa pronta para envio real via WhatsApp',
+        lastMessageSender: 'user',
+        lastMessageStatus: 'sent',
+        time: 'Ativo',
+        unread: 0,
+        online: true,
+        type: 'contact',
+        roleOrDept: `${profile.role || 'Colaborador'} (Perfil)`,
+        tags: ['Perfil do Usuário', 'Equipe']
+      });
+    } else {
+      chats[existingIdx] = {
+        ...chats[existingIdx],
+        name: cleanName,
+        phone: cleanPhone
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatedState = {
+      ...current,
+      directory,
+      chats,
+      updatedAt: nowIso
+    };
+
+    await client.from('system_settings').upsert(
+      {
+        key: 'whatsapp_cloud_state_v1',
+        value: updatedState,
+        updated_at: nowIso
+      },
+      { onConflict: 'key' }
+    );
+  } catch (err) {
+    console.warn('Aviso ao sincronizar telefone do perfil com WhatsApp:', err);
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const client = getAdminClient();
@@ -429,6 +517,14 @@ export async function POST(req: Request) {
       }
     }
 
+    // 4. Sincronizar número de telefone do perfil com o módulo de WhatsApp
+    await syncCollaboratorPhoneToWhatsAppCloud(client, {
+      name: cleanName,
+      phone: cleanPhone,
+      role: resolvedRoleTitle,
+      isAdmin: isTargetAdmin
+    });
+
     return NextResponse.json({
       success: true,
       id: userId,
@@ -741,6 +837,14 @@ export async function PUT(req: Request) {
         console.warn('Erro ao sincronizar skills:', skillErr);
       }
     }
+
+    // 4. Sincronizar número de telefone do perfil com o módulo de WhatsApp
+    await syncCollaboratorPhoneToWhatsAppCloud(client, {
+      name: cleanName,
+      phone: cleanPhone,
+      role: targetRole,
+      isAdmin: isTargetAdmin
+    });
 
     return NextResponse.json({
       success: true,

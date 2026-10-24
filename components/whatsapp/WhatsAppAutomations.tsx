@@ -56,7 +56,10 @@ import {
   normalizeBrazilPhone,
   isPlaceholderPhone,
   recordMessageInWhatsAppFeed,
-  recordWhatsAppTrafficEvent
+  recordWhatsAppTrafficEvent,
+  syncCollaboratorPhonesFromProfiles,
+  getCachedProfilePhones,
+  CollaboratorProfilePhone
 } from '@/lib/whatsappAutomation';
 
 const EXTRA_SUGGESTION_TEMPLATES: Omit<WhatsAppAutomationRule, 'id' | 'totalSentCount'>[] = [
@@ -164,10 +167,14 @@ export default function WhatsAppAutomations() {
     enabled: true
   });
 
+  const [profilePhones, setProfilePhones] = useState<CollaboratorProfilePhone[]>([]);
+  const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
+
   const loadData = () => {
     setRules(getAutomationRules());
     setLogs(getAutomationLogs());
     setDirectory(getDirectoryConfig());
+    setProfilePhones(getCachedProfilePhones());
     if (typeof window !== 'undefined') {
       const pc = getProviderConfig();
       setWapiInstanceId(pc.altInstance || '');
@@ -179,6 +186,7 @@ export default function WhatsAppAutomations() {
   useEffect(() => {
     loadData();
     void syncWhatsAppStateWithCloud();
+    void syncCollaboratorPhonesFromProfiles();
     const handleUpdate = () => loadData();
     window.addEventListener('whatsapp-automation-updated', handleUpdate);
     window.addEventListener('whatsapp-cloud-synced', handleUpdate);
@@ -1605,18 +1613,45 @@ export default function WhatsAppAutomations() {
                 isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
               }`}
             >
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500 shrink-0">
-                  <Users size={20} />
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-500 shrink-0">
+                    <Users size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold">
+                      Telefones de Colaboradores & Motoristas
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                      Os números de telefone cadastrados no <strong>Perfil do Usuário</strong> são sincronizados automaticamente para o envio de tarefas e entregas no WhatsApp.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-bold">
-                    Telefones de Colaboradores & Motoristas
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                    Vincule o nome do colaborador ou motorista ao número de WhatsApp para o envio automático de tarefas delegadas e roteiros de entrega.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  disabled={isSyncingProfiles}
+                  onClick={async () => {
+                    setIsSyncingProfiles(true);
+                    try {
+                      const synced = await syncCollaboratorPhonesFromProfiles();
+                      loadData();
+                      showToast(
+                        `${synced.length} telefone(s) sincronizado(s) dos perfis de colaboradores!`,
+                        'success'
+                      );
+                    } finally {
+                      setIsSyncingProfiles(false);
+                    }
+                  }}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+                    isDarkMode
+                      ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/20'
+                      : 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                  }`}
+                >
+                  <RefreshCw size={13} className={isSyncingProfiles ? 'animate-spin' : ''} />
+                  <span>Sincronizar Perfis</span>
+                </button>
               </div>
 
               {/* Well-proportioned Add Collaborator Form Box */}
@@ -1672,39 +1707,53 @@ export default function WhatsAppAutomations() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-80 overflow-y-auto pr-1">
-                  {Object.entries(directory.collaboratorPhones).map(([nameKey, phoneVal]) => (
-                    <div
-                      key={nameKey}
-                      className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs ${
-                        isDarkMode
-                          ? 'bg-slate-950/60 border-slate-800'
-                          : 'bg-slate-50 border-slate-200/90'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <span className="font-bold capitalize block truncate text-slate-900 dark:text-slate-100">
-                          {nameKey}
-                        </span>
-                        <span className="font-mono tabular-nums text-[11px] text-emerald-600 dark:text-emerald-400">
-                          +{phoneVal}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveCollaboratorPhone(nameKey)}
-                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors shrink-0 flex items-center gap-1 ${
+                  {Object.entries(directory.collaboratorPhones).map(([nameKey, phoneVal]) => {
+                    const isFromProfile = profilePhones.some(
+                      p =>
+                        p.name.toLowerCase() === nameKey.toLowerCase() ||
+                        normalizeBrazilPhone(p.phone) === normalizeBrazilPhone(phoneVal)
+                    );
+                    return (
+                      <div
+                        key={nameKey}
+                        className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs ${
                           isDarkMode
-                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
-                            : 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
+                            ? 'bg-slate-950/60 border-slate-800'
+                            : 'bg-slate-50 border-slate-200/90'
                         }`}
-                        title="Remover telefone"
                       >
-                        <Trash2 size={12} />
-                        <span>Remover</span>
-                      </button>
-                    </div>
-                  ))}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold capitalize block truncate text-slate-900 dark:text-slate-100">
+                              {nameKey}
+                            </span>
+                            {isFromProfile && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-500 shrink-0">
+                                Perfil
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-mono tabular-nums text-[11px] text-emerald-600 dark:text-emerald-400">
+                            +{phoneVal}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCollaboratorPhone(nameKey)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors shrink-0 flex items-center gap-1 ${
+                            isDarkMode
+                              ? 'bg-rose-500/10 border-rose-500/30 text-rose-400 hover:bg-rose-500/20'
+                              : 'bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100'
+                          }`}
+                          title="Remover telefone"
+                        >
+                          <Trash2 size={12} />
+                          <span>Remover</span>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

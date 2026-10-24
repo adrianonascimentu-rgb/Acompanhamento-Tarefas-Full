@@ -188,7 +188,7 @@ class DataPrefetchCache {
         try {
           const { data: assignees } = await supabase
             .from('task_assignees')
-            .select('*, profiles(id, name, type, image_url)');
+            .select('*, profiles(id, name, type, phone, image_url)');
           
           if (assignees) {
             assignees.forEach((a: any) => {

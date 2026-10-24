@@ -29,6 +29,65 @@ function normalizePhone(raw?: string): string {
   return digits;
 }
 
+const DEMO_PLACEHOLDER_PHONES = new Set([
+  '5583999990001',
+  '5583999990002',
+  '5511999999999',
+  '5583988881001',
+  '5583988881002',
+  '5583988881003',
+  '5583988881004',
+  '5583988881005',
+  '5583988881006',
+  '5583988881007',
+  '5511888888888',
+  '5511777777777',
+  '5511965432100'
+]);
+
+function isPlaceholderPhone(phone?: string): boolean {
+  const clean = normalizePhone(phone);
+  return !clean || clean.length < 10 || DEMO_PLACEHOLDER_PHONES.has(clean);
+}
+
+interface ProfilePhoneEntry {
+  id: string;
+  name: string;
+  phone: string;
+  role: string;
+  type: string;
+  status: string;
+}
+
+async function fetchActiveProfilePhones(client: any): Promise<ProfilePhoneEntry[]> {
+  if (!client) return [];
+  try {
+    const { data, error } = await client
+      .from('profiles')
+      .select('id, name, phone, role, type, status')
+      .order('name');
+    if (error || !Array.isArray(data)) return [];
+    const results: ProfilePhoneEntry[] = [];
+    for (const row of data) {
+      if (row.status === 'Inativo') continue;
+      const cleanPhone = normalizePhone(row.phone);
+      const cleanName = String(row.name || '').trim();
+      if (!cleanName || isPlaceholderPhone(cleanPhone)) continue;
+      results.push({
+        id: row.id,
+        name: cleanName,
+        phone: cleanPhone,
+        role: String(row.role || 'Colaborador').trim(),
+        type: String(row.type || 'user').trim().toLowerCase(),
+        status: String(row.status || 'Ativo')
+      });
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
 export interface WhatsAppCloudState {
   providerConfig: {
     providerMode: 'meta' | 'alternative' | 'simulation';
@@ -157,18 +216,31 @@ export async function GET() {
       return NextResponse.json({ success: true, state: DEFAULT_CLOUD_STATE });
     }
 
-    const { data, error } = await client
-      .from('system_settings')
-      .select('value')
-      .eq('key', CLOUD_STATE_KEY)
-      .maybeSingle();
+    const [{ data, error }, profilePhones] = await Promise.all([
+      client
+        .from('system_settings')
+        .select('value')
+        .eq('key', CLOUD_STATE_KEY)
+        .maybeSingle(),
+      fetchActiveProfilePhones(client)
+    ]);
 
     if (error) {
       return NextResponse.json({ success: true, state: DEFAULT_CLOUD_STATE });
     }
 
     const state = parseStoredValue(data?.value);
-    return NextResponse.json({ success: true, state });
+    for (const p of profilePhones) {
+      state.directory.collaboratorPhones[p.name.toLowerCase()] = p.phone;
+      if (
+        !state.directory.adminPhone &&
+        (p.type === 'admin' || p.role.toLowerCase().includes('admin') || p.name.toLowerCase().includes('adriano'))
+      ) {
+        state.directory.adminPhone = p.phone;
+        state.directory.adminName = p.name;
+      }
+    }
+    return NextResponse.json({ success: true, state, profilePhones });
   } catch (err: any) {
     return NextResponse.json({ success: true, state: DEFAULT_CLOUD_STATE });
   }
@@ -180,13 +252,18 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
 
     let currentCloud = { ...DEFAULT_CLOUD_STATE };
+    let profilePhones: ProfilePhoneEntry[] = [];
     if (client) {
-      const { data } = await client
-        .from('system_settings')
-        .select('value')
-        .eq('key', CLOUD_STATE_KEY)
-        .maybeSingle();
+      const [{ data }, fetchedProfiles] = await Promise.all([
+        client
+          .from('system_settings')
+          .select('value')
+          .eq('key', CLOUD_STATE_KEY)
+          .maybeSingle(),
+        fetchActiveProfilePhones(client)
+      ]);
       currentCloud = parseStoredValue(data?.value);
+      profilePhones = fetchedProfiles;
     }
 
     const nowIso = new Date().toISOString();
@@ -265,6 +342,18 @@ export async function POST(req: NextRequest) {
             ...mergedDirectory.collaboratorPhones
           };
         }
+      }
+    }
+
+    // 2.5 Always merge active collaborator phone numbers from the user profiles table (profiles.phone)
+    for (const p of profilePhones) {
+      mergedDirectory.collaboratorPhones[p.name.toLowerCase()] = p.phone;
+      if (
+        !mergedDirectory.adminPhone &&
+        (p.type === 'admin' || p.role.toLowerCase().includes('admin') || p.name.toLowerCase().includes('adriano'))
+      ) {
+        mergedDirectory.adminPhone = p.phone;
+        mergedDirectory.adminName = p.name;
       }
     }
 
@@ -377,6 +466,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Ensure every collaborator with a phone registered in their profile is present in chatMap (unless deleted)
+    for (const p of profilePhones) {
+      const chatId = `chat-${p.phone}`;
+      if (deletedSet.has(chatId)) continue;
+      const existing = chatMap.get(chatId);
+      const msgsForChat = mergedChatMessages[chatId] || [];
+      const latestMsg = msgsForChat.length > 0 ? msgsForChat[msgsForChat.length - 1] : null;
+
+      if (!existing) {
+        chatMap.set(chatId, {
+          id: chatId,
+          name: p.name,
+          phone: p.phone,
+          lastMessage: latestMsg ? latestMsg.text : 'Conversa pronta para envio real via WhatsApp',
+          lastMessageSender: latestMsg ? latestMsg.sender || 'user' : 'user',
+          lastMessageStatus: latestMsg ? latestMsg.status || 'sent' : 'sent',
+          time: latestMsg ? latestMsg.time : 'Ativo',
+          unread: 0,
+          online: true,
+          type: 'contact',
+          roleOrDept: `${p.role} (Perfil)`,
+          tags: ['Perfil do Usuário', 'Equipe']
+        });
+      } else {
+        chatMap.set(chatId, {
+          ...existing,
+          name: p.name || existing.name,
+          phone: p.phone,
+          roleOrDept:
+            !existing.roleOrDept || existing.roleOrDept === 'Colaborador / Motorista Cadastrado'
+              ? `${p.role} (Perfil)`
+              : existing.roleOrDept
+        });
+      }
+    }
+
     // Ensure every chat in chatMap reflects its latest message from mergedChatMessages
     for (const [chatId, chatObj] of chatMap.entries()) {
       const msgsForChat = mergedChatMessages[chatId] || [];
@@ -440,7 +565,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, state: nextState });
+    return NextResponse.json({ success: true, state: nextState, profilePhones });
   } catch (err: any) {
     console.error('Erro na sincronização em nuvem do WhatsApp:', err);
     return NextResponse.json(

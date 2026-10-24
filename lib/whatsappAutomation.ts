@@ -87,6 +87,14 @@ export interface WhatsAppProviderConfig {
   qrPhoneConnected?: string;
 }
 
+export interface CollaboratorProfilePhone {
+  id: string;
+  name: string;
+  phone: string;
+  role: string;
+  type?: string;
+}
+
 export const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v2_real';
 export const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v2_real';
 export const DIRECTORY_STORAGE_KEY = 'whatsapp_automation_directory_v1';
@@ -95,6 +103,7 @@ export const TRAFFIC_EVENTS_STORAGE_KEY = 'whatsapp_real_traffic_events_v1';
 export const REAL_CHATS_STORAGE_KEY = 'whatsapp_real_chats_v2';
 export const REAL_MESSAGES_STORAGE_KEY = 'whatsapp_real_messages_v2';
 export const DELETED_CHATS_STORAGE_KEY = 'whatsapp_deleted_chat_ids_v1';
+export const PROFILE_PHONES_CACHE_KEY = 'whatsapp_profile_phones_cache_v1';
 
 export const DEFAULT_DIRECTORY_CONFIG: AutomationDirectoryConfig = {
   adminName: 'Adriano Nascimento (Admin)',
@@ -446,6 +455,23 @@ export function getDirectoryConfig(): AutomationDirectoryConfig {
     const rawAdmin = normalizeBrazilPhone(parsed?.adminPhone || '');
     const rawGroup = normalizeBrazilPhone(parsed?.logisticsGroupPhone || '');
 
+    // Also include all collaborator phones registered in user profiles (profiles.phone)
+    try {
+      const rawProfiles = localStorage.getItem(PROFILE_PHONES_CACHE_KEY);
+      if (rawProfiles) {
+        const profileList = JSON.parse(rawProfiles);
+        if (Array.isArray(profileList)) {
+          profileList.forEach((p: any) => {
+            const pName = String(p?.name || '').trim().toLowerCase();
+            const pPhone = normalizeBrazilPhone(p?.phone || '');
+            if (pName && pPhone && !isPlaceholderPhone(pPhone)) {
+              cleanedCollab[pName] = pPhone;
+            }
+          });
+        }
+      }
+    } catch {}
+
     return {
       adminName: parsed?.adminName || DEFAULT_DIRECTORY_CONFIG.adminName,
       adminPhone: isPlaceholderPhone(rawAdmin) ? '' : rawAdmin,
@@ -503,7 +529,161 @@ export function normalizeBrazilPhone(raw?: string): string {
 
 export function isPlaceholderPhone(phone?: string): boolean {
   const clean = normalizeBrazilPhone(phone);
-  return !clean || DEMO_PLACEHOLDER_PHONES.has(clean);
+  return !clean || clean.length < 10 || DEMO_PLACEHOLDER_PHONES.has(clean);
+}
+
+function normalizeSearchKey(str?: string): string {
+  return String(str || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+export function getCachedProfilePhones(): CollaboratorProfilePhone[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PROFILE_PHONES_CACHE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCachedProfilePhones(list: CollaboratorProfilePhone[]): void {
+  if (typeof window === 'undefined' || !Array.isArray(list)) return;
+  try {
+    localStorage.setItem(PROFILE_PHONES_CACHE_KEY, JSON.stringify(list));
+    const dir = getDirectoryConfig();
+    const nextCollab = { ...dir.collaboratorPhones };
+    let changed = false;
+    for (const p of list) {
+      const cleanName = String(p.name || '').trim().toLowerCase();
+      const cleanPhone = normalizeBrazilPhone(p.phone);
+      if (cleanName && cleanPhone && !isPlaceholderPhone(cleanPhone)) {
+        if (nextCollab[cleanName] !== cleanPhone) {
+          nextCollab[cleanName] = cleanPhone;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      localStorage.setItem(
+        DIRECTORY_STORAGE_KEY,
+        JSON.stringify({
+          ...dir,
+          collaboratorPhones: nextCollab
+        })
+      );
+      window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    }
+  } catch {}
+}
+
+export async function syncCollaboratorPhonesFromProfiles(): Promise<CollaboratorProfilePhone[]> {
+  if (typeof window === 'undefined') return [];
+  try {
+    const res = await fetch(`/api/collaborators?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return getCachedProfilePhones();
+    const data = await res.json().catch(() => null);
+    const collaborators = Array.isArray(data?.collaborators) ? data.collaborators : [];
+    const profilePhones: CollaboratorProfilePhone[] = [];
+
+    for (const c of collaborators) {
+      if (c?.status === 'Inativo') continue;
+      const cleanName = String(c?.name || '').trim();
+      const cleanPhone = normalizeBrazilPhone(c?.phone || c?.whatsapp || '');
+      if (!cleanName || isPlaceholderPhone(cleanPhone)) continue;
+      profilePhones.push({
+        id: String(c.id || ''),
+        name: cleanName,
+        phone: cleanPhone,
+        role: String(c.role || 'Colaborador').trim(),
+        type: String(c.type || 'user').trim()
+      });
+    }
+
+    if (profilePhones.length > 0) {
+      saveCachedProfilePhones(profilePhones);
+    }
+    return profilePhones;
+  } catch {
+    return getCachedProfilePhones();
+  }
+}
+
+export function findCollaboratorProfilePhone(
+  nameOrId?: string,
+  explicitPhone?: string,
+  collaboratorId?: string
+): string {
+  const cleanExplicit = normalizeBrazilPhone(explicitPhone);
+  if (cleanExplicit && !isPlaceholderPhone(cleanExplicit)) {
+    return cleanExplicit;
+  }
+
+  const profiles = getCachedProfilePhones();
+  const dir = getDirectoryConfig();
+  const targetId = String(collaboratorId || '').trim();
+  const targetKey = normalizeSearchKey(nameOrId);
+  const targetFirst = targetKey.split(' ')[0];
+
+  // 1. Lookup in User Profiles cache first (source of truth from user profile registration)
+  if (targetId) {
+    const byId = profiles.find(p => p.id === targetId);
+    if (byId && !isPlaceholderPhone(byId.phone)) {
+      return normalizeBrazilPhone(byId.phone);
+    }
+  }
+
+  if (targetKey) {
+    const exactProfile = profiles.find(p => normalizeSearchKey(p.name) === targetKey || p.id === nameOrId);
+    if (exactProfile && !isPlaceholderPhone(exactProfile.phone)) {
+      return normalizeBrazilPhone(exactProfile.phone);
+    }
+
+    const partialProfile = profiles.find(p => {
+      const pNorm = normalizeSearchKey(p.name);
+      const pFirst = pNorm.split(' ')[0];
+      return (
+        pNorm.startsWith(targetKey) ||
+        targetKey.startsWith(pNorm) ||
+        (targetFirst.length >= 3 && pFirst === targetFirst)
+      );
+    });
+    if (partialProfile && !isPlaceholderPhone(partialProfile.phone)) {
+      return normalizeBrazilPhone(partialProfile.phone);
+    }
+  }
+
+  // 2. Lookup in Directory collaboratorPhones map
+  if (nameOrId) {
+    const lowerRaw = String(nameOrId).trim().toLowerCase();
+    const firstRaw = lowerRaw.split(' ')[0];
+    const directMatch = dir.collaboratorPhones[lowerRaw] || dir.collaboratorPhones[firstRaw];
+    if (directMatch && !isPlaceholderPhone(directMatch)) {
+      return normalizeBrazilPhone(directMatch);
+    }
+
+    for (const [k, v] of Object.entries(dir.collaboratorPhones)) {
+      const kNorm = normalizeSearchKey(k);
+      const kFirst = kNorm.split(' ')[0];
+      if (
+        kNorm === targetKey ||
+        kNorm.startsWith(targetKey) ||
+        targetKey.startsWith(kNorm) ||
+        (targetFirst.length >= 3 && kFirst === targetFirst)
+      ) {
+        if (!isPlaceholderPhone(v)) {
+          return normalizeBrazilPhone(v);
+        }
+      }
+    }
+  }
+
+  return '';
 }
 
 export function resolveRecipientPhone(
@@ -525,18 +705,19 @@ export function resolveRecipientPhone(
 
   if (target === 'admin_or_creator') {
     const creatorName = payload.criador || dir.adminName;
-    const creatorPhone = normalizeBrazilPhone(payload.creatorPhone || normalizedAdminPhone);
+    const creatorProfilePhone = findCollaboratorProfilePhone(creatorName, payload.creatorPhone, payload.criadorId);
+    const creatorPhone = creatorProfilePhone || normalizedAdminPhone;
     return { name: creatorName, phone: creatorPhone };
   }
 
   if (target === 'assigned_collaborator') {
     const collabName = String(payload.colaborador || 'Colaborador');
     const explicitPhone = payload.collaboratorPhone || payload.phone;
-    const mappedRaw =
-      explicitPhone ||
-      dir.collaboratorPhones[collabName.toLowerCase()] ||
-      dir.collaboratorPhones[collabName.split(' ')[0].toLowerCase()];
-    const mappedPhone = normalizeBrazilPhone(mappedRaw);
+    const mappedPhone = findCollaboratorProfilePhone(
+      collabName,
+      explicitPhone,
+      payload.colaboradorId || payload.collaboratorId || payload.profileId
+    );
 
     const finalPhone =
       !mappedPhone || (isPlaceholderPhone(mappedPhone) && hasRealAdminPhone)
@@ -549,11 +730,11 @@ export function resolveRecipientPhone(
   if (target === 'assigned_driver') {
     const driverName = String(payload.motorista || 'Motorista');
     const explicitPhone = payload.driverPhone || payload.phone;
-    const mappedRaw =
-      explicitPhone ||
-      dir.collaboratorPhones[driverName.toLowerCase()] ||
-      dir.collaboratorPhones[driverName.split(' ')[0].toLowerCase()];
-    const mappedPhone = normalizeBrazilPhone(mappedRaw);
+    const mappedPhone = findCollaboratorProfilePhone(
+      driverName,
+      explicitPhone,
+      payload.driverId || payload.motoristaId || payload.profileId
+    );
 
     const finalPhone =
       !mappedPhone || (isPlaceholderPhone(mappedPhone) && hasRealAdminPhone)
@@ -737,9 +918,13 @@ export function getAutomatedInboxMessages(): Array<{
   }
 }
 
-export function applyCloudStateToLocalStorage(cloudState: any): void {
+export function applyCloudStateToLocalStorage(cloudState: any, profilePhones?: CollaboratorProfilePhone[]): void {
   if (typeof window === 'undefined' || !cloudState || typeof cloudState !== 'object') return;
   try {
+    if (Array.isArray(profilePhones) && profilePhones.length > 0) {
+      localStorage.setItem(PROFILE_PHONES_CACHE_KEY, JSON.stringify(profilePhones));
+    }
+
     if (cloudState.providerConfig && typeof cloudState.providerConfig === 'object') {
       const pc = cloudState.providerConfig;
       if (pc.providerMode) localStorage.setItem('whatsapp_provider_mode', pc.providerMode);
@@ -800,7 +985,7 @@ export async function pushWhatsAppCloudUpdate(payload: Record<string, any>): Pro
     });
     const data = await res.json().catch(() => null);
     if (res.ok && data?.success && data?.state) {
-      applyCloudStateToLocalStorage(data.state);
+      applyCloudStateToLocalStorage(data.state, data.profilePhones);
       return data.state;
     }
   } catch (err) {
@@ -865,7 +1050,7 @@ export async function syncWhatsAppStateWithCloud(): Promise<any> {
 
     const data = await res.json().catch(() => null);
     if (res.ok && data?.success && data?.state) {
-      applyCloudStateToLocalStorage(data.state);
+      applyCloudStateToLocalStorage(data.state, data.profilePhones);
       return data.state;
     }
   } catch (err) {
@@ -883,11 +1068,26 @@ export async function triggerWhatsAppAutomation(
     forceRecipientName?: string;
   }
 ): Promise<{ triggeredCount: number; logs: WhatsAppAutomationLog[]; lastError?: string }> {
-  // Ensure device has the latest cloud directory and W-API config before resolving recipients
+  // Ensure device has the latest cloud directory, profile phones, and W-API config before resolving recipients
   const initialDir = getDirectoryConfig();
   const initialProv = getProviderConfig();
   if (!initialDir.adminPhone || !initialProv.altApiKey || !initialProv.altInstance) {
     await syncWhatsAppStateWithCloud();
+  }
+
+  // Ensure collaborator phones from user profiles are loaded when sending to a collaborator or driver
+  const cachedProfiles = getCachedProfilePhones();
+  const targetCollabOrDriver = variables.colaborador || variables.motorista;
+  if (
+    cachedProfiles.length === 0 ||
+    (targetCollabOrDriver &&
+      !findCollaboratorProfilePhone(
+        targetCollabOrDriver,
+        variables.collaboratorPhone || variables.driverPhone || variables.phone,
+        variables.colaboradorId || variables.driverId
+      ))
+  ) {
+    await syncCollaboratorPhonesFromProfiles();
   }
 
   const rules = getAutomationRules();

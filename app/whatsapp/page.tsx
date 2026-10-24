@@ -54,7 +54,9 @@ import {
   DELETED_CHATS_STORAGE_KEY,
   normalizeBrazilPhone,
   isPlaceholderPhone,
-  recordWhatsAppTrafficEvent
+  recordWhatsAppTrafficEvent,
+  syncCollaboratorPhonesFromProfiles,
+  getCachedProfilePhones
 } from '@/lib/whatsappAutomation';
 import { supabase } from '@/lib/supabase';
 import { useUI } from '@/hooks/useUI';
@@ -152,6 +154,7 @@ export default function WhatsAppPage() {
 
     loadProviderFromLocal();
     void syncWhatsAppStateWithCloud();
+    void syncCollaboratorPhonesFromProfiles();
 
     window.addEventListener('whatsapp-cloud-synced', loadProviderFromLocal);
     window.addEventListener('whatsapp-automation-updated', loadProviderFromLocal);
@@ -342,19 +345,38 @@ export default function WhatsAppPage() {
         );
       }
 
-      // 3. Real Collaborators & Drivers from Directory
+      // 3. Real Collaborators & Drivers from User Profiles (Perfil do Usuário)
+      const cachedProfilePhones = getCachedProfilePhones();
+      cachedProfilePhones.forEach(p => {
+        if (p.phone && !isPlaceholderPhone(p.phone)) {
+          ensureContactInList(
+            p.phone,
+            p.name,
+            `${p.role || 'Colaborador'} (Perfil)`,
+            'contact',
+            ['Perfil do Usuário', 'Equipe']
+          );
+        }
+      });
+
+      // 4. Real Collaborators & Drivers from Directory
       Object.entries(dir.collaboratorPhones || {}).forEach(([nameKey, phoneVal]) => {
         if (phoneVal && !isPlaceholderPhone(phoneVal)) {
-          const formattedName = nameKey
-            .split(' ')
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' ');
+          const matchedProfile = cachedProfilePhones.find(
+            p => p.name.toLowerCase() === nameKey.toLowerCase() || normalizeBrazilPhone(p.phone) === normalizeBrazilPhone(phoneVal)
+          );
+          const formattedName = matchedProfile
+            ? matchedProfile.name
+            : nameKey
+                .split(' ')
+                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' ');
           ensureContactInList(
             phoneVal,
             formattedName,
-            'Colaborador / Motorista Cadastrado',
+            matchedProfile ? `${matchedProfile.role || 'Colaborador'} (Perfil)` : 'Colaborador / Motorista Cadastrado',
             'contact',
-            ['Equipe', 'Automação']
+            matchedProfile ? ['Perfil do Usuário', 'Equipe'] : ['Equipe', 'Automação']
           );
         }
       });
