@@ -122,17 +122,22 @@ function DeliveriesContent() {
   const [driverFilter, setDriverFilter] = useState('all');
   const [onlyMyDeliveries, setOnlyMyDeliveries] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [periodFilter, setPeriodFilter] = useState('all'); // all, day, tomorrow, week, month
+  const [periodFilter, setPeriodFilter] = useState('week'); // week (últimos 7 dias), all, day, tomorrow, month
 
   useEffect(() => {
     const status = searchParams?.get('status');
+    const period = searchParams?.get('period');
     const mode = searchParams?.get('mode') || searchParams?.get('tab');
     if (mode === 'tracking' || mode === 'fleet' || mode === 'google-maps') {
       setViewMode('fleet_tracking');
     }
     if (status) {
       setStatusFilter(status);
-      setPeriodFilter('all');
+    }
+    if (period) {
+      setPeriodFilter(period);
+    } else {
+      setPeriodFilter('week');
     }
   }, [searchParams]);
   const [sellers, setSellers] = useState<any[]>([]);
@@ -1524,7 +1529,9 @@ function DeliveriesContent() {
     } else if (periodFilter === 'week') {
       const oneWeekAgo = new Date(today);
       oneWeekAgo.setDate(today.getDate() - 7);
-      matchesPeriod = deliveryDate >= oneWeekAgo;
+      const endOfToday = new Date(today);
+      endOfToday.setHours(23, 59, 59, 999);
+      matchesPeriod = deliveryDate >= oneWeekAgo && deliveryDate <= endOfToday;
     } else if (periodFilter === 'next_week') {
       const nextWeekStart = new Date(today);
       const dayOfWeek = today.getDay(); // 0 (Sun) to 6 (Sat)
@@ -1812,10 +1819,10 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
                   {[
+                    { id: 'week', label: 'Últimos 7 Dias', icon: Calendar },
                     { id: 'all', label: 'Todo Período', icon: List },
                     { id: 'day', label: 'Hoje', icon: Clock },
                     { id: 'tomorrow', label: 'Amanhã', icon: Calendar },
-                    { id: 'week', label: 'Esta Semana', icon: Calendar },
                     { id: 'next_week', label: 'Próxima Semana', icon: Calendar },
                     { id: 'month', label: 'Este Mês', icon: Calendar },
                     { id: 'last_month', label: 'Mês Passado', icon: Database },
@@ -1967,18 +1974,18 @@ CREATE POLICY "Allow all on drivers" ON drivers FOR ALL USING (true) WITH CHECK 
                         <h3 className="font-bold text-sm md:text-base leading-tight">{delivery.driver}</h3>
                         <div className="flex items-center gap-4 mt-0.5">
                           <div className="flex items-center gap-1.5 ">
-                            <Clock size={10} className="md:w-3 md:h-3" />
-                            <p className="text-[10px] md:text-xs font-medium text-slate-500">{delivery.shift} • {formatLocalDate(delivery.date)}</p>
+                            <Clock size={10} className="md:w-3 md:h-3 text-slate-400" />
+                            <p className="text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400">{delivery.shift} • {formatLocalDate(delivery.date)}</p>
                           </div>
                         </div>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2 shrink-0">
                       <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-lg text-[9px] md:text-[10px] font-bold uppercase tracking-wider ${
-                        delivery.status === 'Agendada' ? 'bg-slate-100 text-slate-600' :
-                        delivery.status === 'Pendente' ? 'bg-amber-100 text-amber-600' :
-                        delivery.status === 'Em Andamento' ? 'bg-blue-100 text-blue-600' :
-                        'bg-emerald-100 text-emerald-600'
+                        delivery.status === 'Agendada' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' :
+                        delivery.status === 'Pendente' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' :
+                        delivery.status === 'Em Andamento' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300' :
+                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                       }`}>
                         {delivery.status}
                       </span>

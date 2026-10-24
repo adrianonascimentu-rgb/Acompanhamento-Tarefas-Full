@@ -26,6 +26,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 import { supabase, handleSupabaseAuthError, isSupabaseConfigured } from '@/lib/supabase';
 import PushNotificationManager from '@/components/PushNotificationManager';
 import { PermanentTasksNotepadGrid } from '@/components/dashboard/PermanentTasksNotepadGrid';
+import { HomeCardsPermissionsModal } from '@/components/dashboard/HomeCardsPermissionsModal';
 
 const stats = [
   { id: 'total', label: 'Total', value: '48', change: '+5%', icon: ClipboardList, color: 'text-blue-600', trend: 'up' },
@@ -58,6 +59,8 @@ export default function Dashboard() {
     role, 
     user, 
     isAdmin, 
+    isGerente,
+    isSupervisor,
     isAdriano, 
     canAccessLeads, 
     canAccessDeliveries, 
@@ -69,6 +72,8 @@ export default function Dashboard() {
     canAccessReports,
     canAccessDemands,
     canAccessPermanentTasks,
+    canManageHomeCards,
+    canViewHomeCard,
     isAuthenticated, 
     isLoading: roleLoading, 
     login, 
@@ -78,6 +83,7 @@ export default function Dashboard() {
   const { showToast, showConfirm, showSettingsModal } = useUI();
   const [isDemandModalOpen, setIsDemandModalOpen] = useState(false);
   const [isPermanentModalOpen, setIsPermanentModalOpen] = useState(false);
+  const [isHomeCardsModalOpen, setIsHomeCardsModalOpen] = useState(false);
   const [currentDateString, setCurrentDateString] = useState<string>('');
   const [dashboardMode, setDashboardMode] = useState<'permanent_notes' | 'full'>('full');
 
@@ -146,6 +152,7 @@ export default function Dashboard() {
     finalizada: 0,
     totalValue: 0
   });
+  const [recentDeliveries, setRecentDeliveries] = useState<any[]>([]);
   const [salesSummary, setSalesSummary] = useState({
     total: 0,
     totalValue: 0,
@@ -452,12 +459,66 @@ export default function Dashboard() {
         }
       }
 
-      // Fetch Delivery Stats
-      const { data: deliveries, error: deliveriesError } = await supabase
+      // Fetch Delivery Stats (Sempre últimos 7 dias)
+      const { data: deliveriesData, error: deliveriesError } = await supabase
         .from('deliveries')
-        .select('*');
-      
-      if (!deliveriesError && deliveries) {
+        .select('*')
+        .order('date', { ascending: false });
+
+      const parseDeliveryDate = (d: any): Date | null => {
+        const raw = d?.date || d?.delivery_date || d?.created_at;
+        if (!raw) return null;
+        const str = String(raw).trim();
+        const ymdMatch = str.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (ymdMatch) {
+          const [, y, m, day] = ymdMatch.map(Number);
+          return new Date(y, m - 1, day);
+        }
+        const dmyMatch = str.slice(0, 10).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (dmyMatch) {
+          const [, day, m, y] = dmyMatch.map(Number);
+          return new Date(y, m - 1, day);
+        }
+        const parsed = new Date(str);
+        return isNaN(parsed.getTime()) ? null : parsed;
+      };
+
+      const filterLast7Days = (list: any[]) => {
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setHours(0, 0, 0, 0);
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+        return list.filter(d => {
+          const dt = parseDeliveryDate(d);
+          if (!dt) return false;
+          dt.setHours(12, 0, 0, 0);
+          return dt >= sevenDaysAgo && dt <= todayEnd;
+        });
+      };
+
+      let sourceDeliveries: any[] | null = null;
+      if (!deliveriesError && deliveriesData && deliveriesData.length > 0) {
+        sourceDeliveries = deliveriesData;
+      } else {
+        if (typeof window !== 'undefined') {
+          try {
+            const rawLocal = localStorage.getItem('agentx_local_deliveries');
+            if (rawLocal) {
+              const parsedLocal = JSON.parse(rawLocal);
+              if (Array.isArray(parsedLocal) && parsedLocal.length > 0) {
+                sourceDeliveries = parsedLocal;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      const deliveries = sourceDeliveries ? filterLast7Days(sourceDeliveries) : null;
+
+      if (deliveries) {
+        setRecentDeliveries(deliveries);
         setDeliverySummary({
           total: deliveries.length,
           agendada: deliveries.filter(d => d.status === 'Agendada').length,
@@ -470,13 +531,18 @@ export default function Dashboard() {
         if (deliveriesError && (deliveriesError.code === '42P01' || deliveriesError.message?.includes('Could not find the table'))) {
           setIsDeliveriesMockMode(true);
         }
-        // Fallback to mock data if table doesn't exist or error
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
+
         const MOCK_DELIVERIES = [
-          { status: 'Agendada', value: 0 },
-          { status: 'Pendente', value: 1250.50 },
-          { status: 'Em Andamento', value: 450.00 },
-          { status: 'Finalizada', value: 5800.00 },
+          { id: 'mock-1', date: todayStr, product: 'Pedido Agendado', neighborhood: 'Centro', city: 'João Pessoa', driver: 'Equipe Frota', status: 'Agendada', value: 0 },
+          { id: 'mock-2', date: todayStr, product: 'Kit Manutenção', neighborhood: 'Manaíra', city: 'João Pessoa', driver: 'Roberto Silva', status: 'Pendente', value: 1250.50 },
+          { id: 'mock-3', date: todayStr, product: 'Peças de Reposição', neighborhood: 'Bessa', city: 'João Pessoa', driver: 'Marcos Souza', status: 'Em Andamento', value: 450.00 },
+          { id: 'mock-4', date: yesterdayStr, product: 'Equipamento Industrial', neighborhood: 'Tambaú', city: 'João Pessoa', driver: 'João Pereira', status: 'Finalizada', value: 5800.00 },
         ];
+        setRecentDeliveries(MOCK_DELIVERIES);
         setDeliverySummary({
           total: MOCK_DELIVERIES.length,
           agendada: MOCK_DELIVERIES.filter(d => d.status === 'Agendada').length,
@@ -693,15 +759,18 @@ export default function Dashboard() {
         isDarkMode ? 'border-slate-800 bg-slate-900/95' : 'border-slate-200/90 bg-white/95'
       }`}>
         {/* 1. Notification & Utility Header Bar (At the Top) */}
-        <div className="px-4 md:px-8 pt-3 pb-2 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/60">
+        <div className="px-3 sm:px-4 md:px-8 py-1.5 sm:pt-3 sm:pb-2 flex items-center justify-between gap-2 sm:gap-3 border-b border-slate-100 dark:border-slate-800/60">
           {/* Status Indicator */}
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0" />
-            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Painel Operacional</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
+            <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0" />
+            <span className="text-[11px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">
+              <span className="sm:hidden">Operacional</span>
+              <span className="hidden sm:inline">Painel Operacional</span>
+            </span>
           </div>
 
           {/* Utility & Notification Icons and Actions */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Desktop Quick Action Buttons */}
             <div className="hidden sm:flex items-center gap-2">
               <Link
@@ -728,35 +797,37 @@ export default function Dashboard() {
               <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5" />
             </div>
 
+            <div className="hidden sm:inline-flex">
+              <PushNotificationManager userId={user?.id} isDarkMode={isDarkMode} />
+            </div>
+
             <button
               onClick={() => toggleDarkMode(!isDarkMode)}
-              className={`p-2 rounded-xl transition-colors ${
+              className={`p-1.5 sm:p-2 rounded-xl transition-colors ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
               }`}
               title={isDarkMode ? 'Tema Claro' : 'Tema Escuro'}
               aria-label="Alternar tema"
             >
-              {isDarkMode ? <Sun size={17} /> : <Moon size={17} />}
+              {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
-
-            <PushNotificationManager userId={user?.id} isDarkMode={isDarkMode} />
 
             <div className="relative">
               <button 
                 onClick={() => setShowNotifications(!showNotifications)}
-                className={`p-2 rounded-xl transition-colors relative ${
+                className={`p-1.5 sm:p-2 rounded-xl transition-colors relative ${
                   isDarkMode ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                 }`}
                 aria-label="Notificações"
               >
-                <Bell size={17} />
+                <Bell size={15} />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white dark:ring-slate-900" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-blue-600 rounded-full ring-2 ring-white dark:ring-slate-900" />
                 )}
               </button>
             </div>
 
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5" />
+            <div className="h-3.5 w-px bg-slate-200 dark:bg-slate-800 mx-0.5" />
 
             <button
               type="button"
@@ -774,9 +845,9 @@ export default function Dashboard() {
               }}
               title="Sair do Aplicativo"
               aria-label="Sair do Aplicativo"
-              className="flex items-center gap-1 p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors cursor-pointer border border-rose-200/60 dark:border-rose-900/40 active:scale-95 shrink-0"
+              className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40 transition-colors cursor-pointer border border-rose-200/60 dark:border-rose-900/40 active:scale-95 shrink-0"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
               <span className="text-xs font-semibold hidden md:inline">Sair</span>
             </button>
           </div>
@@ -881,76 +952,387 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 space-y-5 pb-8">
-        {/* Catálogo de Peças & Botão de Tarefas Permanentes na Mesma Linha */}
-        <div className={`grid grid-cols-1 ${canAccessPermanentTasks ? 'md:grid-cols-2' : ''} gap-4`}>
-          {/* 1. Catálogo de Peças Card */}
-          <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
-            isDarkMode
-              ? 'bg-gradient-to-r from-blue-950/70 to-indigo-950/60 border-blue-900/60 shadow-lg'
-              : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 flex flex-col gap-5 pb-8">
+        {/* Central de Módulos & Administração - Ocupando toda a largura da página com distribuição equilibrada no desktop */}
+        {canViewHomeCard('card_central_modulos') && (
+          <section className={`w-full p-3.5 sm:p-5 rounded-2xl border shadow-xs transition-all ${
+            isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
           }`}>
-            <div className="flex items-start gap-3.5 mb-4">
-              <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                <Package size={24} />
-              </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
-                  Catálogo de Peças & Preços
-                </h3>
-                <p className="text-[11px] text-blue-100 opacity-90 mt-0.5 leading-relaxed">
-                  Consulte produtos, preços em 10x e à vista, referências de fábrica e cotações.
-                </p>
-              </div>
-            </div>
-
-            <Link
-              href="/products"
-              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-black shadow-md transition-all active:scale-95 w-full"
-            >
-              <Search size={15} className="text-blue-600" />
-              <span>Abrir Catálogo de Peças</span>
-              <ChevronRight size={15} />
-            </Link>
-          </div>
-
-          {/* 2. Tarefas Permanentes Card / Button - Exclusivo para Administrador, Gerente e Supervisor */}
-          {canAccessPermanentTasks && (
-            <div className={`p-4 sm:p-5 rounded-3xl border transition-all flex flex-col justify-between ${
-              dashboardMode === 'permanent_notes'
-                ? (isDarkMode ? 'bg-gradient-to-r from-purple-950/70 to-indigo-950/60 border-purple-800 shadow-lg' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/20')
-                : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
-            }`}>
-              <div className="flex items-start gap-3.5 mb-4">
-                <div className={`p-3 rounded-2xl shrink-0 ${
-                  dashboardMode === 'permanent_notes' ? 'bg-white/20 text-white' : (isDarkMode ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600')
-                }`}>
-                  <Pin size={24} className="rotate-12" />
-                </div>
+            <div className="flex items-center justify-between gap-2 mb-3 pb-2.5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="p-1.5 rounded-xl bg-blue-600/10 text-blue-600 dark:text-blue-400 shrink-0">
+                  <LayoutGrid size={16} />
+                </span>
                 <div>
-                  <h3 className={`text-sm sm:text-base font-black tracking-tight ${dashboardMode === 'permanent_notes' ? 'text-white' : (isDarkMode ? 'text-slate-100' : 'text-slate-900')}`}>
-                    Tarefas Permanentes & Notas
-                  </h3>
-                  <p className={`text-[11px] mt-0.5 leading-relaxed ${dashboardMode === 'permanent_notes' ? 'text-purple-100 opacity-90' : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>
-                    Acesse seus bloquinhos de anotações e lembretes fixos diários.
+                  <h2 className="text-xs sm:text-sm font-black tracking-tight text-slate-900 dark:text-white truncate">
+                    Central de Módulos & ADM
+                  </h2>
+                  <p className="hidden sm:block text-[11px] text-slate-500 dark:text-slate-400">
+                    Acesso rápido aos setores operacionais, comerciais e administrativos
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setDashboardMode('permanent_notes');
-                  setIsPermanentModalOpen(true);
-                }}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer bg-purple-600 text-white hover:bg-purple-700"
-              >
-                <Pin size={15} className="rotate-12" />
-                <span>Abrir Tarefas Permanentes</span>
-                <ChevronRight size={15} />
-              </button>
+              <span className="text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                {isAdmin ? 'ADM' : canManageHomeCards ? 'Gestão' : 'Módulos'}
+              </span>
             </div>
-          )}
-        </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-2.5">
+              {/* Card Destaque: Comissões Adriano (Exclusivo para adrianonascimentu@gmail.com) */}
+              {isAdriano && (
+                <Link
+                  href="/admin/comissoes-adriano"
+                  className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xs hover:scale-[1.02] transition-all flex items-center gap-2.5 group cursor-pointer"
+                >
+                  <div className="p-2 rounded-lg bg-white/20 text-white shrink-0">
+                    <DollarSign size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs leading-tight text-white truncate group-hover:underline">
+                      Comissões Adriano
+                    </p>
+                    <span className="text-[10px] text-emerald-200 block truncate">Exclusivo</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Comissionados Geral */}
+              {(isAdmin || isAdriano) && (
+                <Link
+                  href="/admin/commissions"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+                    <DollarSign size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Comissões Geral
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Financeiro</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Equipe / Colaboradores (Admin, Gerente, Supervisor) */}
+              {canManageHomeCards && (
+                <Link
+                  href="/collaborators"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+                    <Users size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Equipe & Cargos
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Colaboradores</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Configurar Cards da Página Inicial por Colaborador (Admin, Gerente, Supervisor) */}
+              {canManageHomeCards && (
+                <button
+                  type="button"
+                  onClick={() => setIsHomeCardsModalOpen(true)}
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer text-left ${
+                    isDarkMode
+                      ? 'bg-blue-950/40 border-blue-800/70 hover:border-blue-600'
+                      : 'bg-blue-50/80 border-blue-200 hover:border-blue-400'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-blue-600 text-white shrink-0">
+                    <LayoutGrid size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-blue-700 dark:text-blue-300 group-hover:underline truncate">
+                      Cards da Equipe
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-blue-600/80 dark:text-blue-400/80 truncate">Visibilidade</span>
+                  </div>
+                </button>
+              )}
+
+              {/* Painel Ao Vivo (GPS) */}
+              {(isAdmin || role === 'gerente' || role === 'supervisor') && (
+                <Link
+                  href="/painel-ao-vivo"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 shrink-0">
+                    <Radio size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Painel Ao Vivo
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">GPS & Tempo Real</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Configurações do Sistema */}
+              {isAdmin && (
+                <Link
+                  href="/admin/settings"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-slate-500/10 text-slate-600 dark:text-slate-400 shrink-0">
+                    <Settings size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Configurações
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Sistema</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* WhatsApp */}
+              {canAccessWhatsapp && (
+                <Link
+                  href="/whatsapp"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <MessageSquare size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      WhatsApp CRM
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Atendimento</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Leads */}
+              {canAccessLeads && (
+                <Link
+                  href="/leads"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
+                    <Target size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Leads (CRM)
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Funil & Clientes</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Redes Sociais */}
+              {canAccessSocialMedia && (
+                <Link
+                  href="/social-media"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 shrink-0">
+                    <Share2 size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Redes Sociais
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Site & Mídias</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Entregas */}
+              {canAccessDeliveries && (
+                <Link
+                  href="/deliveries"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                    <Truck size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Entregas & Rotas
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Logística</span>
+                  </div>
+                </Link>
+              )}
+
+              {/* Vendas & Metas */}
+              {canAccessSales && (
+                <Link
+                  href="/sales-results"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50/80 border-slate-200 hover:border-blue-300'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <TrendingUp size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                      Vendas & Metas
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 truncate">Resultados</span>
+                  </div>
+                </Link>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Catálogo de Peças & Botão de Tarefas Permanentes na Mesma Linha */}
+        {(canViewHomeCard('card_catalogo_pecas') || (canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes'))) && (
+          <div className={`grid grid-cols-1 ${canViewHomeCard('card_catalogo_pecas') && canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes') ? 'md:grid-cols-2' : ''} gap-2.5 sm:gap-4`}>
+            {/* 1. Catálogo de Peças - Na versão mobile ocupa apenas uma linha */}
+            {canViewHomeCard('card_catalogo_pecas') && (
+              <>
+                {/* Mobile View: Botão em linha única */}
+                <Link
+                  href="/products"
+                  className="sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm bg-blue-600 hover:bg-blue-500 border-blue-500 text-white"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
+                      <Package size={17} />
+                    </div>
+                    <span className="font-bold text-xs truncate text-white">
+                      Catálogo de Peças & Preços
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white text-blue-700 text-xs font-black shadow-xs shrink-0 whitespace-nowrap">
+                    <Search size={13} className="shrink-0" />
+                    <span>Abrir</span>
+                    <ChevronRight size={13} className="shrink-0" />
+                  </div>
+                </Link>
+
+                {/* Desktop View: Card com descrição e botão */}
+                <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
+                  isDarkMode
+                    ? 'bg-gradient-to-r from-blue-950/70 to-indigo-950/60 border-blue-900/60 shadow-lg'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
+                }`}>
+                  <div className="flex items-start gap-3.5 mb-4">
+                    <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
+                      <Package size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                        Catálogo de Peças & Preços
+                      </h3>
+                      <p className="text-[11px] text-blue-100 opacity-90 mt-0.5 leading-relaxed">
+                        Consulte produtos, preços em 10x e à vista, referências de fábrica e cotações.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    href="/products"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-blue-700 hover:bg-blue-50 dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white dark:shadow-md dark:shadow-blue-600/30 text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer whitespace-nowrap"
+                  >
+                    <Search size={15} className="text-blue-600 dark:text-white shrink-0" />
+                    <span className="whitespace-nowrap">Abrir Catálogo de Peças</span>
+                    <ChevronRight size={15} className="dark:text-white shrink-0" />
+                  </Link>
+                </div>
+              </>
+            )}
+
+            {/* 2. Tarefas Permanentes Card / Button */}
+            {canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes') && (
+              <>
+                {/* Mobile View: Botão em linha única */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDashboardMode('permanent_notes');
+                    setIsPermanentModalOpen(true);
+                  }}
+                  className={`sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-xs ${
+                    dashboardMode === 'permanent_notes'
+                      ? (isDarkMode ? 'bg-gradient-to-r from-purple-950/80 to-indigo-950/70 border-purple-800 text-white' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-purple-600/20')
+                      : (isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-900')
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`p-1.5 rounded-xl shrink-0 ${
+                      dashboardMode === 'permanent_notes' ? 'bg-white/20 text-white' : (isDarkMode ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600')
+                    }`}>
+                      <Pin size={17} className="rotate-12" />
+                    </div>
+                    <span className="font-bold text-xs truncate">
+                      Tarefas Permanentes & Notas
+                    </span>
+                  </div>
+                  <div className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-black shrink-0 whitespace-nowrap ${
+                    dashboardMode === 'permanent_notes' ? 'bg-white text-purple-700 shadow-xs' : 'bg-purple-600 text-white shadow-xs'
+                  }`}>
+                    <span>Abrir</span>
+                    <ChevronRight size={13} className="shrink-0" />
+                  </div>
+                </button>
+
+                {/* Desktop View: Card com descrição e botão */}
+                <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
+                  dashboardMode === 'permanent_notes'
+                    ? (isDarkMode ? 'bg-gradient-to-r from-purple-950/70 to-indigo-950/60 border-purple-800 shadow-lg' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/20')
+                    : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-sm')
+                }`}>
+                  <div className="flex items-start gap-3.5 mb-4">
+                    <div className={`p-3 rounded-2xl shrink-0 ${
+                      dashboardMode === 'permanent_notes' ? 'bg-white/20 text-white' : (isDarkMode ? 'bg-purple-950/60 text-purple-400' : 'bg-purple-50 text-purple-600')
+                    }`}>
+                      <Pin size={24} className="rotate-12" />
+                    </div>
+                    <div>
+                      <h3 className={`text-sm sm:text-base font-black tracking-tight ${dashboardMode === 'permanent_notes' ? 'text-white' : (isDarkMode ? 'text-slate-100' : 'text-slate-900')}`}>
+                        Tarefas Permanentes & Notas
+                      </h3>
+                      <p className={`text-[11px] mt-0.5 leading-relaxed ${dashboardMode === 'permanent_notes' ? 'text-purple-100 opacity-90' : (isDarkMode ? 'text-slate-400' : 'text-slate-500')}`}>
+                        Acesse seus bloquinhos de anotações e lembretes fixos diários.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setDashboardMode('permanent_notes');
+                      setIsPermanentModalOpen(true);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer bg-purple-600 text-white hover:bg-purple-700 whitespace-nowrap"
+                  >
+                    <Pin size={15} className="rotate-12 shrink-0" />
+                    <span className="whitespace-nowrap">Abrir Tarefas Permanentes</span>
+                    <ChevronRight size={15} className="shrink-0" />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <section className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
@@ -958,73 +1340,89 @@ export default function Dashboard() {
               <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Painel do Gestor</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">Visão geral e métricas de desempenho em tempo real</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Período:</span>
-              <select
-                value={periodFilter}
-                onChange={(e) => {
-                  setPeriodFilter(e.target.value);
-                  fetchDashboardData(true);
-                }}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-700 text-slate-200' 
-                    : 'bg-white border-slate-200 text-slate-700 shadow-xs'
-                }`}
-              >
-                <option value="7days">Últimos 7 dias</option>
-                <option value="30days">Últimos 30 dias</option>
-                <option value="thisMonth">Este mês</option>
-                <option value="quarter">Este trimestre</option>
-                <option value="year">Este ano</option>
-              </select>
+            <div className="flex items-center flex-wrap gap-2">
+              {canManageHomeCards && (
+                <button
+                  type="button"
+                  onClick={() => setIsHomeCardsModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  <LayoutGrid size={13} />
+                  <span>Configurar Cards da Equipe</span>
+                </button>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Período:</span>
+                <select
+                  value={periodFilter}
+                  onChange={(e) => {
+                    setPeriodFilter(e.target.value);
+                    fetchDashboardData(true);
+                  }}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-700 text-slate-200' 
+                      : 'bg-white border-slate-200 text-slate-700 shadow-xs'
+                  }`}
+                >
+                  <option value="7days">Últimos 7 dias</option>
+                  <option value="30days">Últimos 30 dias</option>
+                  <option value="thisMonth">Este mês</option>
+                  <option value="quarter">Este trimestre</option>
+                  <option value="year">Este ano</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-            {(isAdmin ? dashboardStats : dashboardUserStats).map((stat: any, idx: number) => {
-              const filterMap: Record<string, string> = {
-                'total': 'Todas',
-                'pending': 'Pendente',
-                'completed': 'Concluída',
-                'delayed': 'Atrasada',
-                'percentage': 'Todas',
-                'my-total': 'Todas',
-                'my-pending': 'Pendente',
-                'my-completed': 'Concluída',
-                'my-delayed': 'Atrasada',
-                'my-percentage': 'Todas'
-              };
-              return (
-                <StatCard
-                  key={stat.id}
-                  label={stat.label}
-                  value={stat.value}
-                  icon={stat.icon}
-                  color={stat.color}
-                  href={`/tasks?filter=${filterMap[stat.id] || 'Todas'}`}
-                  isActive={activeFilter === stat.id}
-                  isDarkMode={isDarkMode}
-                  delay={idx * 0.05}
-                />
-              );
-            })}
-          </div>
+          {canViewHomeCard('card_painel_gestor_stats') && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+              {(isAdmin ? dashboardStats : dashboardUserStats).map((stat: any, idx: number) => {
+                const filterMap: Record<string, string> = {
+                  'total': 'Todas',
+                  'pending': 'Pendente',
+                  'completed': 'Concluída',
+                  'delayed': 'Atrasada',
+                  'percentage': 'Todas',
+                  'my-total': 'Todas',
+                  'my-pending': 'Pendente',
+                  'my-completed': 'Concluída',
+                  'my-delayed': 'Atrasada',
+                  'my-percentage': 'Todas'
+                };
+                return (
+                  <StatCard
+                    key={stat.id}
+                    label={stat.label}
+                    value={stat.value}
+                    icon={stat.icon}
+                    color={stat.color}
+                    href={`/tasks?filter=${filterMap[stat.id] || 'Todas'}`}
+                    isActive={activeFilter === stat.id}
+                    isDarkMode={isDarkMode}
+                    delay={idx * 0.05}
+                  />
+                );
+              })}
+            </div>
+          )}
 
-          <div className="w-full">
-            <SalesPerformanceCard isDarkMode={isDarkMode} />
-          </div>
+          {canViewHomeCard('card_faturamento') && (
+            <div className="w-full">
+              <SalesPerformanceCard isDarkMode={isDarkMode} />
+            </div>
+          )}
 
-          {canAccessDeliveries && (
+          {canAccessDeliveries && canViewHomeCard('card_entregas_urgentes') && (
             <div className="w-full">
               <UrgentDeliveryAlertCard isDarkMode={isDarkMode} />
             </div>
           )}
 
-          {(isAdmin || isEstoqueUser) && (
-            <div className={`grid grid-cols-1 ${isAdmin && isEstoqueUser ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4`}>
-              {isEstoqueUser && (
-                <div className={isAdmin ? 'lg:col-span-2' : 'lg:col-span-2'}>
+          {(isAdmin || (isEstoqueUser && canViewHomeCard('card_transferencias'))) && (
+            <div className={`grid grid-cols-1 ${isAdmin && isEstoqueUser && canViewHomeCard('card_transferencias') ? 'lg:grid-cols-3' : 'lg:grid-cols-2'} gap-4`}>
+              {isEstoqueUser && canViewHomeCard('card_transferencias') && (
+                <div className="lg:col-span-2">
                   <TransfersSummaryCard isDarkMode={isDarkMode} />
                 </div>
               )}
@@ -1038,351 +1436,424 @@ export default function Dashboard() {
         </section>
 
         {/* Progress & Category Segmented Control */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-          {/* Progress Bar Card */}
-          <div className={`lg:col-span-2 p-4 md:p-5 rounded-xl border flex flex-col justify-between ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
-          }`}>
-            <div className="flex justify-between items-baseline mb-3">
-              <div>
-                <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
-                  {isAdmin ? 'Progresso Geral das Tarefas' : 'Meu Progresso nas Tarefas'}
-                </span>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {isAdmin ? 'Taxa de conclusão consolidada da equipe' : 'Taxa de conclusão das suas tarefas'}
-                </p>
-              </div>
-              <span className="text-xl font-bold text-blue-600 dark:text-blue-400 tabular-nums">
-                {progressPercentage}%
-              </span>
-            </div>
-            <div className={`h-2.5 w-full rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
-              <motion.div 
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPercentage}%` }}
-                transition={{ duration: 0.8, ease: "easeOut" }}
-                className="h-full rounded-full bg-blue-600"
-              />
-            </div>
-          </div>
-
-          {/* Segmented Filter Control */}
-          <div className={`p-4 md:p-5 rounded-xl border flex flex-col justify-between ${
-            isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
-          }`}>
-            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2">Filtrar por Categoria</span>
-            <div className={`grid grid-cols-2 gap-1 p-1 rounded-lg border ${
-              isDarkMode ? 'bg-slate-800/80 border-slate-700/60' : 'bg-slate-100 border-slate-200/70'
+        {canViewHomeCard('card_progresso_tarefas') && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+            {/* Progress Bar Card */}
+            <div className={`lg:col-span-2 p-4 md:p-5 rounded-xl border flex flex-col justify-between ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
             }`}>
-              {[
-                { id: 'all', label: 'Todas' },
-                { id: 'urgent', label: 'Urgentes' },
-                { id: 'routine', label: 'Rotina' },
-                { id: 'planned', label: 'Planejadas' }
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => handleCategoryClick(cat.id)}
-                  className={`py-1.5 px-2 text-xs font-medium rounded-md transition-all text-center ${
-                    categoryFilter === cat.id
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-semibold'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
+              <div className="flex justify-between items-baseline mb-3">
+                <div>
+                  <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                    {isAdmin ? 'Progresso Geral das Tarefas' : 'Meu Progresso nas Tarefas'}
+                  </span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {isAdmin ? 'Taxa de conclusão consolidada da equipe' : 'Taxa de conclusão das suas tarefas'}
+                  </p>
+                </div>
+                <span className="text-xl font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+                  {progressPercentage}%
+                </span>
+              </div>
+              <div className={`h-2.5 w-full rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progressPercentage}%` }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                  className="h-full rounded-full bg-blue-600"
+                />
+              </div>
+            </div>
+
+            {/* Segmented Filter Control */}
+            <div className={`p-4 md:p-5 rounded-xl border flex flex-col justify-between ${
+              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
+            }`}>
+              <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 mb-2">Filtrar por Categoria</span>
+              <div className={`grid grid-cols-2 gap-1 p-1 rounded-lg border ${
+                isDarkMode ? 'bg-slate-800/80 border-slate-700/60' : 'bg-slate-100 border-slate-200/70'
+              }`}>
+                {[
+                  { id: 'all', label: 'Todas' },
+                  { id: 'urgent', label: 'Urgentes' },
+                  { id: 'routine', label: 'Rotina' },
+                  { id: 'planned', label: 'Planejadas' }
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => handleCategoryClick(cat.id)}
+                    className={`py-1.5 px-2 text-xs font-medium rounded-md transition-all text-center ${
+                      categoryFilter === cat.id
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-semibold'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Quick Navigation / Modular Tiles */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Acesso Rápido aos Módulos
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {isAdmin && (
-              <Link 
-                href="/tasks?view=kanban"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                  <KanbanIcon size={17} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Quadro Kanban</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Gestão Visual</p>
-                </div>
-              </Link>
-            )}
-
-            <Link 
-              href="/demands"
-              className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                isDarkMode 
-                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                  : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-              }`}
-            >
-              <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                <ClipboardList size={17} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Demandas</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Solicitações</p>
-              </div>
-            </Link>
-
-            {canAccessSocialMedia && (
-              <Link 
-                href="/social-media"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0">
-                  <Share2 size={17} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Redes Sociais</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Conteúdo & Post</p>
-                </div>
-              </Link>
-            )}
-
-            {canAccessLeads && (
-              <Link 
-                href="/leads"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <Target size={17} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Leads CRM</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Oportunidades</p>
-                </div>
-              </Link>
-            )}
-
-            <Link 
-              href="/price-research"
-              className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                isDarkMode 
-                  ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                  : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-              }`}
-            >
-              <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                <Tag size={17} />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Pesquisa de Preço</p>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400">Concorrentes</p>
-              </div>
-            </Link>
-
-            {canAccessDeliveries && (
-              <Link 
-                href="/deliveries"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                  <Truck size={17} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Entregas</p>
-                    {!deliveriesEnabled && (
-                      <span className="text-[9px] font-semibold text-rose-500 bg-rose-500/10 px-1 py-0.2 rounded">OFF</span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Logística</p>
-                </div>
-              </Link>
-            )}
-
-            {canAccessWarranties && (
-              <Link 
-                href="/warranties/assistances"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
-                  <Wrench size={17} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Assistência</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Suporte Técnico</p>
-                </div>
-              </Link>
-            )}
-          </div>
-        </section>
-
-        {/* Visual Charts & Summaries Section */}
-        <section className="space-y-6">
-          {/* Main Task Volume Chart (Completed vs Pending) */}
-          {(() => {
-            const currentStats = isAdmin ? dashboardStats : dashboardUserStats;
-            const getVal = (ids: string[]) => {
-              const item = currentStats.find((s: any) => ids.includes(s.id));
-              return item ? parseInt(item.value, 10) || 0 : 0;
-            };
-            const completedCount = getVal(['completed', 'my-completed']);
-            const pendingCount = getVal(['pending', 'my-pending']);
-            const delayedCount = getVal(['delayed', 'my-delayed']);
-            const totalCount = getVal(['total', 'my-total']);
-
-            return (
-              <TaskVolumeChart
-                completedCount={completedCount}
-                pendingCount={pendingCount}
-                delayedCount={delayedCount}
-                totalCount={totalCount}
-                title={isAdmin ? "Volume Geral de Tarefas: Concluídas vs Pendentes" : "Meu Volume de Tarefas: Concluídas vs Pendentes"}
-                subtitle={isAdmin ? "Visão comparativa de execução e pendências da equipe" : "Visão comparativa de suas tarefas pendentes e finalizadas"}
-              />
-            );
-          })()}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* Monthly Completion Chart */}
-            <div>
-              <TaskCompletionChart 
-                data={taskCompletionData} 
-                title={isAdmin ? "Tarefas Concluídas (Equipe)" : "Minhas Tarefas Concluídas"}
-                subtitle={isAdmin ? "Histórico recente de entregas por colaborador" : "Histórico mensal de suas entregas finalizadas"}
-              />
+        {canViewHomeCard('card_acesso_rapido') && (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                Acesso Rápido aos Módulos
+              </h2>
             </div>
-
-            {/* Delivery SLA Chart (Last 7 Days) */}
-            <div>
-              <DeliverySLAChart 
-                data={deliverySLAData} 
-                title="SLA de Entregas" 
-                subtitle="Porcentagem de entregas dentro do prazo nos últimos 7 dias"
-              />
-            </div>
-          </div>
-        </section>
-
-        {/* Operational Cards: Sales & Deliveries */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* Sales Summary Card */}
-          {canAccessSales && (
-            <div className={`p-5 rounded-xl border transition-all ${
-              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
-            }`}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                    <TrendingUp size={16} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {isAdmin && (
+                <Link 
+                  href="/tasks?view=kanban"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                    <KanbanIcon size={17} />
                   </div>
                   <div>
-                    <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100">Resumo de Vendas</h3>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Performance comercial acumulada</p>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Quadro Kanban</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Gestão Visual</p>
                   </div>
-                </div>
-                <Link href="/sales" className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
-                  Ver vendas
                 </Link>
-              </div>
+              )}
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center">
-                  <p className="text-xl font-bold tabular-nums text-slate-900 dark:text-white">{salesSummary.total}</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">Vendas</p>
+              <Link 
+                href="/demands"
+                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                  isDarkMode 
+                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <ClipboardList size={17} />
                 </div>
-                <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center">
-                  <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
-                    R$ {salesSummary.totalValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                  </p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">Receita</p>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Demandas</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Solicitações</p>
                 </div>
-                <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center">
-                  <p className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">
-                    R$ {salesSummary.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
-                  </p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">Ticket Médio</p>
-                </div>
-              </div>
-            </div>
-          )}
+              </Link>
 
-          {/* Deliveries Summary Card */}
-          {canAccessDeliveries && (
-            <div className={`p-5 rounded-xl border transition-all ${
-              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
-            }`}>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-                    <Truck size={16} />
+              {canAccessSocialMedia && (
+                <Link 
+                  href="/social-media"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-pink-50 dark:bg-pink-950/50 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0">
+                    <Share2 size={17} />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100">Logística de Entregas</h3>
-                      {isDeliveriesMockMode && (
-                        <span className="px-1.5 py-0.2 bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400 text-[9px] font-medium rounded border border-amber-200/60 dark:border-amber-900/60">Simulação</span>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Redes Sociais</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Conteúdo & Post</p>
+                  </div>
+                </Link>
+              )}
+
+              {canAccessLeads && (
+                <Link 
+                  href="/leads"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <Target size={17} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Leads CRM</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Oportunidades</p>
+                  </div>
+                </Link>
+              )}
+
+              <Link 
+                href="/price-research"
+                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                  isDarkMode 
+                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                  <Tag size={17} />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Pesquisa de Preço</p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Concorrentes</p>
+                </div>
+              </Link>
+
+              {canAccessDeliveries && (
+                <Link 
+                  href="/deliveries"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                    <Truck size={17} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Entregas</p>
+                      {!deliveriesEnabled && (
+                        <span className="text-[9px] font-semibold text-rose-500 bg-rose-500/10 px-1 py-0.2 rounded">OFF</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">Status operacional diário</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Logística</p>
                   </div>
-                </div>
-                <Link href="/deliveries" className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
-                  Painel
                 </Link>
+              )}
+
+              {canAccessWarranties && (
+                <Link 
+                  href="/warranties/assistances"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                    <Wrench size={17} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Assistência</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Suporte Técnico</p>
+                  </div>
+                </Link>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Visual Charts & Summaries Section */}
+        {canViewHomeCard('card_graficos') && (
+          <section className="space-y-6">
+            {/* Main Task Volume Chart (Completed vs Pending) */}
+            {(() => {
+              const currentStats = isAdmin ? dashboardStats : dashboardUserStats;
+              const getVal = (ids: string[]) => {
+                const item = currentStats.find((s: any) => ids.includes(s.id));
+                return item ? parseInt(item.value, 10) || 0 : 0;
+              };
+              const completedCount = getVal(['completed', 'my-completed']);
+              const pendingCount = getVal(['pending', 'my-pending']);
+              const delayedCount = getVal(['delayed', 'my-delayed']);
+              const totalCount = getVal(['total', 'my-total']);
+
+              return (
+                <TaskVolumeChart
+                  completedCount={completedCount}
+                  pendingCount={pendingCount}
+                  delayedCount={delayedCount}
+                  totalCount={totalCount}
+                  title={isAdmin ? "Volume Geral de Tarefas: Concluídas vs Pendentes" : "Meu Volume de Tarefas: Concluídas vs Pendentes"}
+                  subtitle={isAdmin ? "Visão comparativa de execução e pendências da equipe" : "Visão comparativa de suas tarefas pendentes e finalizadas"}
+                />
+              );
+            })()}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {/* Monthly Completion Chart */}
+              <div>
+                <TaskCompletionChart 
+                  data={taskCompletionData} 
+                  title={isAdmin ? "Tarefas Concluídas (Equipe)" : "Minhas Tarefas Concluídas"}
+                  subtitle={isAdmin ? "Histórico recente de entregas por colaborador" : "Histórico mensal de suas entregas finalizadas"}
+                />
               </div>
 
-              <div className="grid grid-cols-5 gap-2">
-                <Link href="/deliveries" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
-                  <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-white">{deliverySummary.total}</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Total</p>
-                </Link>
-                <Link href="/deliveries?status=Agendada" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
-                  <p className="text-lg font-bold tabular-nums text-slate-600 dark:text-slate-400">{deliverySummary.agendada}</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Agend.</p>
-                </Link>
-                <Link href="/deliveries?status=Pendente" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
-                  <p className="text-lg font-bold tabular-nums text-amber-600 dark:text-amber-400">{deliverySummary.pendente}</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Pend.</p>
-                </Link>
-                <Link href="/deliveries?status=Em Andamento" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
-                  <p className="text-lg font-bold tabular-nums text-blue-600 dark:text-blue-400">{deliverySummary.emAndamento}</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Andam.</p>
-                </Link>
-                <Link href="/deliveries?status=Finalizada" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
-                  <p className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{deliverySummary.finalizada}</p>
-                  <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Final.</p>
-                </Link>
+              {/* Delivery SLA Chart (Last 7 Days) */}
+              <div>
+                <DeliverySLAChart 
+                  data={deliverySLAData} 
+                  title="SLA de Entregas" 
+                  subtitle="Porcentagem de entregas dentro do prazo nos últimos 7 dias"
+                />
               </div>
             </div>
-          )}
-        </section>
+          </section>
+        )}
+
+        {/* Operational Cards: Sales & Deliveries */}
+        {((canAccessSales && canViewHomeCard('card_resumo_vendas')) || (canAccessDeliveries && canViewHomeCard('card_resumo_entregas'))) && (
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            {/* Sales Summary Card */}
+            {canAccessSales && canViewHomeCard('card_resumo_vendas') && (
+              <div className={`p-5 rounded-xl border transition-all ${
+                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
+              }`}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                      <TrendingUp size={16} />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100">Resumo de Vendas</h3>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Performance comercial acumulada</p>
+                    </div>
+                  </div>
+                  <Link href="/sales" className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                    Ver vendas
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center">
+                    <p className="text-xl font-bold tabular-nums text-slate-900 dark:text-white">{salesSummary.total}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">Vendas</p>
+                  </div>
+                  <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center">
+                    <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                      R$ {salesSummary.totalValue.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">Receita</p>
+                  </div>
+                  <div className="p-3 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center">
+                    <p className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">
+                      R$ {salesSummary.avgTicket.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider mt-0.5">Ticket Médio</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Deliveries Summary Card */}
+            {canAccessDeliveries && canViewHomeCard('card_resumo_entregas') && (
+              <div className={`p-5 rounded-xl border transition-all ${
+                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/80 shadow-xs'
+              }`}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                      <Truck size={16} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-xs font-semibold text-slate-900 dark:text-slate-100">Logística de Entregas</h3>
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400 text-[9px] font-bold rounded-full border border-blue-200/60 dark:border-blue-800/60">
+                          Últimos 7 dias
+                        </span>
+                        {isDeliveriesMockMode && (
+                          <span className="px-1.5 py-0.2 bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400 text-[9px] font-medium rounded border border-amber-200/60 dark:border-amber-900/60">Simulação</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">Entregas registradas nos últimos 7 dias</p>
+                    </div>
+                  </div>
+                  <Link href="/deliveries?period=week" className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                    Painel
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-5 gap-2">
+                  <Link href="/deliveries?period=week" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
+                    <p className="text-lg font-bold tabular-nums text-slate-900 dark:text-white">{deliverySummary.total}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Total</p>
+                  </Link>
+                  <Link href="/deliveries?period=week&status=Agendada" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
+                    <p className="text-lg font-bold tabular-nums text-slate-600 dark:text-slate-400">{deliverySummary.agendada}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Agend.</p>
+                  </Link>
+                  <Link href="/deliveries?period=week&status=Pendente" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
+                    <p className="text-lg font-bold tabular-nums text-amber-600 dark:text-amber-400">{deliverySummary.pendente}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Pend.</p>
+                  </Link>
+                  <Link href="/deliveries?period=week&status=Em Andamento" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
+                    <p className="text-lg font-bold tabular-nums text-blue-600 dark:text-blue-400">{deliverySummary.emAndamento}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Andam.</p>
+                  </Link>
+                  <Link href="/deliveries?period=week&status=Finalizada" className="p-2.5 rounded-lg border border-slate-100 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-800/40 text-center hover:border-slate-300 transition-colors">
+                    <p className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{deliverySummary.finalizada}</p>
+                    <p className="text-[10px] font-medium text-slate-500 uppercase mt-0.5">Final.</p>
+                  </Link>
+                </div>
+
+                {/* Lista das entregas dos últimos 7 dias */}
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Entregas dos Últimos 7 Dias ({recentDeliveries.length})
+                    </span>
+                    <Link href="/deliveries?period=week" className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                      Ver todas
+                    </Link>
+                  </div>
+                  {recentDeliveries.length > 0 ? (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {recentDeliveries.slice(0, 8).map((d, idx) => {
+                        const rawDate = d.date || d.delivery_date || d.created_at || '';
+                        const dateStr = String(rawDate).slice(0, 10);
+                        const parts = dateStr.split('-');
+                        const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}` : dateStr;
+                        const statusColor =
+                          d.status === 'Finalizada'
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800/60'
+                            : d.status === 'Em Andamento'
+                            ? 'bg-blue-50 text-blue-600 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800/60'
+                            : d.status === 'Pendente'
+                            ? 'bg-amber-50 text-amber-600 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800/60'
+                            : 'bg-slate-100 text-slate-600 border-slate-200/60 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
+
+                        return (
+                          <Link
+                            key={d.id || idx}
+                            href="/deliveries?period=week"
+                            className="flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-100 dark:border-slate-800/70 bg-slate-50/40 dark:bg-slate-800/30 hover:border-blue-300 dark:hover:border-blue-800 transition-colors"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate">
+                                {d.product || 'Entrega'}
+                              </p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                {[d.neighborhood, d.city].filter(Boolean).join(' - ') || d.address || 'Local não informado'}
+                                {d.driver ? ` • ${d.driver}` : ''}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {formattedDate && (
+                                <span className="text-[10px] font-medium text-slate-400 tabular-nums">
+                                  {formattedDate}
+                                </span>
+                              )}
+                              <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded border ${statusColor}`}>
+                                {d.status || 'Agendada'}
+                              </span>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center py-3">
+                      Nenhuma entrega registrada nos últimos 7 dias.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Lead Tracking Dashboard (Admin / Sales Managers) */}
-        {(isAdmin || canAccessLeads) && (
+        {(isAdmin || canAccessLeads) && canViewHomeCard('card_funil_leads') && (
           <section className="space-y-4 pt-2">
             <div className="flex items-center justify-between">
               <div>
@@ -1468,258 +1939,6 @@ export default function Dashboard() {
             )}
           </section>
         )}
-
-        {/* Central de Módulos & Administração - Exibida no Fim da Página */}
-        <section className={`p-5 rounded-3xl border shadow-sm transition-all mt-6 ${
-          isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
-        }`}>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400">
-                  <LayoutGrid size={18} />
-                </span>
-                <h2 className="text-base font-black tracking-tight text-slate-900 dark:text-white">
-                  Central de Módulos & Administração
-                </h2>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Acesse diretamente todas as ferramentas, controles administrativos e operações do sistema.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                {isAdmin ? '100% Liberado • Administrador' : 'Acesso Rápido'}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-            {/* Card Destaque: Comissões Adriano (Exclusivo para adrianonascimentu@gmail.com) */}
-            {isAdriano && (
-              <Link
-                href="/admin/comissoes-adriano"
-                className="col-span-2 sm:col-span-1 p-3.5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md shadow-emerald-600/20 hover:scale-[1.02] transition-all flex flex-col justify-between group cursor-pointer"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="p-2 rounded-xl bg-white/20 text-white">
-                    <DollarSign size={20} />
-                  </div>
-                  <span className="text-[9px] font-black uppercase tracking-wider bg-white/30 px-2 py-0.5 rounded-full">
-                    Exclusivo
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <p className="font-black text-sm leading-tight text-white group-hover:underline">
-                    Comissões (Adriano)
-                  </p>
-                  <p className="text-[10px] text-emerald-100 mt-0.5">
-                    Acordo mensal & Redes Sociais
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Comissionados Geral */}
-            {(isAdmin || isAdriano) && (
-              <Link
-                href="/admin/commissions"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400">
-                  <DollarSign size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Comissionados Geral
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Planilha de comissões
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Equipe / Colaboradores */}
-            {isAdmin && (
-              <Link
-                href="/collaborators"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                  <Users size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Equipe & Cargos
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Gerenciar colaboradores
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Painel Ao Vivo (GPS) */}
-            {(isAdmin || role === 'gerente' || role === 'supervisor') && (
-              <Link
-                href="/painel-ao-vivo"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400">
-                  <Radio size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Painel Ao Vivo (GPS)
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Rastreamento em tempo real
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Configurações do Sistema */}
-            {isAdmin && (
-              <Link
-                href="/admin/settings"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-400">
-                  <Settings size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Configurações
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Módulos, permissões & APIs
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* WhatsApp */}
-            {canAccessWhatsapp && (
-              <Link
-                href="/whatsapp"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                  <MessageSquare size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    WhatsApp CRM
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Conversas & atendimento
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Leads */}
-            {canAccessLeads && (
-              <Link
-                href="/leads"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-                  <Target size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Leads (CRM)
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Funil de prospecção
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Redes Sociais */}
-            {canAccessSocialMedia && (
-              <Link
-                href="/social-media"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400">
-                  <Share2 size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Redes Sociais
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Publicações & anúncios
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Entregas */}
-            {canAccessDeliveries && (
-              <Link
-                href="/deliveries"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <Truck size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Entregas & Rotas
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Logística e despacho
-                  </p>
-                </div>
-              </Link>
-            )}
-
-            {/* Vendas & Metas */}
-            {canAccessSales && (
-              <Link
-                href="/sales-results"
-                className={`p-3 rounded-2xl border transition-all hover:scale-[1.02] flex flex-col justify-between group cursor-pointer ${
-                  isDarkMode ? 'bg-slate-800/60 border-slate-700 hover:border-slate-600' : 'bg-slate-50 border-slate-200 hover:border-blue-300'
-                }`}
-              >
-                <div className="p-2 w-fit rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                  <TrendingUp size={18} />
-                </div>
-                <div className="mt-2.5">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    Vendas & Metas
-                  </p>
-                  <p className="text-[10px] text-slate-500">
-                    Faturamento e rankings
-                  </p>
-                </div>
-              </Link>
-            )}
-          </div>
-        </section>
       </main>
 
       {/* Demand Modal */}
@@ -1728,6 +1947,15 @@ export default function Dashboard() {
         onClose={() => setIsDemandModalOpen(false)} 
         user={user} 
       />
+
+      {/* Home Cards Permissions Modal (Admin, Gerente, Supervisor) */}
+      {canManageHomeCards && (
+        <HomeCardsPermissionsModal
+          isOpen={isHomeCardsModalOpen}
+          onClose={() => setIsHomeCardsModalOpen(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
 
       {/* Permanent Tasks Modal */}
       <AnimatePresence>

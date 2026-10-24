@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Trash2, DollarSign, Home, ClipboardList, ListTodo, ArrowRightLeft, Wrench, Tag, TrendingUp, Radio, Settings, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Trash2, DollarSign, Home, ClipboardList, ListTodo, ArrowRightLeft, Wrench, Tag, TrendingUp, Radio, Settings, ShoppingBag, LayoutGrid, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { SkillSelector } from '@/components/SkillSelector';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -10,7 +10,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { supabase, isSupabaseConfigured, handleSupabaseAuthError } from '@/lib/supabase';
 import { getInactiveCollaboratorIds, saveCollaboratorStatusLocal } from '@/lib/collaboratorStatus';
 import { useTheme } from '@/hooks/useTheme';
-import { useRole } from '@/hooks/useRole';
+import { useRole, HOME_PAGE_CARDS, getDefaultHomeCardsForRole } from '@/hooks/useRole';
 import { useUI } from '@/hooks/useUI';
 import { authFetch } from '@/lib/authFetch';
 import { prefetchCache } from '@/lib/prefetchCache';
@@ -20,7 +20,7 @@ export default function EditCollaboratorPage() {
   const params = useParams();
   const id = params?.id as string;
   const { isDarkMode } = useTheme();
-  const { isAdmin: isSystemAdmin, user: loggedInUser, refreshUser } = useRole();
+  const { isAdmin: isSystemAdmin, canManageHomeCards, user: loggedInUser, refreshUser } = useRole();
   const { showToast, showConfirm } = useUI();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,6 +62,9 @@ export default function EditCollaboratorPage() {
     adriano_commissions: false,
     permanent_tasks: false
   });
+  const [homeCards, setHomeCards] = useState<Record<string, boolean>>(() =>
+    getDefaultHomeCardsForRole('user')
+  );
 
   const ROLE_LABELS: Record<typeof userRole, string> = {
     admin: 'Administrador',
@@ -99,6 +102,7 @@ export default function EditCollaboratorPage() {
     }));
     const defaults = getRoleSubmoduleDefaults(role);
     setSubmodules(defaults);
+    setHomeCards(getDefaultHomeCardsForRole(role));
   };
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -246,6 +250,12 @@ export default function EditCollaboratorPage() {
           settings: savedSubs.settings ?? profile.can_access_settings ?? roleDefaults.settings ?? false,
           adriano_commissions: savedSubs.adriano_commissions ?? profile.can_access_adriano_commissions ?? roleDefaults.adriano_commissions ?? false,
           permanent_tasks: savedSubs.permanent_tasks ?? profile.can_access_permanent_tasks ?? roleDefaults.permanent_tasks ?? false,
+        });
+        const cardDefaults = getDefaultHomeCardsForRole(derivedRole);
+        const savedCards = savedAccessEntry?.homeCards || profile.homeCards || {};
+        setHomeCards({
+          ...cardDefaults,
+          ...savedCards,
         });
         setReceivesLeads(profile.receives_leads !== false);
         setPhoto(profile.image_url);
@@ -496,7 +506,8 @@ export default function EditCollaboratorPage() {
             can_access_settings: finalSubmodules.settings,
             can_access_adriano_commissions: finalSubmodules.adriano_commissions,
             can_access_permanent_tasks: finalSubmodules.permanent_tasks,
-            receives_leads: receivesLeads
+            receives_leads: receivesLeads,
+            homeCards,
           })
         });
 
@@ -546,7 +557,7 @@ export default function EditCollaboratorPage() {
             .eq('id', id);
         }
 
-        // Persistir também em system_settings para preservar accessLevel exato (ex: caixa) e todos os submódulos
+        // Persistir também em system_settings para preservar accessLevel exato (ex: caixa), todos os submódulos e cards da página inicial
         const { data: existingConfig } = await supabase
           .from('system_settings')
           .select('value')
@@ -565,11 +576,13 @@ export default function EditCollaboratorPage() {
             [id]: {
               accessLevel: userRole,
               submodules: finalSubmodules,
+              homeCards,
               updatedAt: new Date().toISOString(),
             },
           },
           updated_at: new Date().toISOString(),
         });
+        window.dispatchEvent(new CustomEvent('collaborator-access-updated'));
       } catch (directErr) {
         console.warn('Aviso ao sincronizar profiles diretamente:', directErr);
       }
@@ -1147,6 +1160,128 @@ export default function EditCollaboratorPage() {
                   ? 'Administradores sempre têm acesso a todos os módulos.' 
                   : 'Selecione os módulos que este colaborador poderá acessar.'}
               </p>
+            </div>
+          )}
+
+          {/* Home Page Cards Visibility (Admin, Gerente, Supervisor) */}
+          {(isSystemAdmin || canManageHomeCards) && (
+            <div className={`space-y-4 pt-4 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className={`text-xs font-bold uppercase tracking-wider flex items-center gap-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-700'}`}>
+                    <LayoutGrid size={14} className="text-blue-600" />
+                    Cards Visíveis na Página Inicial
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Habilite quais cards e blocos da Página Inicial este colaborador pode visualizar
+                  </p>
+                </div>
+                <div className="flex items-center flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const all: Record<string, boolean> = {};
+                      HOME_PAGE_CARDS.forEach(c => { all[c.id] = true; });
+                      setHomeCards(all);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-600/15 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/25 transition-colors flex items-center gap-1"
+                  >
+                    <Eye size={13} />
+                    <span>Liberar Todos</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHomeCards(getDefaultHomeCardsForRole(userRole))}
+                    className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-blue-600/15 text-blue-600 dark:text-blue-400 hover:bg-blue-600/25 transition-colors flex items-center gap-1"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Padrão do Cargo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const none: Record<string, boolean> = {};
+                      HOME_PAGE_CARDS.forEach(c => { none[c.id] = false; });
+                      setHomeCards(none);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-600/15 text-rose-600 dark:text-rose-400 hover:bg-rose-600/25 transition-colors flex items-center gap-1"
+                  >
+                    <EyeOff size={13} />
+                    <span>Ocultar Todos</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-1">
+                {(['Topo & Atalhos', 'Indicadores & Operação', 'Gráficos & Resumos'] as const).map(cat => (
+                  <div key={cat} className="space-y-2">
+                    <p className="text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                      {cat}
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {HOME_PAGE_CARDS.filter(c => c.category === cat).map(card => {
+                        const isCardEnabled = Boolean(homeCards[card.id]);
+                        return (
+                          <button
+                            key={card.id}
+                            type="button"
+                            onClick={() =>
+                              setHomeCards(prev => ({
+                                ...prev,
+                                [card.id]: !prev[card.id],
+                              }))
+                            }
+                            className={`flex items-center justify-between p-3 rounded-2xl border-2 text-left transition-all ${
+                              isCardEnabled
+                                ? isDarkMode
+                                  ? 'bg-blue-600/10 border-blue-600/50'
+                                  : 'bg-blue-50 border-blue-200'
+                                : isDarkMode
+                                ? 'bg-slate-900 border-slate-800 opacity-75'
+                                : 'bg-white border-slate-100 opacity-75'
+                            } hover:border-blue-400`}
+                          >
+                            <div className="min-w-0 flex-1 pr-2">
+                              <span
+                                className={`text-xs font-bold block truncate ${
+                                  isCardEnabled
+                                    ? isDarkMode
+                                      ? 'text-blue-400'
+                                      : 'text-blue-700'
+                                    : isDarkMode
+                                    ? 'text-slate-400'
+                                    : 'text-slate-700'
+                                }`}
+                              >
+                                {card.label}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block line-clamp-1">
+                                {card.desc}
+                              </span>
+                            </div>
+
+                            <div
+                              className={`w-10 h-5 rounded-full relative transition-all duration-300 shrink-0 ${
+                                isCardEnabled
+                                  ? 'bg-blue-600'
+                                  : isDarkMode
+                                  ? 'bg-slate-800'
+                                  : 'bg-slate-200'
+                              }`}
+                            >
+                              <div
+                                className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition-all duration-300 ${
+                                  isCardEnabled ? 'left-5.5' : 'left-0.5'
+                                }`}
+                              />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

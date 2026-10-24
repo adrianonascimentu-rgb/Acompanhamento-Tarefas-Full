@@ -821,23 +821,23 @@ export default function ProfilePage() {
           >
             <Share2 size={18} />
           </button>
+          {(isAdmin || role === 'gerente' || role === 'supervisor') && (
+            <Link href={`/collaborators/edit/${id}`}
+              className={`flex items-center justify-center p-2 rounded-lg transition-colors ${isDarkMode ? 'text-slate-400 hover:text-blue-400 hover:bg-slate-800' : 'text-slate-600 hover:text-blue-600 hover:bg-slate-100'}`}
+              title="Editar Perfil e Permissões de Cards"
+            >
+              <Edit2 size={18} />
+            </Link>
+          )}
           {isAdmin && (
-            <>
-              <Link href={`/collaborators/edit/${id}`}
-                className={`flex items-center justify-center p-2 rounded-lg transition-colors ${isDarkMode ? 'text-slate-400 hover:text-blue-400 hover:bg-slate-800' : 'text-slate-600 hover:text-blue-600 hover:bg-slate-100'}`}
-                title="Editar Perfil"
-              >
-                <Edit2 size={18} />
-              </Link>
-              <button
-                type="button"
-                onClick={handleDeleteCollaborator}
-                className="flex items-center justify-center p-2 rounded-lg transition-colors text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
-                title="Excluir Colaborador"
-              >
-                <Trash2 size={18} />
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={handleDeleteCollaborator}
+              className="flex items-center justify-center p-2 rounded-lg transition-colors text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+              title="Excluir Colaborador"
+            >
+              <Trash2 size={18} />
+            </button>
           )}
           {loggedInUser?.id === id && (
             <button

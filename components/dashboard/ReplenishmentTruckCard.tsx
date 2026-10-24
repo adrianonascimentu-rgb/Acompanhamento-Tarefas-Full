@@ -105,30 +105,35 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
 
   return (
     <>
-      <div className={`p-3 sm:p-4 rounded-2xl border-2 shadow-md ${
+      <div className={`p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border sm:border-2 shadow-xs sm:shadow-md ${
         isDarkMode 
           ? 'bg-gradient-to-r from-slate-900 via-indigo-950/70 to-blue-950/70 border-indigo-500/30 text-white' 
           : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 border-blue-500/40 text-white'
       }`}>
-        <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs sm:text-sm">
-          <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
-            <div className="w-8 h-8 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shrink-0 shadow-xs">
-              <Truck size={18} className="animate-pulse" />
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2.5 text-xs sm:text-sm flex-nowrap min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
+            <div className="size-6 sm:size-8 rounded-lg sm:rounded-xl bg-amber-400/25 sm:bg-white/20 border border-amber-400/50 sm:border-white/30 flex items-center justify-center text-amber-300 sm:text-white shrink-0 shadow-xs">
+              <Truck size={13} className="sm:hidden animate-pulse text-amber-300" />
+              <Truck size={18} className="hidden sm:inline-block animate-pulse text-white" />
             </div>
-            <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-xs flex items-center gap-1 shrink-0">
+            <span className="hidden sm:inline-flex px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-400 text-slate-950 shadow-xs items-center gap-1 shrink-0">
               <Sparkles size={12} className="fill-current" /> Reposição
             </span>
-            <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white truncate">
-              <span>Próximo: <strong className="font-black text-white text-sm sm:text-base">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
-              <span className="opacity-40 hidden sm:inline">|</span>
-              <span className="opacity-90 text-xs hidden sm:inline">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
+            <span className="sm:hidden px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 bg-amber-400 text-slate-950 shadow-xs">
+              Caminhão
+            </span>
+            <div className="flex items-center gap-1 sm:gap-2 text-[11px] sm:text-sm font-bold text-white min-w-0 truncate">
+              <span className="opacity-80 shrink-0 text-[10px] sm:text-xs">Próximo:</span>
+              <strong className="font-black text-white text-[11px] sm:text-base truncate">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong>
+              <span className="opacity-40 hidden md:inline">|</span>
+              <span className="opacity-90 text-xs hidden md:inline truncate">Último: <strong className="font-bold text-white/95">{lastDateDisplay}</strong></span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             <button
               onClick={() => setIsDetailsModalOpen(true)}
-              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
+              className="hidden lg:inline-flex px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
               title="Info Carga"
             >
               Info Carga
@@ -136,18 +141,19 @@ export function ReplenishmentTruckCard({ isDarkMode = false }: ReplenishmentTruc
 
             <Link
               href="/reports/truck-history"
-              className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
+              className="hidden sm:flex px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-[11px] sm:text-xs font-bold items-center gap-1 cursor-pointer"
+              title="Histórico de Cargas"
             >
-              <History size={14} />
+              <History size={13} className="shrink-0" />
               <span className="hidden md:inline">Histórico</span>
             </Link>
 
             {canEdit && (
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-white text-blue-700 hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-xs flex items-center gap-1 cursor-pointer"
+                className="px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-white text-blue-700 hover:bg-white/95 dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white dark:shadow-blue-900/40 active:scale-95 transition-all text-[11px] sm:text-xs font-black shadow-xs flex items-center gap-1 cursor-pointer shrink-0"
               >
-                <Edit3 size={14} />
+                <Edit3 size={12} className="shrink-0" />
                 <span>Alterar</span>
               </button>
             )}

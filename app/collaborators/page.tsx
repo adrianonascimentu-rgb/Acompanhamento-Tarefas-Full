@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { ArrowLeft, Search, Plus, User, Target, Trash2, ShieldCheck, Copy, Check, X, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Search, Plus, User, Target, Trash2, ShieldCheck, Copy, Check, X, ExternalLink, LayoutGrid } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
@@ -13,6 +13,7 @@ import { supabase, isSupabaseConfigured, handleSupabaseAuthError } from '@/lib/s
 import { applyStatusToProfiles } from '@/lib/collaboratorStatus';
 import { useDataPrefetch } from '@/hooks/useDataPrefetch';
 import { authFetch } from '@/lib/authFetch';
+import { HomeCardsPermissionsModal } from '@/components/dashboard/HomeCardsPermissionsModal';
 
 const PAGE_SIZE = 12;
 
@@ -99,7 +100,7 @@ GRANT EXECUTE ON FUNCTION public.handle_new_user() TO service_role, postgres, au
 NOTIFY pgrst, 'reload schema';`;
 
 export default function CollaboratorsPage() {
-  const { isAdmin, isAuthenticated, isLoading: roleLoading, login } = useRole();
+  const { isAdmin, canManageHomeCards, isAuthenticated, isLoading: roleLoading, login } = useRole();
   const { isDarkMode } = useTheme();
   const { showToast, showConfirm } = useUI();
   const { getCachedCollaborators, prefetchCollaborators } = useDataPrefetch();
@@ -113,6 +114,7 @@ export default function CollaboratorsPage() {
   const [hasMore, setHasMore] = useState(true);
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
+  const [isHomeCardsModalOpen, setIsHomeCardsModalOpen] = useState(false);
 
   const observer = useRef<IntersectionObserver | null>(null);
 
@@ -225,11 +227,11 @@ export default function CollaboratorsPage() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && isAdmin) {
+    if (isAuthenticated && (isAdmin || canManageHomeCards)) {
       setPage(0);
       fetchCollaborators(0, locationSearch, statusTab, false);
     }
-  }, [isAuthenticated, isAdmin, locationSearch, statusTab, fetchCollaborators]);
+  }, [isAuthenticated, isAdmin, canManageHomeCards, locationSearch, statusTab, fetchCollaborators]);
 
   useEffect(() => {
     if (page > 0) {
@@ -240,7 +242,7 @@ export default function CollaboratorsPage() {
   useEffect(() => {
     // Real-time subscription
     let channel: any;
-    if (isAuthenticated && isAdmin) {
+    if (isAuthenticated && (isAdmin || canManageHomeCards)) {
       channel = supabase
         .channel('public:profiles-collaborators-realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
@@ -254,7 +256,7 @@ export default function CollaboratorsPage() {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [isAuthenticated, isAdmin, locationSearch, fetchCollaborators]);
+  }, [isAuthenticated, isAdmin, canManageHomeCards, locationSearch, statusTab, fetchCollaborators]);
 
   const handleDeleteCollaborator = (e: React.MouseEvent, person: any) => {
     e.preventDefault();
@@ -291,7 +293,7 @@ export default function CollaboratorsPage() {
     });
   };
 
-  if (roleLoading || (loading && isAuthenticated && isAdmin && page === 0)) {
+  if (roleLoading || (loading && isAuthenticated && (isAdmin || canManageHomeCards) && page === 0)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="size-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
@@ -303,14 +305,14 @@ export default function CollaboratorsPage() {
     return <LoginForm onLogin={login} />;
   }
 
-  if (!isAdmin) {
+  if (!isAdmin && !canManageHomeCards) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white p-6 text-center">
         <div className="p-4 bg-rose-50 rounded-full text-rose-600 mb-4">
           <User size={48} />
         </div>
         <h1 className="text-xl font-bold text-slate-900">Acesso Restrito</h1>
-        <p className="text-slate-500 mt-2">Apenas administradores podem visualizar a equipe.</p>
+        <p className="text-slate-500 mt-2">Apenas administradores, gerentes ou supervisores podem visualizar a equipe.</p>
         <Link href="/" className="mt-6 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold">
           Voltar para o Início
         </Link>
@@ -320,20 +322,33 @@ export default function CollaboratorsPage() {
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <header className={`sticky top-0 z-10 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
-        <div className="flex items-center p-4 justify-between w-full">
+        <div className="flex items-center p-4 justify-between w-full gap-2">
           <Link href="/" className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
             <ArrowLeft size={20} />
           </Link>
-          <h2 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">Membros da Equipe</h2>
-          <button
-            type="button"
-            onClick={() => setShowSqlModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 rounded-xl transition-all shadow-xs shrink-0"
-            title="Ver script SQL de sincronização e permissões do Supabase"
-          >
-            <ShieldCheck size={14} className="text-amber-600 dark:text-amber-400" />
-            <span className="hidden sm:inline">Script SQL</span>
-          </button>
+          <h2 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center truncate">Membros da Equipe</h2>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsHomeCardsModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+              title="Configurar quais cards da página inicial cada colaborador pode visualizar"
+            >
+              <LayoutGrid size={14} />
+              <span>Cards do Início</span>
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setShowSqlModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 hover:bg-amber-100 rounded-xl transition-all shadow-xs shrink-0"
+                title="Ver script SQL de sincronização e permissões do Supabase"
+              >
+                <ShieldCheck size={14} className="text-amber-600 dark:text-amber-400" />
+                <span className="hidden sm:inline">Script SQL</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -637,6 +652,13 @@ export default function CollaboratorsPage() {
           <p className="text-center text-xs text-slate-500 py-6">Fim da lista de colaboradores.</p>
         )}
       </main>
+
+      {/* Modal de Visibilidade de Cards da Página Inicial */}
+      <HomeCardsPermissionsModal
+        isOpen={isHomeCardsModalOpen}
+        onClose={() => setIsHomeCardsModalOpen(false)}
+        isDarkMode={isDarkMode}
+      />
     </div>
   );
 }

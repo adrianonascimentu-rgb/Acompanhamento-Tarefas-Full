@@ -35,11 +35,16 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
     totalResult: number;
     percentage: number;
     sellersCount: number;
+    myResult?: number;
+    myGoal?: number;
+    myPercentage?: number;
+    isSellerUser?: boolean;
   }>({
     totalGoal: 0,
     totalResult: 0,
     percentage: 0,
-    sellersCount: 0
+    sellersCount: 0,
+    isSellerUser: false
   });
   const [loading, setLoading] = useState(true);
 
@@ -105,25 +110,14 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
       try {
         setLoading(true);
 
-        // Fetch active sellers/collaborators eligible for sales
-        let profileQuery = supabase
+        // Fetch all active sellers/collaborators eligible for sales so that
+        // the global revenue sum (faturamento real) is complete and accurate for ALL users.
+        const { data: sellers } = await supabase
           .from('profiles')
-          .select('id, name');
-        
-        if (!isManagerial && user?.id) {
-          profileQuery = profileQuery.eq('id', user.id);
-        } else {
-          profileQuery = profileQuery.or('type.eq.vendedor,can_access_sales.eq.true');
-        }
+          .select('id, name')
+          .or('type.eq.vendedor,can_access_sales.eq.true');
 
-        const { data: sellers } = await profileQuery;
         const sellerIds = (sellers || []).map(s => s.id);
-
-        if (sellerIds.length === 0 && !isManagerial) {
-          setPerformance({ totalGoal: 0, totalResult: 0, percentage: 0, sellersCount: 0 });
-          setLoading(false);
-          return;
-        }
 
         // 1. Fetch daily sales in the exact [startDate, endDate] range
         let dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
@@ -152,9 +146,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           .eq('month', cycleRange.refMonth)
           .eq('year', cycleRange.refYear);
         
-        if (!isManagerial && user?.id) {
-          salesQuery = salesQuery.eq('collaborator_id', user.id);
-        } else if (sellerIds.length > 0) {
+        if (sellerIds.length > 0) {
           salesQuery = salesQuery.in('collaborator_id', sellerIds);
         }
 
@@ -173,9 +165,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
             .eq('month', startM)
             .eq('year', startY);
 
-          if (!isManagerial && user?.id) {
-            startMonthQuery = startMonthQuery.eq('collaborator_id', user.id);
-          } else if (sellerIds.length > 0) {
+          if (sellerIds.length > 0) {
             startMonthQuery = startMonthQuery.in('collaborator_id', sellerIds);
           }
 
@@ -202,9 +192,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
             .order('month', { ascending: false })
             .limit(40);
           
-          if (!isManagerial && user?.id) {
-            fallbackQuery = fallbackQuery.eq('collaborator_id', user.id);
-          } else if (sellerIds.length > 0) {
+          if (sellerIds.length > 0) {
             fallbackQuery = fallbackQuery.in('collaborator_id', sellerIds);
           }
 
@@ -225,15 +213,37 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
         const totalGoal = relevantData.reduce((acc, curr) => acc + (parseFloat(curr.target_2026) || 0), 0);
 
-        // The sum of the values already informed for the sellers (result_2026) already corresponds
-        // to the 26-to-25 sales cycle. Preserve result_2026 and only use dailyBySeller if result_2026 is 0.
-        const consolidatedSum = relevantData.reduce(
-          (acc, curr) => acc + (parseFloat(curr.result_2026) || 0),
-          0
-        );
+        // For each seller, the realized sales amount is the maximum of their informed consolidated result
+        // and their accumulated daily sales in the cycle, ensuring accurate, non-zero faturamento real for everyone.
+        const sellerResultsMap = new Map<string, { goal: number; result: number }>();
+        relevantData.forEach(row => {
+          const sId = row.collaborator_id;
+          const consolidated = parseFloat(row.result_2026) || 0;
+          const goal = parseFloat(row.target_2026) || 0;
+          const daily = Number(dailyBySeller[sId]?.sales_amount) || 0;
+          const finalResult = Math.max(consolidated, daily);
+          sellerResultsMap.set(sId, { goal, result: finalResult });
+        });
 
-        let totalResult = consolidatedSum;
-        if (consolidatedSum === 0 && hasDailyEntriesInRange) {
+        // Also add any sellers who have daily sales in this range
+        Object.entries(dailyBySeller).forEach(([sId, dailyData]) => {
+          const dailyAmount = Number(dailyData.sales_amount) || 0;
+          if (!sellerResultsMap.has(sId)) {
+            sellerResultsMap.set(sId, { goal: 0, result: dailyAmount });
+          } else {
+            const current = sellerResultsMap.get(sId)!;
+            sellerResultsMap.set(sId, {
+              goal: current.goal,
+              result: Math.max(current.result, dailyAmount)
+            });
+          }
+        });
+
+        // Total realized revenue sum (SOMA DO FATURAMENTO REAL)
+        let totalResult = Array.from(sellerResultsMap.values()).reduce((acc, curr) => acc + curr.result, 0);
+
+        // Fallback to pure daily sales if sales_results was totally empty
+        if (totalResult === 0 && hasDailyEntriesInRange) {
           totalResult = Object.values(dailyBySeller).reduce(
             (acc, curr) => acc + (Number(curr.sales_amount) || 0),
             0
@@ -242,11 +252,23 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
         const percentage = totalGoal > 0 ? Math.round((totalResult / totalGoal) * 1000) / 10 : 0;
 
+        // Check if the current logged-in user is one of the sellers
+        const currentUserId = user?.id;
+        const myData = currentUserId ? sellerResultsMap.get(currentUserId) : undefined;
+        const isSellerUser = !!myData && (myData.goal > 0 || myData.result > 0);
+        const myResult = myData ? myData.result : 0;
+        const myGoal = myData ? myData.goal : 0;
+        const myPercentage = myGoal > 0 ? Math.round((myResult / myGoal) * 1000) / 10 : 0;
+
         setPerformance({
           totalGoal,
           totalResult,
           percentage,
-          sellersCount: Math.max(relevantData.length, sellerIds.length)
+          sellersCount: Math.max(relevantData.length, sellerIds.length, sellerResultsMap.size),
+          myResult,
+          myGoal,
+          myPercentage,
+          isSellerUser,
         });
       } catch (err) {
         console.error('Error fetching sales performance data:', err);
@@ -409,9 +431,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
-              {isManagerial
-                ? 'Ciclo Comercial (26 a 25) • Soma consolidada dos valores informados pelos vendedores'
-                : 'Meu Desempenho no Ciclo Comercial (26 a 25) • Acompanhamento em tempo real'}
+              Ciclo Comercial (26 a 25) • Soma consolidada do faturamento real de todos os vendedores
             </p>
           </div>
         </div>
@@ -473,9 +493,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
               <div className="flex items-center gap-2 text-[11px] font-bold text-slate-500 dark:text-slate-400">
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
                   <Users size={12} className="text-emerald-500" />
-                  {isManagerial
-                    ? `${performance.sellersCount} ${performance.sellersCount === 1 ? 'vendedor' : 'vendedores'}`
-                    : 'Individual'}
+                  {`${performance.sellersCount} ${performance.sellersCount === 1 ? 'vendedor' : 'vendedores'}`}
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700">
                   <Clock size={12} className="text-blue-500" />
@@ -511,6 +529,30 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
                 </span>
               )}
             </div>
+
+            {/* Individual Seller Progress Box if the current user is a seller */}
+            {performance.isSellerUser && (
+              <div className="mt-2.5 p-3 rounded-2xl bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 shrink-0">
+                    <Users size={14} className="stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 dark:text-blue-400 block">
+                      Meu Desempenho Individual no Ciclo
+                    </span>
+                    <span className="text-xs text-slate-700 dark:text-slate-200 font-bold tabular-nums">
+                      Faturamento: <strong className="text-blue-600 dark:text-blue-300 font-black">{formatBRL(performance.myResult || 0)}</strong> de meta {formatBRL(performance.myGoal || 0)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2.5 py-1 rounded-lg text-[11px] font-black bg-blue-600 text-white shadow-2xs">
+                    {(performance.myPercentage || 0).toFixed(1)}% da meta pessoal
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 3-Column KPI Strip: Meta do Ciclo | Falta para a Meta | Ritmo Diário Necessário */}

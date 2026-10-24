@@ -44,7 +44,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${plusJakartaSans.variable} h-full`}>
+    <html lang="pt-BR" className={`${plusJakartaSans.variable} h-full`} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){d.classList.add('dark');}else{d.classList.remove('dark');}}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className="bg-slate-50/70 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased min-h-screen text-sm font-sans selection:bg-blue-500/15 selection:text-blue-600" suppressHydrationWarning>
         <ClientProviders>
           <PWAInstallBanner />

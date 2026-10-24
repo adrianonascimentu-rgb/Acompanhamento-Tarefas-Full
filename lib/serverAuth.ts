@@ -137,6 +137,9 @@ export async function verifyAuth(req: Request) {
       (rawRoleStr.includes('admin') && !rawRoleStr.includes('auxiliar')) ||
       rawRoleStr.includes('gerente') ||
       rawTypeStr === 'gerente' ||
+      rawRoleStr.includes('supervisor') ||
+      rawTypeStr === 'supervisor' ||
+      rawRoleStr.includes('coordenador') ||
       emailToCheck === 'adrianonascimentu@gmail.com' ||
       userId === '00000000-0000-0000-0000-000000000000' ||
       userId === '77777777-7777-7777-7777-777777777777' ||

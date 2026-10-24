@@ -32,6 +32,210 @@ export function normalizeRole(r: string | null | undefined): Role {
   return 'user';
 }
 
+export interface HomeCardDefinition {
+  id: string;
+  label: string;
+  desc: string;
+  category: 'Topo & Atalhos' | 'Indicadores & Operação' | 'Gráficos & Resumos';
+}
+
+export const HOME_PAGE_CARDS: HomeCardDefinition[] = [
+  {
+    id: 'card_truck_banner',
+    label: 'Caminhão de Reposição (Topo)',
+    desc: 'Banner superior com previsão de chegada e saída do caminhão',
+    category: 'Topo & Atalhos',
+  },
+  {
+    id: 'card_central_modulos',
+    label: 'Central de Módulos & ADM',
+    desc: 'Painel compacto superior com atalhos para os módulos',
+    category: 'Topo & Atalhos',
+  },
+  {
+    id: 'card_catalogo_pecas',
+    label: 'Catálogo de Peças & Preços',
+    desc: 'Botão e card de consulta de produtos e preços',
+    category: 'Topo & Atalhos',
+  },
+  {
+    id: 'card_tarefas_permanentes',
+    label: 'Tarefas Permanentes & Notas',
+    desc: 'Acesso aos blocos de anotações e rotinas fixas diárias',
+    category: 'Topo & Atalhos',
+  },
+  {
+    id: 'card_acesso_rapido',
+    label: 'Acesso Rápido aos Módulos',
+    desc: 'Atalhos para Kanban, Demandas, Pesquisa de Preço e Assistência',
+    category: 'Topo & Atalhos',
+  },
+  {
+    id: 'card_painel_gestor_stats',
+    label: 'Indicadores de Tarefas (Painel)',
+    desc: 'Cards de contagem: Total, Pendentes, Concluídas e Atrasadas',
+    category: 'Indicadores & Operação',
+  },
+  {
+    id: 'card_faturamento',
+    label: 'Faturamento Real & Metas',
+    desc: 'Card de desempenho comercial, faturamento da equipe e metas',
+    category: 'Indicadores & Operação',
+  },
+  {
+    id: 'card_entregas_urgentes',
+    label: 'Alertas de Entregas Urgentes',
+    desc: 'Card de monitoramento de entregas prioritárias',
+    category: 'Indicadores & Operação',
+  },
+  {
+    id: 'card_transferencias',
+    label: 'Resumo de Transferências',
+    desc: 'Card de movimentação de estoque entre filiais',
+    category: 'Indicadores & Operação',
+  },
+  {
+    id: 'card_progresso_tarefas',
+    label: 'Progresso Geral & Categorias',
+    desc: 'Barra de progresso percentual e filtro por categoria de tarefas',
+    category: 'Indicadores & Operação',
+  },
+  {
+    id: 'card_graficos',
+    label: 'Gráficos de Desempenho & SLA',
+    desc: 'Gráficos de volume de tarefas, histórico mensal e SLA de entregas',
+    category: 'Gráficos & Resumos',
+  },
+  {
+    id: 'card_resumo_vendas',
+    label: 'Card Resumo de Vendas',
+    desc: 'Resumo numérico de vendas realizadas, receita e ticket médio',
+    category: 'Gráficos & Resumos',
+  },
+  {
+    id: 'card_resumo_entregas',
+    label: 'Card Logística de Entregas',
+    desc: 'Status operacional diário (Agendadas, Pendentes, Em Andamento, Finalizadas)',
+    category: 'Gráficos & Resumos',
+  },
+  {
+    id: 'card_funil_leads',
+    label: 'Funil de Leads & Distribuição',
+    desc: 'Indicadores de oportunidades e distribuição de leads por vendedor',
+    category: 'Gráficos & Resumos',
+  },
+];
+
+export function getDefaultHomeCardsForRole(roleInput: string | null | undefined): Record<string, boolean> {
+  const r = normalizeRole(roleInput);
+  if (r === 'admin' || r === 'gerente' || r === 'supervisor') {
+    return {
+      card_truck_banner: true,
+      card_central_modulos: true,
+      card_catalogo_pecas: true,
+      card_tarefas_permanentes: true,
+      card_acesso_rapido: true,
+      card_painel_gestor_stats: true,
+      card_faturamento: true,
+      card_entregas_urgentes: true,
+      card_transferencias: true,
+      card_progresso_tarefas: true,
+      card_graficos: true,
+      card_resumo_vendas: true,
+      card_resumo_entregas: true,
+      card_funil_leads: true,
+    };
+  }
+  if (r === 'vendedor') {
+    return {
+      card_truck_banner: true,
+      card_central_modulos: true,
+      card_catalogo_pecas: true,
+      card_tarefas_permanentes: false,
+      card_acesso_rapido: true,
+      card_painel_gestor_stats: true,
+      card_faturamento: true,
+      card_entregas_urgentes: true,
+      card_transferencias: false,
+      card_progresso_tarefas: true,
+      card_graficos: true,
+      card_resumo_vendas: true,
+      card_resumo_entregas: true,
+      card_funil_leads: true,
+    };
+  }
+  if (r === 'caixa') {
+    return {
+      card_truck_banner: true,
+      card_central_modulos: true,
+      card_catalogo_pecas: true,
+      card_tarefas_permanentes: false,
+      card_acesso_rapido: true,
+      card_painel_gestor_stats: true,
+      card_faturamento: true,
+      card_entregas_urgentes: true,
+      card_transferencias: true,
+      card_progresso_tarefas: true,
+      card_graficos: true,
+      card_resumo_vendas: true,
+      card_resumo_entregas: true,
+      card_funil_leads: false,
+    };
+  }
+  if (r === 'estoque') {
+    return {
+      card_truck_banner: true,
+      card_central_modulos: true,
+      card_catalogo_pecas: true,
+      card_tarefas_permanentes: false,
+      card_acesso_rapido: true,
+      card_painel_gestor_stats: true,
+      card_faturamento: false,
+      card_entregas_urgentes: true,
+      card_transferencias: true,
+      card_progresso_tarefas: true,
+      card_graficos: true,
+      card_resumo_vendas: false,
+      card_resumo_entregas: true,
+      card_funil_leads: false,
+    };
+  }
+  if (r === 'entregador') {
+    return {
+      card_truck_banner: true,
+      card_central_modulos: true,
+      card_catalogo_pecas: true,
+      card_tarefas_permanentes: false,
+      card_acesso_rapido: true,
+      card_painel_gestor_stats: true,
+      card_faturamento: false,
+      card_entregas_urgentes: true,
+      card_transferencias: false,
+      card_progresso_tarefas: true,
+      card_graficos: false,
+      card_resumo_vendas: false,
+      card_resumo_entregas: true,
+      card_funil_leads: false,
+    };
+  }
+  return {
+    card_truck_banner: true,
+    card_central_modulos: true,
+    card_catalogo_pecas: true,
+    card_tarefas_permanentes: false,
+    card_acesso_rapido: true,
+    card_painel_gestor_stats: true,
+    card_faturamento: true,
+    card_entregas_urgentes: true,
+    card_transferencias: false,
+    card_progresso_tarefas: true,
+    card_graficos: true,
+    card_resumo_vendas: false,
+    card_resumo_entregas: true,
+    card_funil_leads: false,
+  };
+}
+
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   // Principal
   home: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'],
@@ -59,7 +263,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
 
   // Administração
   live_panel: ['admin', 'gerente', 'supervisor'],
-  collaborators: ['admin'],
+  collaborators: ['admin', 'gerente', 'supervisor'],
   commissions: ['admin', 'gerente'],
   settings: ['admin'],
   adriano_commissions: ['admin'],
@@ -86,6 +290,8 @@ interface RoleContextType {
   isGerente: boolean;
   isSupervisor: boolean;
   canUploadCatalog: boolean;
+  canManageHomeCards: boolean;
+  canViewHomeCard: (cardId: string) => boolean;
   canAccessLeads: boolean;
   canAccessSocialMedia: boolean;
   canAccessWhatsapp: boolean;
@@ -118,14 +324,14 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [permissions, setPermissions] = useState<Record<string, string[]>>(DEFAULT_PERMISSIONS);
+  const [collaboratorAccessMap, setCollaboratorAccessMap] = useState<Record<string, any>>({});
 
   const fetchPermissions = async () => {
     try {
       const { data, error } = await supabase
         .from('system_settings')
-        .select('value')
-        .eq('key', 'module_permissions')
-        .maybeSingle();
+        .select('key, value')
+        .in('key', ['module_permissions', 'collaborator_access_config']);
       
       if (error) {
         if (error.code === 'PGRST116') return;
@@ -137,11 +343,17 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (data?.value) {
-        setPermissions(prev => ({
-          ...prev,
-          ...data.value
-        }));
+      if (Array.isArray(data)) {
+        data.forEach((row: any) => {
+          if (row.key === 'module_permissions' && row.value) {
+            setPermissions(prev => ({
+              ...prev,
+              ...row.value
+            }));
+          } else if (row.key === 'collaborator_access_config' && row.value && typeof row.value === 'object') {
+            setCollaboratorAccessMap(row.value);
+          }
+        });
       }
     } catch (err: any) {
       if (err?.code === 'PGRST303' || err?.message?.includes('JWT expired') || err?.message?.includes('jwt expired')) {
@@ -215,6 +427,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           role: profile?.role || rawRoleTitle,
           access_level: savedAccessEntry?.accessLevel || profile?.type || normalizedRoleName,
           submodules: savedAccessEntry?.submodules || null,
+          homeCards: savedAccessEntry?.homeCards || null,
           normalizedRole: normalizedRoleName
         };
 
@@ -250,6 +463,29 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     fetchPermissions();
     refreshUser();
 
+    const handleAccessUpdated = () => {
+      fetchPermissions();
+      refreshUser();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('collaborator-access-updated', handleAccessUpdated);
+    }
+
+    let settingsChannel: any = null;
+    try {
+      settingsChannel = supabase
+        .channel('public:system_settings-role-realtime')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'system_settings' },
+          () => {
+            fetchPermissions();
+          }
+        )
+        .subscribe();
+    } catch {}
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         refreshUser();
@@ -279,7 +515,15 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('collaborator-access-updated', handleAccessUpdated);
+      }
+      if (settingsChannel) {
+        supabase.removeChannel(settingsChannel);
+      }
+    };
   }, []);
 
   const login = (roleOrUserData: any, userData?: any) => {
@@ -335,8 +579,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const ownerEmail = (process.env.NEXT_PUBLIC_OWNER_EMAIL || process.env.OWNER_EMAIL || '').trim().toLowerCase();
   const userEmail = (user?.email || '').trim().toLowerCase();
-  const rawRole = (user?.access_level || user?.role || user?.type || 'user').toLowerCase();
-  const normalizedRole = normalizeRole(user?.access_level || user?.role || user?.type);
+  const liveAccessEntry = user?.id ? collaboratorAccessMap[user.id] : null;
+  const rawRole = (liveAccessEntry?.accessLevel || user?.access_level || user?.role || user?.type || 'user').toLowerCase();
+  const normalizedRole = normalizeRole(liveAccessEntry?.accessLevel || user?.access_level || user?.role || user?.type);
 
   const isAdmin = 
     normalizedRole === 'admin' || 
@@ -392,14 +637,40 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   // Regra de Negócio: Somente Administrador, Gerente e Supervisor podem enviar o arquivo para atualização dos produtos
   const canUploadCatalog = Boolean(isAdmin || isGerente || isSupervisor);
+
+  // Regra de Negócio: Administrador, Gerente e Supervisor podem habilitar quais cards da página inicial cada colaborador visualiza
+  const canManageHomeCards = Boolean(isAdmin || isGerente || isSupervisor);
+
+  const canViewHomeCard = (cardId: string): boolean => {
+    if (!user) return false;
+    const explicitHomeCards = liveAccessEntry?.homeCards || user?.homeCards;
+    const explicitSubmodules = liveAccessEntry?.submodules || user?.submodules;
+
+    // 1. Se houver configuração explícita salva para este card no perfil do colaborador, aplica exatamente o configurado
+    if (explicitHomeCards && typeof explicitHomeCards[cardId] === 'boolean') {
+      return explicitHomeCards[cardId];
+    }
+    if (explicitSubmodules && typeof explicitSubmodules[cardId] === 'boolean') {
+      return explicitSubmodules[cardId];
+    }
+
+    // 2. Administradores visualizam todos os cards por padrão
+    if (isAdmin) return true;
+
+    // 3. Fallback para os padrões do cargo do colaborador
+    const defaults = getDefaultHomeCardsForRole(normalizedRole);
+    return defaults[cardId] ?? true;
+  };
   
   const hasPermission = (module: string) => {
     if (isAdmin) return true;
     if (!user) return false;
 
+    const effectiveSubmodules = liveAccessEntry?.submodules || user.submodules;
+
     // 0. Verificação explícita nos submódulos salvos do colaborador (collaborator_access_config)
-    if (user.submodules && typeof user.submodules[module] === 'boolean') {
-      return user.submodules[module];
+    if (effectiveSubmodules && typeof effectiveSubmodules[module] === 'boolean') {
+      return effectiveSubmodules[module];
     }
     
     // 1. Verificação explícita na coluna de permissão do usuário
@@ -458,20 +729,21 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     rawRole.includes('secretaria')
   );
 
-  // Regra de Negócio: Somente Administrador, Gerente e Supervisor têm acesso a Tarefas Permanentes & Notas
+  // Regra de Negócio: Somente Administrador, Gerente, Supervisor ou colaborador com card habilitado têm acesso a Tarefas Permanentes & Notas
   const canAccessPermanentTasks = Boolean(
     isAdmin || 
     isGerente || 
     isSupervisor ||
-    normalizedRole === 'admin' ||
-    normalizedRole === 'gerente' ||
-    normalizedRole === 'supervisor' ||
+    (normalizedRole as string) === 'admin' ||
+    (normalizedRole as string) === 'gerente' ||
+    (normalizedRole as string) === 'supervisor' ||
     rawRole.includes('admin') ||
     rawRole.includes('gerente') ||
     rawRole.includes('supervisor') ||
     rawRole.includes('coordenador') ||
     rawRole.includes('gestor') ||
-    hasPermission('permanent_tasks')
+    hasPermission('permanent_tasks') ||
+    canViewHomeCard('card_tarefas_permanentes')
   );
 
   const value = {
@@ -486,6 +758,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     isGerente,
     isSupervisor,
     canUploadCatalog,
+    canManageHomeCards,
+    canViewHomeCard,
     canAccessLeads: hasPermission('leads'),
     canAccessSocialMedia: hasPermission('social_media'),
     canAccessWhatsapp: hasPermission('whatsapp'),

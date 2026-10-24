@@ -54,6 +54,7 @@ export default function SalesResultsPage() {
   const [showCommissionModal, setShowCommissionModal] = useState(false);
   const [showDailySalesModal, setShowDailySalesModal] = useState(false);
   const [todayDailySales, setTodayDailySales] = useState<{ total: number; sellersCount: number } | null>(null);
+  const [tableFilter, setTableFilter] = useState<'all' | 'me'>('all');
 
   const isManagerial = isAdmin || isGerente || isSupervisor || role === 'gerente' || role === 'supervisor' || role === 'admin';
 
@@ -107,18 +108,13 @@ export default function SalesResultsPage() {
       const currentRole = role?.toLowerCase();
       const isManagerial = isAdmin || currentRole === 'gerente' || currentRole === 'supervisor';
 
-      // Fetch all collaborators who should be in the sales list
-      let query = supabase
+      // Fetch all collaborators who should be in the sales list so that the global faturamento real
+      // is always calculated completely and identically for all users.
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, name, type, can_access_sales');
-      
-      if (!isManagerial && user?.id) {
-        query = query.eq('id', user.id);
-      } else {
-        query = query.or('type.eq.vendedor,can_access_sales.eq.true');
-      }
-
-      const { data: profiles, error: profilesError } = await query.order('name');
+        .select('id, name, type, can_access_sales')
+        .or('type.eq.vendedor,can_access_sales.eq.true')
+        .order('name');
 
       if (profilesError) throw profilesError;
 
@@ -143,17 +139,12 @@ export default function SalesResultsPage() {
       const [startY, startM] = cycleRange.startDate.split('-').map(Number);
       const [endY, endM] = cycleRange.endDate.split('-').map(Number);
 
-      let salesQuery = supabase
+      const { data: sales, error: salesError } = await supabase
         .from('sales_results')
         .select('*')
         .eq('month', selectedMonth)
         .eq('year', selectedYear);
 
-      if (!isManagerial && user?.id) {
-        salesQuery = salesQuery.eq('collaborator_id', user.id);
-      }
-
-      const { data: sales, error: salesError } = await salesQuery;
       if (salesError) throw salesError;
 
       let activeSalesRows = sales || [];
@@ -163,17 +154,12 @@ export default function SalesResultsPage() {
 
       // If the selected end-month has no informed values yet, check the start-month of the 26-to-25 cycle
       if (!hasInformedValues && startM && startY && (startM !== selectedMonth || startY !== selectedYear)) {
-        let startQuery = supabase
+        const { data: startSales } = await supabase
           .from('sales_results')
           .select('*')
           .eq('month', startM)
           .eq('year', startY);
 
-        if (!isManagerial && user?.id) {
-          startQuery = startQuery.eq('collaborator_id', user.id);
-        }
-
-        const { data: startSales } = await startQuery;
         if (
           startSales &&
           startSales.some(r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
@@ -186,18 +172,13 @@ export default function SalesResultsPage() {
       if (
         !activeSalesRows.some(r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
       ) {
-        let fallbackQuery = supabase
+        const { data: fallbackSales } = await supabase
           .from('sales_results')
           .select('*')
           .order('year', { ascending: false })
           .order('month', { ascending: false })
           .limit(40);
 
-        if (!isManagerial && user?.id) {
-          fallbackQuery = fallbackQuery.eq('collaborator_id', user.id);
-        }
-
-        const { data: fallbackSales } = await fallbackQuery;
         if (fallbackSales && fallbackSales.length > 0) {
           const nonZero =
             fallbackSales.find(
@@ -210,15 +191,10 @@ export default function SalesResultsPage() {
       }
 
       // Fetch leads data to calculate conversion rate accurately
-      let leadsQuery = supabase
+      const { data: leads } = await supabase
         .from('leads')
         .select('id, name, status, assigned_to, created_at');
 
-      if (!isManagerial && user?.id) {
-        leadsQuery = leadsQuery.eq('assigned_to', user.id);
-      }
-
-      const { data: leads } = await leadsQuery;
       const allLeads = leads || [];
       setLeadsData(allLeads);
 
@@ -237,11 +213,9 @@ export default function SalesResultsPage() {
           const consolidatedRes2026 = Number(entry?.result_2026 || 0);
           const dailySellerAmount = Number(dailyBySeller[profile.id]?.sales_amount || 0);
 
-          // The values already informed for sellers in sales_results (consolidatedRes2026)
-          // already correspond to the 26-to-25 cycle.
-          const res2026 = consolidatedRes2026 > 0
-            ? consolidatedRes2026
-            : (hasDailyEntriesInRange ? dailySellerAmount : 0);
+          // For each seller, the realized revenue is the max between the informed consolidated result
+          // and their recorded daily sales in the cycle, ensuring zero loss of updated daily sales.
+          const res2026 = Math.max(consolidatedRes2026, dailySellerAmount);
 
           const yoyGrowth = res2025 > 0 
             ? ((res2026 - res2025) / res2025) * 100 
@@ -757,8 +731,36 @@ export default function SalesResultsPage() {
                     Performance individual com crescimento YoY e conversão de leads
                   </p>
                 </div>
-                <div className="text-[11px] font-bold text-slate-400">
-                  {salesData.length} vendedores listados
+                <div className="flex items-center gap-2">
+                  {user?.id && salesData.some(s => s.id === user.id) && (
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setTableFilter('all')}
+                        className={`px-2.5 py-1 rounded-lg transition-all ${
+                          tableFilter === 'all'
+                            ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-black'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        Todos ({salesData.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTableFilter('me')}
+                        className={`px-2.5 py-1 rounded-lg transition-all ${
+                          tableFilter === 'me'
+                            ? 'bg-blue-600 text-white shadow-xs font-black'
+                            : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}
+                      >
+                        Apenas Eu
+                      </button>
+                    </div>
+                  )}
+                  <div className="text-[11px] font-bold text-slate-400 hidden sm:block">
+                    {salesData.length} vendedores listados
+                  </div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -775,16 +777,28 @@ export default function SalesResultsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {salesData.map((item, idx) => {
+                    {(tableFilter === 'me' && user?.id ? salesData.filter(s => s.id === user.id) : salesData).map((item, idx) => {
                       const atingimento = item.meta2026 > 0 ? (item.res2026 / item.meta2026) * 100 : 0;
+                      const isMe = item.id === user?.id;
                       return (
-                        <tr key={idx} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'} hover:bg-slate-500/5 transition-colors`}>
+                        <tr key={idx} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'} hover:bg-slate-500/5 transition-colors ${
+                          isMe ? 'bg-blue-50/60 dark:bg-blue-950/20' : ''
+                        }`}>
                           <td className="p-4 text-sm font-bold">
                             <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs font-black">
+                              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${
+                                isMe ? 'bg-blue-600 text-white' : 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                              }`}>
                                 {item.name.charAt(0)}
                               </div>
-                              <span>{item.name}</span>
+                              <span className="flex items-center gap-1.5">
+                                {item.name}
+                                {isMe && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-blue-600 text-white shadow-2xs">
+                                    Você
+                                  </span>
+                                )}
+                              </span>
                             </div>
                           </td>
                           <td className="p-4 text-sm text-right text-slate-500">

@@ -165,7 +165,7 @@ export function Sidebar() {
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5 custom-scrollbar">
         {sections.map((section) => (
           <div key={section.title} className="space-y-1">
-            <p className="px-3 text-[10px] font-semibold text-slate-400 dark:text-slate-500 tracking-wider uppercase">
+            <p className="px-3 text-[10px] font-semibold text-slate-400 dark:text-slate-400 tracking-wider uppercase">
               {section.title}
             </p>
             <div className="space-y-0.5">
@@ -188,7 +188,7 @@ export function Sidebar() {
                       className={`shrink-0 ${
                         item.active 
                           ? 'text-blue-600 dark:text-blue-400' 
-                          : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600'
+                          : 'text-slate-400 dark:text-slate-400 group-hover:text-slate-600'
                       }`} 
                     />
                     <span className="truncate">{item.label}</span>

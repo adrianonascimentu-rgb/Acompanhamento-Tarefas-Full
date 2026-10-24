@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -42,6 +44,82 @@
   .dark option {
     background-color: #0f172a;
     color: #f8fafc;
+  }
+
+  /* High-contrast WCAG AA text legibility in dark mode */
+  .dark .text-slate-500 {
+    color: #94a3b8;
+  }
+
+  .dark .text-slate-400 {
+    color: #cbd5e1;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder {
+    color: #94a3b8 !important;
+    opacity: 0.9;
+  }
+
+  /* High-contrast status badges in dark mode */
+  .dark .text-amber-800,
+  .dark .text-amber-700,
+  .dark .text-amber-900 {
+    color: #fcd34d !important;
+  }
+
+  .dark .text-emerald-800,
+  .dark .text-emerald-700,
+  .dark .text-emerald-900 {
+    color: #6ee7b7 !important;
+  }
+
+  .dark .text-rose-800,
+  .dark .text-rose-700,
+  .dark .text-rose-900 {
+    color: #fda4af !important;
+  }
+
+  .dark .text-blue-800,
+  .dark .text-blue-700,
+  .dark .text-blue-900 {
+    color: #93c5fd !important;
+  }
+
+  .dark .text-purple-800,
+  .dark .text-purple-700,
+  .dark .text-purple-900 {
+    color: #d8b4fe !important;
+  }
+
+  .dark .text-indigo-800,
+  .dark .text-indigo-700,
+  .dark .text-indigo-900 {
+    color: #a5b4fc !important;
+  }
+
+  /* Pastel badges adapt to dark transparent pills instead of bright blinding blocks */
+  .dark .bg-slate-100:not(.keep-light) {
+    background-color: rgba(30, 41, 59, 0.75);
+    color: #cbd5e1;
+  }
+  .dark .bg-blue-100:not(.keep-light) {
+    background-color: rgba(30, 58, 138, 0.35);
+  }
+  .dark .bg-amber-100:not(.keep-light) {
+    background-color: rgba(120, 53, 15, 0.35);
+  }
+  .dark .bg-emerald-100:not(.keep-light) {
+    background-color: rgba(6, 78, 59, 0.35);
+  }
+  .dark .bg-rose-100:not(.keep-light) {
+    background-color: rgba(136, 19, 55, 0.35);
+  }
+  .dark .bg-purple-100:not(.keep-light) {
+    background-color: rgba(88, 28, 135, 0.35);
+  }
+  .dark .bg-indigo-100:not(.keep-light) {
+    background-color: rgba(49, 46, 129, 0.35);
   }
 }
 

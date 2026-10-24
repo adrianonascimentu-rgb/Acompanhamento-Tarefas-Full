@@ -58,8 +58,9 @@ function resolveDbType(rawTypeOrLevel?: string | null): string {
 async function saveCollaboratorAccessConfig(
   client: any,
   collaboratorId: string,
-  accessLevel: string,
-  submodules: Record<string, boolean>
+  accessLevel?: string,
+  submodules?: Record<string, boolean>,
+  homeCards?: Record<string, boolean>
 ) {
   try {
     const { data: existing } = await client
@@ -70,12 +71,19 @@ async function saveCollaboratorAccessConfig(
 
     const currentMap =
       existing?.value && typeof existing.value === 'object' ? existing.value : {};
+    const prevEntry = currentMap[collaboratorId] || {};
 
     const updatedMap = {
       ...currentMap,
       [collaboratorId]: {
-        accessLevel,
-        submodules,
+        ...prevEntry,
+        accessLevel: accessLevel || prevEntry.accessLevel || 'user',
+        submodules: submodules
+          ? { ...(prevEntry.submodules || {}), ...submodules }
+          : (prevEntry.submodules || {}),
+        homeCards: homeCards
+          ? { ...(prevEntry.homeCards || {}), ...homeCards }
+          : (prevEntry.homeCards || undefined),
         updatedAt: new Date().toISOString(),
       },
     };
@@ -130,6 +138,7 @@ export async function GET(req: Request) {
           ...profile,
           access_level: extra?.accessLevel || profile.type || 'user',
           submodules: extra?.submodules || null,
+          homeCards: extra?.homeCards || null,
         },
         skills: skills || [],
         accessConfig: extra || null,
@@ -171,6 +180,7 @@ export async function GET(req: Request) {
         ...c,
         access_level: extra.accessLevel || c.type,
         submodules: extra.submodules || undefined,
+        homeCards: extra.homeCards || undefined,
       };
     });
 
@@ -374,31 +384,37 @@ export async function POST(req: Request) {
       }
     }
 
-    // Salvar configuração detalhada de nível de acesso e submódulos
-    await saveCollaboratorAccessConfig(client, userId, effectiveAccessLevel, {
-      home: isTargetAdmin ? true : can_access_home ?? true,
-      products: isTargetAdmin ? true : can_access_products ?? true,
-      tasks: isTargetAdmin ? true : can_access_tasks ?? true,
-      demands: isTargetAdmin ? true : !!can_access_demands,
-      routes: isTargetAdmin ? true : !!can_access_routes,
-      whatsapp: isTargetAdmin ? true : !!can_access_whatsapp,
-      leads: isTargetAdmin ? true : !!can_access_leads,
-      social_media: isTargetAdmin ? true : !!can_access_social_media,
-      deliveries: isTargetAdmin ? true : !!can_access_deliveries,
-      truck_history: isTargetAdmin ? true : !!can_access_truck_history,
-      transfers: isTargetAdmin ? true : !!can_access_transfers,
-      warranties: isTargetAdmin ? true : !!can_access_warranties,
-      assistances: isTargetAdmin ? true : !!can_access_assistances,
-      price_research: isTargetAdmin ? true : !!can_access_price_research,
-      sales: isTargetAdmin ? true : !!can_access_sales,
-      reports: isTargetAdmin ? true : !!can_access_reports,
-      live_panel: isTargetAdmin ? true : !!can_access_live_panel,
-      collaborators: isTargetAdmin ? true : !!can_access_collaborators,
-      commissions: isTargetAdmin ? true : !!can_access_commissions,
-      settings: isTargetAdmin ? true : !!can_access_settings,
-      adriano_commissions: isTargetAdmin ? true : !!can_access_adriano_commissions,
-      permanent_tasks: isTargetAdmin ? true : !!can_access_permanent_tasks,
-    });
+    // Salvar configuração detalhada de nível de acesso, submódulos e cards da página inicial
+    await saveCollaboratorAccessConfig(
+      client,
+      userId,
+      effectiveAccessLevel,
+      {
+        home: isTargetAdmin ? true : can_access_home ?? true,
+        products: isTargetAdmin ? true : can_access_products ?? true,
+        tasks: isTargetAdmin ? true : can_access_tasks ?? true,
+        demands: isTargetAdmin ? true : !!can_access_demands,
+        routes: isTargetAdmin ? true : !!can_access_routes,
+        whatsapp: isTargetAdmin ? true : !!can_access_whatsapp,
+        leads: isTargetAdmin ? true : !!can_access_leads,
+        social_media: isTargetAdmin ? true : !!can_access_social_media,
+        deliveries: isTargetAdmin ? true : !!can_access_deliveries,
+        truck_history: isTargetAdmin ? true : !!can_access_truck_history,
+        transfers: isTargetAdmin ? true : !!can_access_transfers,
+        warranties: isTargetAdmin ? true : !!can_access_warranties,
+        assistances: isTargetAdmin ? true : !!can_access_assistances,
+        price_research: isTargetAdmin ? true : !!can_access_price_research,
+        sales: isTargetAdmin ? true : !!can_access_sales,
+        reports: isTargetAdmin ? true : !!can_access_reports,
+        live_panel: isTargetAdmin ? true : !!can_access_live_panel,
+        collaborators: isTargetAdmin ? true : !!can_access_collaborators,
+        commissions: isTargetAdmin ? true : !!can_access_commissions,
+        settings: isTargetAdmin ? true : !!can_access_settings,
+        adriano_commissions: isTargetAdmin ? true : !!can_access_adriano_commissions,
+        permanent_tasks: isTargetAdmin ? true : !!can_access_permanent_tasks,
+      },
+      body.homeCards && typeof body.homeCards === 'object' ? body.homeCards : undefined
+    );
 
     // 3. Inserir Skills
     if (Array.isArray(skills) && skills.length > 0) {
@@ -474,19 +490,39 @@ export async function PUT(req: Request) {
       can_access_adriano_commissions,
       can_access_permanent_tasks,
       receives_leads,
+      homeCards,
+      submodules,
+      onlyAccessConfig,
     } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID do colaborador é obrigatório' }, { status: 400 });
     }
 
-    const hasExplicitAccessUpdate = Boolean(access_level || type);
+    const hasExplicitAccessUpdate = Boolean(
+      access_level || type || onlyAccessConfig || (homeCards && typeof homeCards === 'object')
+    );
 
     if (!auth.user.isAdmin && !hasExplicitAccessUpdate && auth.user.id !== id) {
       return NextResponse.json(
         { error: 'Acesso negado. Você só pode atualizar o seu próprio perfil.' },
         { status: 403 }
       );
+    }
+
+    // Se for atualização rápida apenas dos cards da página inicial / submódulos (ex: pelo modal)
+    if (onlyAccessConfig) {
+      await saveCollaboratorAccessConfig(
+        client,
+        id,
+        access_level ? String(access_level).toLowerCase().trim() : undefined,
+        submodules && typeof submodules === 'object' ? submodules : undefined,
+        homeCards && typeof homeCards === 'object' ? homeCards : undefined
+      );
+      return NextResponse.json({
+        success: true,
+        id,
+      });
     }
 
     const cleanEmail = email?.trim()?.toLowerCase() || null;
@@ -656,32 +692,38 @@ export async function PUT(req: Request) {
       }
     }
 
-    // Salvar configuração detalhada de nível de acesso e submódulos em system_settings
+    // Salvar configuração detalhada de nível de acesso, submódulos e cards da página inicial em system_settings
     if (auth.user.isAdmin || hasExplicitAccessUpdate) {
-      await saveCollaboratorAccessConfig(client, id, effectiveAccessLevel, {
-        home: isTargetAdmin ? true : can_access_home ?? true,
-        products: isTargetAdmin ? true : can_access_products ?? true,
-        tasks: isTargetAdmin ? true : can_access_tasks ?? true,
-        demands: isTargetAdmin ? true : !!can_access_demands,
-        routes: isTargetAdmin ? true : !!can_access_routes,
-        whatsapp: isTargetAdmin ? true : !!can_access_whatsapp,
-        leads: isTargetAdmin ? true : !!can_access_leads,
-        social_media: isTargetAdmin ? true : !!can_access_social_media,
-        deliveries: isTargetAdmin ? true : !!can_access_deliveries,
-        truck_history: isTargetAdmin ? true : !!can_access_truck_history,
-        transfers: isTargetAdmin ? true : !!can_access_transfers,
-        warranties: isTargetAdmin ? true : !!can_access_warranties,
-        assistances: isTargetAdmin ? true : !!can_access_assistances,
-        price_research: isTargetAdmin ? true : !!can_access_price_research,
-        sales: isTargetAdmin ? true : !!can_access_sales,
-        reports: isTargetAdmin ? true : !!can_access_reports,
-        live_panel: isTargetAdmin ? true : !!can_access_live_panel,
-        collaborators: isTargetAdmin ? true : !!can_access_collaborators,
-        commissions: isTargetAdmin ? true : !!can_access_commissions,
-        settings: isTargetAdmin ? true : !!can_access_settings,
-        adriano_commissions: isTargetAdmin ? true : !!can_access_adriano_commissions,
-        permanent_tasks: isTargetAdmin ? true : !!can_access_permanent_tasks,
-      });
+      await saveCollaboratorAccessConfig(
+        client,
+        id,
+        effectiveAccessLevel,
+        {
+          home: isTargetAdmin ? true : can_access_home ?? true,
+          products: isTargetAdmin ? true : can_access_products ?? true,
+          tasks: isTargetAdmin ? true : can_access_tasks ?? true,
+          demands: isTargetAdmin ? true : !!can_access_demands,
+          routes: isTargetAdmin ? true : !!can_access_routes,
+          whatsapp: isTargetAdmin ? true : !!can_access_whatsapp,
+          leads: isTargetAdmin ? true : !!can_access_leads,
+          social_media: isTargetAdmin ? true : !!can_access_social_media,
+          deliveries: isTargetAdmin ? true : !!can_access_deliveries,
+          truck_history: isTargetAdmin ? true : !!can_access_truck_history,
+          transfers: isTargetAdmin ? true : !!can_access_transfers,
+          warranties: isTargetAdmin ? true : !!can_access_warranties,
+          assistances: isTargetAdmin ? true : !!can_access_assistances,
+          price_research: isTargetAdmin ? true : !!can_access_price_research,
+          sales: isTargetAdmin ? true : !!can_access_sales,
+          reports: isTargetAdmin ? true : !!can_access_reports,
+          live_panel: isTargetAdmin ? true : !!can_access_live_panel,
+          collaborators: isTargetAdmin ? true : !!can_access_collaborators,
+          commissions: isTargetAdmin ? true : !!can_access_commissions,
+          settings: isTargetAdmin ? true : !!can_access_settings,
+          adriano_commissions: isTargetAdmin ? true : !!can_access_adriano_commissions,
+          permanent_tasks: isTargetAdmin ? true : !!can_access_permanent_tasks,
+        },
+        homeCards && typeof homeCards === 'object' ? homeCards : undefined
+      );
     }
 
     // 3. Atualizar Skills

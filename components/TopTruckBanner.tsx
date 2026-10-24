@@ -28,7 +28,7 @@ import { usePathname } from 'next/navigation';
 export function TopTruckBanner() {
   const pathname = usePathname();
   const isHomePage = pathname === '/' || pathname === '';
-  const { role, isAdmin, user, isAuthenticated } = useRole();
+  const { role, isAdmin, user, canViewHomeCard } = useRole();
   const { isDarkMode } = useTheme();
   
   // Apenas Administrador, Gerente ou Supervisor podem editar
@@ -175,7 +175,7 @@ export function TopTruckBanner() {
           : 'bg-gradient-to-r from-emerald-700 via-teal-700 to-emerald-600 border-emerald-400/50 text-white shadow-emerald-500/20',
         badgeBg: 'bg-emerald-300 text-slate-950',
         badgeLabel: '🚚 CHEGA HOJE!',
-        buttonTextColor: 'text-emerald-800'
+        buttonBg: 'bg-white text-emerald-800 hover:bg-white/95 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:text-white dark:shadow-emerald-900/40'
       };
     } else if (daysUntilArrival === 1) {
       // FALTA 1 DIA (AMANHÃ) - Amarelo/Âmbar acolhedor que não cansa a vista
@@ -185,7 +185,7 @@ export function TopTruckBanner() {
           : 'bg-gradient-to-r from-amber-600 via-amber-700 to-yellow-600 border-amber-400/50 text-white shadow-amber-500/20',
         badgeBg: 'bg-yellow-300 text-slate-950',
         badgeLabel: '⚠️ CHEGA AMANHÃ!',
-        buttonTextColor: 'text-amber-900'
+        buttonBg: 'bg-white text-amber-900 hover:bg-white/95 dark:bg-amber-600 dark:hover:bg-amber-500 dark:text-white dark:shadow-amber-900/40'
       };
     } else {
       // PADRÃO - Azul suave
@@ -195,12 +195,12 @@ export function TopTruckBanner() {
           : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-600 border-blue-500/40 text-white shadow-blue-500/20',
         badgeBg: 'bg-amber-400 text-slate-950',
         badgeLabel: 'Caminhão de Reposição',
-        buttonTextColor: 'text-blue-700'
+        buttonBg: 'bg-white text-blue-700 hover:bg-white/95 dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white dark:shadow-blue-900/40'
       };
     }
   };
 
-  const { bannerBg, badgeBg, badgeLabel, buttonTextColor } = getBannerStyles();
+  const { bannerBg, badgeBg, badgeLabel, buttonBg } = getBannerStyles();
 
   const nextDateDisplay = formatFriendlyDate(scheduleData.next_arrival_date);
   const effectiveLastDate = latest?.arrival_date || scheduleData.last_arrival_date;
@@ -208,48 +208,62 @@ export function TopTruckBanner() {
 
   const hasNextDate = !!scheduleData.next_arrival_date;
 
+  if (isHomePage && !canViewHomeCard('card_truck_banner')) {
+    return null;
+  }
+
   return (
     <>
-      <div className="w-full px-3 py-2 sm:px-4 sm:py-2.5">
+      <div className="w-full px-2.5 py-1.5 sm:px-4 sm:py-2.5">
         <motion.div
           initial={{ opacity: 0, y: -2 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`relative overflow-hidden rounded-2xl border-2 shadow-md transition-all duration-300 ${bannerBg}`}
+          className={`relative overflow-hidden rounded-xl sm:rounded-2xl border sm:border-2 shadow-xs sm:shadow-md transition-all duration-300 ${bannerBg}`}
         >
-          <div className="relative px-3.5 py-2.5 sm:px-5 sm:py-3 flex flex-wrap items-center justify-between gap-2.5 text-xs sm:text-sm">
-            {/* Esquerda: Ícone + Badge + Próximo + Último */}
-            <div className="flex items-center gap-2.5 min-w-0 flex-wrap sm:flex-nowrap">
-              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white shrink-0 shadow-xs">
-                <Truck size={18} className="animate-pulse text-white" />
+          <div className="relative px-2.5 py-1.5 sm:px-5 sm:py-3 flex items-center justify-between gap-1.5 sm:gap-2.5 text-xs sm:text-sm flex-nowrap min-w-0">
+            {/* Esquerda: Ícone + Badge Compacta + Próximo */}
+            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 flex-1 overflow-hidden">
+              <div className="size-6 sm:size-9 rounded-lg sm:rounded-xl bg-amber-400/25 sm:bg-white/20 border border-amber-400/50 sm:border-white/30 flex items-center justify-center text-amber-300 sm:text-white shrink-0 shadow-xs">
+                <Truck size={13} className="sm:hidden animate-pulse text-amber-300" />
+                <Truck size={18} className="hidden sm:inline-block animate-pulse text-white" />
               </div>
 
-              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow-xs shrink-0 ${badgeBg}`}>
+              {/* Badge completa no Desktop, compacta amarela no mobile */}
+              <span className={`hidden sm:inline-flex px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider shadow-xs shrink-0 ${badgeBg}`}>
                 {badgeLabel}
               </span>
+              <span className="sm:hidden px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 bg-amber-400 text-slate-950 shadow-xs">
+                Caminhão
+              </span>
 
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white truncate">
-                <span className="truncate">Próximo: <strong className="font-black text-white text-sm sm:text-base">{hasNextDate ? nextDateDisplay : 'Aguardando'}</strong></span>
-                <span className="opacity-40 hidden sm:inline">|</span>
-                <span className="opacity-95 text-xs sm:text-sm hidden sm:inline">Último: <strong className="font-black text-white/95">{lastDateDisplay}</strong></span>
+              <div className="flex items-center gap-1 sm:gap-2 text-[11px] sm:text-sm font-bold text-white min-w-0 truncate">
+                <span className="opacity-80 shrink-0 text-[10px] sm:text-xs">Próximo:</span>
+                <strong className="font-black text-white text-[11px] sm:text-base truncate">
+                  {hasNextDate ? nextDateDisplay : 'Aguardando'}
+                </strong>
+                <span className="opacity-40 hidden md:inline">|</span>
+                <span className="opacity-95 text-xs sm:text-sm hidden md:inline truncate">
+                  Último: <strong className="font-black text-white/95">{lastDateDisplay}</strong>
+                </span>
               </div>
             </div>
 
-            {/* Direita: Ações expandidas com toque ergonômico */}
-            <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
+            {/* Direita: Ações (Alterar sempre visível, extras no desktop) */}
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
               <Link
                 href="/deliveries?mode=tracking"
-                className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 border border-white/30 shadow-xs cursor-pointer"
+                className="hidden md:flex px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 transition-all text-white text-xs font-bold items-center gap-1 border border-white/30 shadow-xs cursor-pointer"
                 title="Rastrear no Mapa"
               >
-                <Navigation size={14} className="text-yellow-300 shrink-0" />
-                <span className="hidden xs:inline">Mapa</span>
+                <Navigation size={13} className="text-yellow-300 shrink-0" />
+                <span>Mapa</span>
               </Link>
 
               {latest && (
                 <button
                   type="button"
                   onClick={() => setIsDetailsModalOpen(true)}
-                  className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
+                  className="hidden lg:inline-flex px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold cursor-pointer"
                   title="Ver detalhes da carga"
                 >
                   Info Carga
@@ -258,19 +272,20 @@ export function TopTruckBanner() {
 
               <Link
                 href="/reports/truck-history"
-                className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-xs font-bold flex items-center gap-1 cursor-pointer"
-                title="Histórico"
+                className="hidden sm:flex px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 transition-all text-white text-[11px] sm:text-xs font-bold items-center gap-1 cursor-pointer"
+                title="Histórico de Cargas"
               >
-                <History size={14} className="shrink-0" />
+                <History size={13} className="shrink-0" />
                 <span className="hidden md:inline">Histórico</span>
               </Link>
 
               {canEdit && (
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className={`px-3.5 py-1.5 rounded-xl bg-white ${buttonTextColor} hover:bg-white/95 active:scale-95 transition-all text-xs font-black shadow-sm flex items-center gap-1 cursor-pointer`}
+                  className={`px-2.5 py-1 sm:px-3.5 sm:py-1.5 rounded-lg sm:rounded-xl ${buttonBg} active:scale-95 transition-all text-[11px] sm:text-xs font-black shadow-sm flex items-center gap-1 cursor-pointer shrink-0`}
+                  title="Alterar datas do caminhão"
                 >
-                  <Edit3 size={14} className="shrink-0" />
+                  <Edit3 size={12} className="shrink-0" />
                   <span>Alterar</span>
                 </button>
               )}

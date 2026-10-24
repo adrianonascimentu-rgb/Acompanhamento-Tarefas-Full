@@ -715,7 +715,7 @@ export default function DemandsPage() {
                     <div className="space-y-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
                       {/* Status Selector Grid (Optimized for Mobile Touch) */}
                       <div>
-                        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
+                        <div className="flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-400 mb-1">
                           <span>Alterar Status:</span>
                           {isUpdating && <Loader2 size={10} className="animate-spin text-indigo-500" />}
                         </div>

@@ -1809,7 +1809,7 @@ function TasksContent() {
                   {isAdmin && groupBy === 'status' && (
                     <button 
                       onClick={() => router.push(`/tasks/new?status=${groupValue}`)}
-                      className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}
+                      className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400 hover:text-slate-100' : 'hover:bg-slate-100 text-slate-400'}`}
                     >
                       <Plus size={16} />
                     </button>
@@ -1840,8 +1840,8 @@ function TasksContent() {
                               }}
                               className={`group rounded-2xl p-0 shadow-sm transition-all duration-200 cursor-pointer relative overflow-hidden border flex flex-col bg-white dark:bg-slate-800 ${
                                 snapshot.isDragging 
-                                  ? 'shadow-2xl ring-2 ring-blue-600 rotate-[2deg] scale-[1.02] z-50' 
-                                  : (isDarkMode ? 'border-slate-700/50 hover:border-blue-500/50 hover:bg-slate-800' : 'border-slate-100 hover:border-blue-100 hover:shadow-md')
+                                    ? 'shadow-2xl ring-2 ring-blue-600 rotate-[2deg] scale-[1.02] z-50' 
+                                    : (isDarkMode ? 'border-slate-700/50 hover:border-blue-500/50 hover:bg-slate-800' : 'border-slate-100 hover:border-blue-100 hover:shadow-md')
                               } ${expandedTaskIds.includes(task.id.toString()) ? 'ring-2 ring-blue-600' : ''}`}
                             >
                               {/* Priority Accent Bar */}
@@ -1892,14 +1892,14 @@ function TasksContent() {
                                       ? 'bg-rose-50 border-rose-100 text-rose-600 dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400' 
                                       : task.isDueSoon && task.status !== 'Concluída'
                                       ? 'bg-amber-50 border-amber-100 text-amber-600 dark:bg-amber-500/10 dark:border-amber-500/20 dark:text-amber-400'
-                                      : isDarkMode ? 'bg-slate-800/50 border-slate-700 text-slate-400' : 'bg-slate-50 border-slate-100 text-slate-500'
+                                      : isDarkMode ? 'bg-slate-800/50 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-100 text-slate-500'
                                   }`}>
                                     <Calendar size={12} className={task.isOverdue || task.isDueSoon ? 'animate-pulse' : ''} />
                                     {task.due}
                                   </div>
 
                                   {task.category && (
-                                    <span className={`text-[9px] font-bold uppercase px-2 py-1 rounded-lg tracking-wider ${isDarkMode ? 'bg-slate-800 text-slate-500 border border-slate-700' : 'bg-slate-50 text-slate-400 border border-slate-100'}`}>
+                                    <span className={`text-[9px] font-bold uppercase px-2 py-1 rounded-lg tracking-wider ${isDarkMode ? 'bg-slate-800 text-slate-300 border border-slate-700' : 'bg-slate-50 text-slate-500 border border-slate-200'}`}>
                                       {task.category}
                                     </span>
                                   )}
@@ -2082,8 +2082,8 @@ function TasksContent() {
           key={day.toString()} 
           className={`min-h-[100px] border p-1 transition-colors ${
             !isSameMonth(day, monthStart) 
-              ? (isDarkMode ? 'bg-slate-900/50 text-slate-700' : 'bg-slate-50 text-slate-300') 
-              : (isDarkMode ? 'bg-slate-900 text-slate-300' : 'bg-white text-slate-900')
+              ? (isDarkMode ? 'bg-slate-900/40 text-slate-500' : 'bg-slate-50 text-slate-400') 
+              : (isDarkMode ? 'bg-slate-900 text-slate-200' : 'bg-white text-slate-900')
           } ${isSameDay(day, new Date()) ? 'ring-2 ring-blue-600 ring-inset' : ''}`}
         >
           <div className="text-[10px] font-bold mb-1">{format(day, 'd')}</div>
@@ -2097,21 +2097,21 @@ function TasksContent() {
                 }}
                 className={`text-[8px] p-1 rounded font-bold cursor-pointer transition-transform hover:scale-105 flex items-center gap-1 ${
                   task.status === 'Concluída' 
-                    ? 'bg-emerald-100 text-emerald-700 line-through opacity-70'
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 line-through opacity-75'
                     : task.isOverdue
-                      ? 'bg-rose-100 text-rose-700 ring-1 ring-rose-500'
+                      ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 ring-1 ring-rose-500'
                       : task.isDueSoon
-                        ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-500'
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/80 dark:text-amber-300 ring-1 ring-amber-500'
                         : task.priority === 'Alta' || task.priority === 'Urgente'
-                          ? 'bg-rose-50 text-rose-600' 
+                          ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/70 dark:text-rose-300' 
                           : task.priority === 'Baixa'
-                            ? 'bg-slate-100 text-slate-700'
-                            : 'bg-blue-50 text-blue-600'
+                            ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                            : 'bg-blue-50 text-blue-600 dark:bg-blue-950/70 dark:text-blue-300'
                 } ${expandedTaskIds.includes(task.id.toString()) ? 'ring-2 ring-offset-1 ring-blue-500' : ''}`}
                 title={task.title}
               >
-                {task.isOverdue && <Clock size={8} className="shrink-0 text-rose-600" />}
-                {!task.isOverdue && task.isDueSoon && task.status !== 'Concluída' && <Clock size={8} className="shrink-0 text-amber-600" />}
+                {task.isOverdue && <Clock size={8} className="shrink-0 text-rose-600 dark:text-rose-400" />}
+                {!task.isOverdue && task.isDueSoon && task.status !== 'Concluída' && <Clock size={8} className="shrink-0 text-amber-600 dark:text-amber-400" />}
                 <span className="truncate">{task.title}</span>
               </div>
             ))}
@@ -2152,7 +2152,7 @@ function TasksContent() {
                 </div>
               </div>
             </div>
-            <div className={`grid grid-cols-7 text-center text-[10px] font-bold py-2 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+            <div className={`grid grid-cols-7 text-center text-[10px] font-bold py-2 border-b ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
               {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => <div key={d}>{d}</div>)}
             </div>
             {rows}
@@ -2172,12 +2172,12 @@ function TasksContent() {
                   }}
                   className={`text-xs px-2 py-1 rounded font-medium cursor-pointer transition-transform hover:scale-105 ${
                     task.status === 'Concluída' 
-                      ? 'bg-emerald-100 text-emerald-700 line-through opacity-70'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300 line-through opacity-75'
                       : task.priority === 'Alta' 
-                        ? 'bg-rose-100 text-rose-700' 
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300' 
                         : task.priority === 'Baixa'
-                          ? 'bg-slate-100 text-slate-700'
-                          : 'bg-blue-100 text-blue-700'
+                          ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          : 'bg-blue-100 text-blue-700 dark:bg-blue-950/80 dark:text-blue-300'
                   } ${expandedTaskIds.includes(task.id.toString()) ? 'ring-2 ring-offset-1 ring-blue-500' : ''}`}
                   title={task.title}
                 >
@@ -2985,7 +2985,7 @@ function TasksContent() {
                 <div className={`grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-2xl border mb-4 ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200 shadow-sm'}`}>
                   {/* Status Filter */}
                   <div className="space-y-2">
-                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-300' : 'text-slate-500'}`}>
                       Status
                     </label>
                     <div className="relative">
@@ -3016,7 +3016,7 @@ function TasksContent() {
 
                   {/* Date Filter */}
                   <div className="space-y-2">
-                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <label className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-300' : 'text-slate-500'}`}>
                       Prazo de Entrega
                     </label>
                     <DateFilterSelect
@@ -3029,7 +3029,7 @@ function TasksContent() {
                   {/* Collaborator Filter */}
                   {isAdmin && (
                     <div className="space-y-2">
-                      <label className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                      <label className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-300' : 'text-slate-500'}`}>
                         Colaborador
                       </label>
                       <div className="relative">
