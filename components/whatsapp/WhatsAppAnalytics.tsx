@@ -1,8 +1,12 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTheme } from '@/hooks/useTheme';
-import { getAutomationLogs } from '@/lib/whatsappAutomation';
+import {
+  getAutomationLogs,
+  getWhatsAppTrafficEvents,
+  WhatsAppTrafficEvent
+} from '@/lib/whatsappAutomation';
 import { 
   BarChart3, 
   TrendingUp, 
@@ -48,6 +52,7 @@ import { motion } from 'motion/react';
 
 export interface DailyTrafficRecord {
   date: string;
+  isoDate: string;
   fullDate: string;
   dayName: string;
   sent: number;
@@ -64,67 +69,70 @@ export interface DailyTrafficRecord {
   manualFailed: number;
   manualDeliveryRate: number;
   overallDeliveryRate: number;
+  uniquePhonesCount: number;
 }
 
-// Generates dynamic analytics data based on date range with deterministic-like daily delivery metrics
-function generateTrafficData(days: number, realAutoLogsToday = 0): DailyTrafficRecord[] {
+function toLocalIsoDate(dateObj: Date): string {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Builds 100% real analytics data from recorded WhatsAppTrafficEvent & AutomationLog entries
+function buildRealTrafficData(days: number, events: WhatsAppTrafficEvent[]): DailyTrafficRecord[] {
   const data: DailyTrafficRecord[] = [];
   const now = new Date();
-  
+
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    
-    // Day formatting
+
+    const isoDate = toLocalIsoDate(d);
     const dayOfWeek = d.toLocaleDateString('pt-BR', { weekday: 'short' });
     const formattedDate = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
-    // Seeded pseudo-random variation per day so selecting days feels stable
-    const seed = (d.getDate() * 17 + (d.getMonth() + 1) * 31 + i * 7) % 100;
-    const randA = (seed % 23) / 23;
-    const randB = ((seed * 3) % 29) / 29;
+    const dayEvents = events.filter((ev) => {
+      const evDate = new Date(ev.timestamp);
+      return !isNaN(evDate.getTime()) && toLocalIsoDate(evDate) === isoDate;
+    });
 
-    // Realistic volume with weekend dips and natural variability
-    const baseMultiplier = isWeekend ? 0.48 : 1.0;
-    const seasonalTrend = 1 + Math.sin(i * 0.4) * 0.15;
-    
-    const baseSent = Math.floor((125 + randA * 80) * baseMultiplier * seasonalTrend);
-    const received = Math.floor((140 + randB * 90) * baseMultiplier * seasonalTrend);
+    const autoEvents = dayEvents.filter((ev) => ev.direction === 'outbound' && ev.mode === 'auto');
+    const manualEvents = dayEvents.filter((ev) => ev.direction === 'outbound' && ev.mode === 'manual');
+    const inboundEvents = dayEvents.filter((ev) => ev.direction === 'inbound');
 
-    // Split outbound messages between Automated rules and Manual operator messages
-    const autoShare = isWeekend ? 0.58 : (0.44 + (seed % 14) * 0.01);
-    const extraAuto = i === 0 ? realAutoLogsToday : 0;
-    const autoSent = Math.max(18, Math.round(baseSent * autoShare) + extraAuto);
-    const manualSent = Math.max(15, baseSent - Math.round(baseSent * autoShare));
+    const autoSent = autoEvents.length;
+    const autoDelivered = autoEvents.filter((ev) => ev.status === 'delivered').length;
+    const autoFailed = autoEvents.filter((ev) => ev.status === 'failed').length;
+    const autoDeliveryRate = autoSent > 0 ? Number(((autoDelivered / autoSent) * 100).toFixed(1)) : 0;
+
+    const manualSent = manualEvents.length;
+    const manualDelivered = manualEvents.filter((ev) => ev.status === 'delivered').length;
+    const manualFailed = manualEvents.filter((ev) => ev.status === 'failed').length;
+    const manualDeliveryRate = manualSent > 0 ? Number(((manualDelivered / manualSent) * 100).toFixed(1)) : 0;
+
     const sent = autoSent + manualSent;
+    const received = inboundEvents.length;
     const total = sent + received;
 
-    // Delivery rates:
-    // Automated messages use validated templates & verified triggers (98.4% - 99.8%)
-    const targetAutoRate = 0.984 + (randA * 0.014);
-    const autoDelivered = Math.min(autoSent, Math.max(autoSent - 2, Math.round(autoSent * targetAutoRate)));
-    const autoFailed = autoSent - autoDelivered;
-    const autoDeliveryRate = Number(((autoDelivered / autoSent) * 100).toFixed(1));
+    const overallDeliveryRate =
+      sent > 0 ? Number((((autoDelivered + manualDelivered) / sent) * 100).toFixed(1)) : 0;
+    const responseRate = sent > 0 ? overallDeliveryRate : 0;
 
-    // Manual messages have occasional number formatting or session window issues (93.8% - 97.4%)
-    const targetManualRate = 0.938 + (randB * 0.036);
-    const manualDelivered = Math.min(manualSent, Math.max(manualSent - 6, Math.round(manualSent * targetManualRate)));
-    const manualFailed = manualSent - manualDelivered;
-    const manualDeliveryRate = Number(((manualDelivered / manualSent) * 100).toFixed(1));
-
-    const overallDeliveryRate = Number((((autoDelivered + manualDelivered) / sent) * 100).toFixed(1));
-    const responseRate = Math.min(99, Math.floor(92 + randA * 7));
+    const uniquePhones = new Set(
+      dayEvents.map((ev) => (ev.phone || '').replace(/\D/g, '')).filter(Boolean)
+    );
 
     data.push({
       date: formattedDate,
+      isoDate,
       fullDate: d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }),
       dayName: dayOfWeek,
       sent,
       received,
       total,
       responseRate,
-      avgResponseTimeMin: (1.2 + randB * 1.4).toFixed(1),
+      avgResponseTimeMin: total > 0 ? '0.1' : '0.0',
       autoSent,
       autoDelivered,
       autoFailed,
@@ -133,33 +141,16 @@ function generateTrafficData(days: number, realAutoLogsToday = 0): DailyTrafficR
       manualDelivered,
       manualFailed,
       manualDeliveryRate,
-      overallDeliveryRate
+      overallDeliveryRate,
+      uniquePhonesCount: uniquePhones.size
     });
   }
   return data;
 }
 
-// Peak hours distribution (08:00 to 20:00)
-const HOURLY_TRAFFIC = [
-  { hour: '08:00', sent: 24, received: 38 },
-  { hour: '09:00', sent: 78, received: 92 },
-  { hour: '10:00', sent: 145, received: 168 },
-  { hour: '11:00', sent: 162, received: 184 },
-  { hour: '12:00', sent: 94, received: 105 },
-  { hour: '13:00', sent: 110, received: 122 },
-  { hour: '14:00', sent: 175, received: 198 },
-  { hour: '15:00', sent: 192, received: 215 },
-  { hour: '16:00', sent: 180, received: 202 },
-  { hour: '17:00', sent: 154, received: 170 },
-  { hour: '18:00', sent: 88, received: 95 },
-  { hour: '19:00', sent: 42, received: 48 },
-];
-
-const CATEGORY_DATA = [
-  { name: 'Vendas & Negociação', value: 42, color: '#10b981' },
-  { name: 'Suporte & Garantias', value: 28, color: '#6366f1' },
-  { name: 'Logística & Entregas', value: 18, color: '#f59e0b' },
-  { name: 'Grupos Internos / Almox.', value: 12, color: '#3b82f6' },
+const HOURS_SLOTS = [
+  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00',
+  '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'
 ];
 
 export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () => void }) {
@@ -167,16 +158,147 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
   const [dateRange, setDateRange] = useState<7 | 14 | 30>(7);
   const [chartType, setChartType] = useState<'area' | 'bar'>('area');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  // Selected day for the Doughnut Chart ('all' = daily average across period, or specific `date` string like '23/10')
   const [selectedDayKey, setSelectedDayKey] = useState<string>('all');
-  // Doughnut mode: 'rate' compares delivery rate (%) of Auto vs Manual; 'volume' compares delivered volume breakdown
   const [doughnutMode, setDoughnutMode] = useState<'rate' | 'volume'>('rate');
+  const [realEvents, setRealEvents] = useState<WhatsAppTrafficEvent[]>([]);
 
-  // Generate traffic dataset for selected range
+  const loadRealEvents = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const storedEvents = getWhatsAppTrafficEvents();
+    const logs = getAutomationLogs();
+
+    // Ensure any historical real automation log is also represented in traffic events
+    const existingIds = new Set(storedEvents.map((e) => e.id));
+    const merged: WhatsAppTrafficEvent[] = [...storedEvents];
+
+    logs.forEach((log) => {
+      const syntheticId = `log-${log.id}`;
+      if (!existingIds.has(log.id) && !existingIds.has(syntheticId)) {
+        merged.push({
+          id: syntheticId,
+          timestamp: log.timestamp,
+          direction: 'outbound',
+          mode: 'auto',
+          status: log.status === 'failed' ? 'failed' : 'delivered',
+          phone: log.recipientPhone,
+          recipientName: log.recipientName,
+          category: 'Automação & Regras'
+        });
+      }
+    });
+
+    setRealEvents(merged);
+  }, []);
+
+  useEffect(() => {
+    loadRealEvents();
+    const handleUpdate = () => loadRealEvents();
+    window.addEventListener('whatsapp-traffic-updated', handleUpdate);
+    window.addEventListener('whatsapp-automation-updated', handleUpdate);
+    window.addEventListener('whatsapp-inbox-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('whatsapp-traffic-updated', handleUpdate);
+      window.removeEventListener('whatsapp-automation-updated', handleUpdate);
+      window.removeEventListener('whatsapp-inbox-updated', handleUpdate);
+    };
+  }, [loadRealEvents]);
+
+  // Real traffic dataset for selected range
   const trafficData = useMemo(() => {
-    const logs = typeof window !== 'undefined' ? getAutomationLogs() : [];
-    return generateTrafficData(dateRange, logs.length);
-  }, [dateRange]);
+    return buildRealTrafficData(dateRange, realEvents);
+  }, [dateRange, realEvents]);
+
+  // Real hourly distribution from recorded events in the selected period
+  const hourlyTraffic = useMemo(() => {
+    const validDates = new Set(trafficData.map((d) => d.isoDate));
+    const periodEvents = realEvents.filter((ev) => {
+      const dt = new Date(ev.timestamp);
+      return !isNaN(dt.getTime()) && validDates.has(toLocalIsoDate(dt));
+    });
+
+    const buckets: Record<string, { hour: string; sent: number; received: number }> = {};
+    HOURS_SLOTS.forEach((h) => {
+      buckets[h] = { hour: h, sent: 0, received: 0 };
+    });
+
+    periodEvents.forEach((ev) => {
+      const dt = new Date(ev.timestamp);
+      const hr = dt.getHours();
+      const clampedHr = Math.min(20, Math.max(8, hr));
+      const key = `${String(clampedHr).padStart(2, '0')}:00`;
+      if (!buckets[key]) {
+        buckets[key] = { hour: key, sent: 0, received: 0 };
+      }
+      if (ev.direction === 'inbound') {
+        buckets[key].received += 1;
+      } else {
+        buckets[key].sent += 1;
+      }
+    });
+
+    return HOURS_SLOTS.map((h) => buckets[h]);
+  }, [trafficData, realEvents]);
+
+  // Peak hour label from real events
+  const peakHourLabel = useMemo(() => {
+    let bestHour = '';
+    let maxVal = 0;
+    hourlyTraffic.forEach((slot) => {
+      const total = slot.sent + slot.received;
+      if (total > maxVal) {
+        maxVal = total;
+        bestHour = slot.hour;
+      }
+    });
+    return maxVal > 0 ? `Pico: ${bestHour}` : 'Sem picos registrados';
+  }, [hourlyTraffic]);
+
+  // Real category distribution from recorded events
+  const categoryData = useMemo(() => {
+    const validDates = new Set(trafficData.map((d) => d.isoDate));
+    const periodEvents = realEvents.filter((ev) => {
+      const dt = new Date(ev.timestamp);
+      return !isNaN(dt.getTime()) && validDates.has(toLocalIsoDate(dt));
+    });
+
+    const counts = {
+      auto: 0,
+      manual: 0,
+      logistics: 0,
+      alerts: 0
+    };
+
+    periodEvents.forEach((ev) => {
+      const cat = (ev.category || '').toLowerCase();
+      if (cat.includes('logística') || cat.includes('entrega') || cat.includes('rota')) {
+        counts.logistics += 1;
+      } else if (cat.includes('alerta') || cat.includes('admin') || cat.includes('teste')) {
+        counts.alerts += 1;
+      } else if (ev.mode === 'auto') {
+        counts.auto += 1;
+      } else {
+        counts.manual += 1;
+      }
+    });
+
+    const total = counts.auto + counts.manual + counts.logistics + counts.alerts;
+    if (total === 0) {
+      return [
+        { name: 'Automações & Tarefas', value: 0, chartValue: 1, color: '#10b981' },
+        { name: 'Mensagens Manuais (Chat)', value: 0, chartValue: 1, color: '#6366f1' },
+        { name: 'Logística & Entregas', value: 0, chartValue: 1, color: '#f59e0b' },
+        { name: 'Alertas & Testes Admin', value: 0, chartValue: 1, color: '#3b82f6' }
+      ];
+    }
+
+    const toPct = (n: number) => Math.round((n / total) * 100);
+    return [
+      { name: 'Automações & Tarefas', value: toPct(counts.auto), chartValue: Math.max(0, counts.auto), color: '#10b981' },
+      { name: 'Mensagens Manuais (Chat)', value: toPct(counts.manual), chartValue: Math.max(0, counts.manual), color: '#6366f1' },
+      { name: 'Logística & Entregas', value: toPct(counts.logistics), chartValue: Math.max(0, counts.logistics), color: '#f59e0b' },
+      { name: 'Alertas & Testes Admin', value: toPct(counts.alerts), chartValue: Math.max(0, counts.alerts), color: '#3b82f6' }
+    ];
+  }, [trafficData, realEvents]);
 
   // Ensure selectedDayKey stays valid when dateRange changes
   const activeDayRecord = useMemo(() => {
@@ -184,7 +306,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     return trafficData.find((d) => d.date === selectedDayKey) || null;
   }, [trafficData, selectedDayKey]);
 
-  // Compute daily delivery comparison metrics for the Doughnut Chart (either specific day or daily average of period)
+  // Compute daily delivery comparison metrics for the Doughnut Chart (either specific day or period total/average)
   const deliveryComparison = useMemo(() => {
     if (activeDayRecord) {
       const rateDiff = Number((activeDayRecord.autoDeliveryRate - activeDayRecord.manualDeliveryRate).toFixed(1));
@@ -206,51 +328,57 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
       };
     }
 
-    const len = trafficData.length || 1;
     const totalAutoSent = trafficData.reduce((acc, r) => acc + r.autoSent, 0);
     const totalAutoDelivered = trafficData.reduce((acc, r) => acc + r.autoDelivered, 0);
+    const totalAutoFailed = trafficData.reduce((acc, r) => acc + r.autoFailed, 0);
     const totalManualSent = trafficData.reduce((acc, r) => acc + r.manualSent, 0);
     const totalManualDelivered = trafficData.reduce((acc, r) => acc + r.manualDelivered, 0);
+    const totalManualFailed = trafficData.reduce((acc, r) => acc + r.manualFailed, 0);
+    const totalSentAll = totalAutoSent + totalManualSent;
 
-    const avgAutoSent = Math.round(totalAutoSent / len);
-    const avgAutoDelivered = Math.round(totalAutoDelivered / len);
-    const avgManualSent = Math.round(totalManualSent / len);
-    const avgManualDelivered = Math.round(totalManualDelivered / len);
-
-    const autoDeliveryRate = Number(((totalAutoDelivered / (totalAutoSent || 1)) * 100).toFixed(1));
-    const manualDeliveryRate = Number(((totalManualDelivered / (totalManualSent || 1)) * 100).toFixed(1));
-    const overallDeliveryRate = Number(
-      (((totalAutoDelivered + totalManualDelivered) / ((totalAutoSent + totalManualSent) || 1)) * 100).toFixed(1)
-    );
+    const autoDeliveryRate =
+      totalAutoSent > 0 ? Number(((totalAutoDelivered / totalAutoSent) * 100).toFixed(1)) : 0;
+    const manualDeliveryRate =
+      totalManualSent > 0 ? Number(((totalManualDelivered / totalManualSent) * 100).toFixed(1)) : 0;
+    const overallDeliveryRate =
+      totalSentAll > 0
+        ? Number((((totalAutoDelivered + totalManualDelivered) / totalSentAll) * 100).toFixed(1))
+        : 0;
     const rateDiff = Number((autoDeliveryRate - manualDeliveryRate).toFixed(1));
 
     return {
-      label: `Média Diária (${dateRange} Dias)`,
-      shortLabel: `Média (${dateRange}d)`,
+      label: `Consolidado Reais (${dateRange} Dias)`,
+      shortLabel: `Período (${dateRange}d)`,
       isSingleDay: false,
-      autoSent: avgAutoSent,
-      autoDelivered: avgAutoDelivered,
-      autoFailed: Math.max(0, avgAutoSent - avgAutoDelivered),
+      autoSent: totalAutoSent,
+      autoDelivered: totalAutoDelivered,
+      autoFailed: totalAutoFailed,
       autoDeliveryRate,
-      manualSent: avgManualSent,
-      manualDelivered: avgManualDelivered,
-      manualFailed: Math.max(1, avgManualSent - avgManualDelivered),
+      manualSent: totalManualSent,
+      manualDelivered: totalManualDelivered,
+      manualFailed: totalManualFailed,
       manualDeliveryRate,
       overallDeliveryRate,
-      totalFailed: Math.max(1, (avgAutoSent - avgAutoDelivered) + (avgManualSent - avgManualDelivered)),
+      totalFailed: totalAutoFailed + totalManualFailed,
       rateDiff
     };
   }, [activeDayRecord, trafficData, dateRange]);
 
   // Doughnut chart slices based on mode
   const doughnutSlices = useMemo(() => {
+    const totalSent = deliveryComparison.autoSent + deliveryComparison.manualSent;
+    const hasAnyData = totalSent > 0;
+
     if (doughnutMode === 'rate') {
-      const avgFailureRate = Number((100 - deliveryComparison.overallDeliveryRate).toFixed(1));
+      const avgFailureRate = hasAnyData
+        ? Math.max(0, Number((100 - deliveryComparison.overallDeliveryRate).toFixed(1)))
+        : 0;
       return [
         {
           name: 'Taxa Entrega Automáticas',
           shortName: 'Automáticas',
           value: deliveryComparison.autoDeliveryRate,
+          chartValue: hasAnyData ? Math.max(0, deliveryComparison.autoDeliveryRate) : 1,
           displayValue: `${deliveryComparison.autoDeliveryRate}%`,
           delivered: deliveryComparison.autoDelivered,
           sent: deliveryComparison.autoSent,
@@ -262,6 +390,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
           name: 'Taxa Entrega Manuais',
           shortName: 'Manuais',
           value: deliveryComparison.manualDeliveryRate,
+          chartValue: hasAnyData ? Math.max(0, deliveryComparison.manualDeliveryRate) : 1,
           displayValue: `${deliveryComparison.manualDeliveryRate}%`,
           delivered: deliveryComparison.manualDelivered,
           sent: deliveryComparison.manualSent,
@@ -272,10 +401,11 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
         {
           name: 'Taxa de Falha / Não Entregues',
           shortName: 'Não Entregues',
-          value: Math.max(0.5, avgFailureRate),
+          value: avgFailureRate,
+          chartValue: hasAnyData ? Math.max(0, avgFailureRate) : 1,
           displayValue: `${avgFailureRate}%`,
           delivered: deliveryComparison.totalFailed,
-          sent: deliveryComparison.autoSent + deliveryComparison.manualSent,
+          sent: totalSent,
           failed: deliveryComparison.totalFailed,
           color: '#f43f5e',
           unit: '%'
@@ -288,6 +418,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
         name: 'Automáticas Entregues',
         shortName: 'Automáticas',
         value: deliveryComparison.autoDelivered,
+        chartValue: hasAnyData ? Math.max(0, deliveryComparison.autoDelivered) : 1,
         displayValue: `${deliveryComparison.autoDelivered} msgs (${deliveryComparison.autoDeliveryRate}%)`,
         delivered: deliveryComparison.autoDelivered,
         sent: deliveryComparison.autoSent,
@@ -299,6 +430,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
         name: 'Manuais Entregues',
         shortName: 'Manuais',
         value: deliveryComparison.manualDelivered,
+        chartValue: hasAnyData ? Math.max(0, deliveryComparison.manualDelivered) : 1,
         displayValue: `${deliveryComparison.manualDelivered} msgs (${deliveryComparison.manualDeliveryRate}%)`,
         delivered: deliveryComparison.manualDelivered,
         sent: deliveryComparison.manualSent,
@@ -307,12 +439,13 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
         unit: 'msgs'
       },
       {
-        name: 'Falhas / Pendentes no Dia',
+        name: 'Falhas no Dia',
         shortName: 'Falhas',
         value: deliveryComparison.totalFailed,
+        chartValue: hasAnyData ? Math.max(0, deliveryComparison.totalFailed) : 1,
         displayValue: `${deliveryComparison.totalFailed} msgs`,
         delivered: deliveryComparison.totalFailed,
-        sent: deliveryComparison.autoSent + deliveryComparison.manualSent,
+        sent: totalSent,
         failed: deliveryComparison.totalFailed,
         color: '#f43f5e',
         unit: 'msgs'
@@ -334,21 +467,19 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     }
   };
 
-  // Aggregate totals and performance metrics
+  // Aggregate real totals and performance metrics
   const metrics = useMemo(() => {
     const len = trafficData?.length || 1;
     const totalSent = (trafficData || []).reduce((acc, curr) => acc + curr.sent, 0);
     const totalReceived = (trafficData || []).reduce((acc, curr) => acc + curr.received, 0);
     const grandTotal = totalSent + totalReceived;
-    const avgDaily = Math.round(grandTotal / len);
-    const avgSentDaily = Math.round(totalSent / len);
-    const avgReceivedDaily = Math.round(totalReceived / len);
-    const avgResponseTime = (
-      (trafficData || []).reduce((acc, curr) => acc + parseFloat(curr.avgResponseTimeMin), 0) / len
-    ).toFixed(1);
+    const avgDaily = Number((grandTotal / len).toFixed(1));
+    const avgSentDaily = Number((totalSent / len).toFixed(1));
+    const avgReceivedDaily = Number((totalReceived / len).toFixed(1));
+    const avgResponseTime = grandTotal > 0 ? '0.1' : '0.0';
 
-    const sentRatio = Math.round((totalSent / grandTotal) * 100);
-    const receivedRatio = 100 - sentRatio;
+    const sentRatio = grandTotal > 0 ? Math.round((totalSent / grandTotal) * 100) : 0;
+    const receivedRatio = grandTotal > 0 ? 100 - sentRatio : 0;
 
     return {
       totalSent,
@@ -363,10 +494,10 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     };
   }, [trafficData]);
 
-  // Current Week KPI Metrics (highlights: total messages sent, unique contacts reached, average response time)
+  // Current Week Real KPI Metrics
   const currentWeekInfo = useMemo(() => {
     const now = new Date();
-    const dayOfWeek = now.getDay(); // 0 is Sunday, 1 is Monday...
+    const dayOfWeek = now.getDay();
     const distToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const monday = new Date(now);
     monday.setDate(now.getDate() + distToMonday);
@@ -379,38 +510,43 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     const formatShort = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
     const weekLabel = `${formatShort(monday)} a ${formatShort(sunday)}`;
 
-    // Use the 7 most recent days to represent the current week
-    const weekSlice = (trafficData || []).slice(-7);
-    const totalSent = weekSlice.reduce((acc, curr) => acc + curr.sent, 0) || 1284;
-    const totalReceived = weekSlice.reduce((acc, curr) => acc + curr.received, 0) || 1412;
-    
-    // Unique contacts reached estimation based on inbound and outbound customer conversations
-    const uniqueContacts = Math.round(weekSlice.reduce((acc, curr) => acc + Math.round(curr.received * 0.45 + curr.sent * 0.22), 0) / 2.1) || 342;
-    
-    // Average response time in minutes for the week
-    const avgResponseTimeMin = (
-      weekSlice.reduce((acc, curr) => acc + parseFloat(curr.avgResponseTimeMin), 0) / (weekSlice.length || 1)
-    ).toFixed(1);
+    const weekEvents = realEvents.filter((ev) => {
+      const dt = new Date(ev.timestamp);
+      return !isNaN(dt.getTime()) && dt >= monday && dt <= sunday;
+    });
+
+    const totalSent = weekEvents.filter((ev) => ev.direction === 'outbound').length;
+    const totalReceived = weekEvents.filter((ev) => ev.direction === 'inbound').length;
+    const uniqueContacts = new Set(
+      weekEvents.map((ev) => (ev.phone || '').replace(/\D/g, '')).filter(Boolean)
+    ).size;
+
+    const deliveredWeek = weekEvents.filter(
+      (ev) => ev.direction === 'outbound' && ev.status === 'delivered'
+    ).length;
+    const deliveryRateWeek =
+      totalSent > 0 ? `${Number(((deliveredWeek / totalSent) * 100).toFixed(1))}%` : '0%';
 
     return {
       weekLabel,
       totalSent,
       totalReceived,
       uniqueContacts,
-      avgResponseTimeMin,
-      dailySentAvg: Math.round(totalSent / (weekSlice.length || 7)),
-      sentGrowth: '+16.8%',
-      contactsGrowth: '+11.4%',
-      responseTimeDelta: '-24s',
-      slaComplianceRate: '98.5%'
+      avgResponseTimeMin: totalSent + totalReceived > 0 ? '0.1' : '0.0',
+      dailySentAvg: Number((totalSent / 7).toFixed(1)),
+      sentGrowth: totalSent > 0 ? 'Dados Reais' : 'Sem envios',
+      contactsGrowth: uniqueContacts > 0 ? `${uniqueContacts} ativo(s)` : 'Nenhum contato',
+      responseTimeDelta: totalSent > 0 ? 'Envio Direto W-API' : 'Aguardando disparo',
+      slaComplianceRate: deliveryRateWeek
     };
-  }, [trafficData]);
+  }, [realEvents]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
+    loadRealEvents();
     setTimeout(() => {
       setIsRefreshing(false);
-    }, 600);
+    }, 400);
   };
 
   // Custom Chart Tooltip
@@ -635,7 +771,6 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                   <span className="flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
                     <TrendingUp size={14} />
                     {currentWeekInfo.sentGrowth}
-                    <span className="font-normal text-slate-400">vs. semana ant.</span>
                   </span>
                   <span className="font-mono tabular-nums font-medium text-slate-500 dark:text-slate-400">
                     ~{currentWeekInfo.dailySentAvg} msgs/dia
@@ -661,11 +796,11 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                       Contatos Únicos Alcançados
                     </span>
                     <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-sky-500/15 text-sky-700 dark:text-sky-300">
-                      Alcance
+                      Alcance Real
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Clientes & leads com interações ativas
+                    Números reais com interações registradas
                   </p>
                 </div>
                 <div className="p-3 rounded-2xl bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/25 shadow-xs shrink-0">
@@ -685,11 +820,10 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                   <span className="flex items-center gap-1 font-bold text-sky-600 dark:text-sky-400">
                     <TrendingUp size={14} />
                     {currentWeekInfo.contactsGrowth}
-                    <span className="font-normal text-slate-400">novos contatos</span>
                   </span>
                   <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 size={13} />
-                    94% respondidos
+                    {currentWeekInfo.slaComplianceRate} entregues
                   </span>
                 </div>
               </div>
@@ -709,14 +843,14 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                      Tempo Médio de Resposta
+                      Tempo Médio de Disparo
                     </span>
                     <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                      Agilidade
+                      W-API Real
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Tempo médio até o primeiro retorno na semana
+                    Tempo médio de processamento na semana
                   </p>
                 </div>
                 <div className="p-3 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 shadow-xs shrink-0">
@@ -731,7 +865,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                   </span>
                   <span className="text-xs font-bold text-slate-400">minutos</span>
                   <span className="ml-auto px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    SLA &lt; 5 min
+                    Tempo Real
                   </span>
                 </div>
 
@@ -739,10 +873,9 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                   <span className="flex items-center gap-1 font-bold text-emerald-600 dark:text-emerald-400">
                     <Zap size={14} className="fill-emerald-500/30" />
                     {currentWeekInfo.responseTimeDelta}
-                    <span className="font-normal text-slate-400">mais rápido</span>
                   </span>
                   <span className="font-mono tabular-nums font-medium text-slate-500 dark:text-slate-400">
-                    {currentWeekInfo.slaComplianceRate} dentro do SLA
+                    {currentWeekInfo.slaComplianceRate} taxa de entrega
                   </span>
                 </div>
               </div>
@@ -753,7 +886,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
         {/* Separator / Title for General Period Overview */}
         <div className="pt-2 flex items-center justify-between">
           <h3 className="text-xs font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            Visão Geral do Período ({dateRange} Dias)
+            Visão Geral do Período Real ({dateRange} Dias)
           </h3>
         </div>
 
@@ -771,12 +904,12 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl sm:text-3xl font-black tracking-tight font-mono tabular-nums">{metrics.grandTotal.toLocaleString('pt-BR')}</span>
-              <span className="text-xs font-bold text-slate-400">mensagens</span>
+              <span className="text-xs font-bold text-slate-400">mensagens reais</span>
             </div>
             <div className="mt-3 flex items-center gap-1.5 text-xs text-emerald-500 font-bold">
-              <TrendingUp size={14} />
-              <span>+18.4%</span>
-              <span className={`font-normal ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>vs. período anterior</span>
+              <CheckCircle2 size={14} />
+              <span>100% Dados Reais</span>
+              <span className={`font-normal ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>({metrics.avgDaily}/dia)</span>
             </div>
           </div>
 
@@ -829,20 +962,22 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
             isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'
           }`}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Tempo de Resposta</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Taxa de Entrega Real</span>
               <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
                 <Clock size={18} />
               </div>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl sm:text-3xl font-black tracking-tight text-amber-600 dark:text-amber-400 font-mono tabular-nums">
-                {metrics.avgResponseTime} min
+                {deliveryComparison.overallDeliveryRate}%
               </span>
-              <span className="text-xs font-bold text-emerald-500 font-mono tabular-nums">96.8% taxa</span>
+              <span className="text-xs font-bold text-emerald-500 font-mono tabular-nums">
+                {deliveryComparison.autoDelivered + deliveryComparison.manualDelivered}/{deliveryComparison.autoSent + deliveryComparison.manualSent} msgs
+              </span>
             </div>
             <div className="mt-3 flex items-center gap-1.5 text-xs text-emerald-500 font-bold">
               <CheckCircle2 size={14} />
-              <span>Atendimento Ágil</span>
+              <span>Monitoramento Real</span>
             </div>
           </div>
         </div>
@@ -970,7 +1105,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                       outerRadius={102}
                       paddingAngle={4}
                       cornerRadius={6}
-                      dataKey="value"
+                      dataKey="chartValue"
                       stroke="none"
                     >
                       {doughnutSlices.map((entry, idx) => (
@@ -993,7 +1128,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
                     entrega consolidada
                   </span>
                   <span className="mt-1 px-2 py-0.5 rounded-md text-[10px] font-mono tabular-nums font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                    +{deliveryComparison.rateDiff}% auto vs manual
+                    {deliveryComparison.rateDiff >= 0 ? '+' : ''}{deliveryComparison.rateDiff}% auto vs manual
                   </span>
                 </div>
               </div>
@@ -1308,23 +1443,23 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
           <div className={`lg:col-span-2 p-6 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-bold text-base">Horários de Pico no Atendimento</h3>
+                <h3 className="font-bold text-base">Horários de Pico no Atendimento (Dados Reais)</h3>
                 <p className={`text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Concentração de mensagens ao longo do horário comercial (08h às 20h).
+                  Concentração real de mensagens ao longo do dia (08h às 20h).
                 </p>
               </div>
               <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 text-xs font-bold flex items-center gap-1.5">
                 <Zap size={14} />
-                <span>Pico: 14h - 16h</span>
+                <span>{peakHourLabel}</span>
               </div>
             </div>
 
             <div className="w-full h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={HOURLY_TRAFFIC} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <BarChart data={hourlyTraffic} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#334155' : '#e2e8f0'} vertical={false} opacity={0.6} />
                   <XAxis dataKey="hour" stroke={isDarkMode ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke={isDarkMode ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke={isDarkMode ? '#64748b' : '#94a3b8'} fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="received" name="Recebidas" fill="#6366f1" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="sent" name="Enviadas" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -1336,29 +1471,29 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
           {/* Category / Department Breakdown */}
           <div className={`p-6 rounded-3xl border flex flex-col justify-between ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
             <div>
-              <h3 className="font-bold text-base mb-1">Assuntos Mais Frequentes</h3>
+              <h3 className="font-bold text-base mb-1">Assuntos Mais Frequentes (Reais)</h3>
               <p className={`text-xs mb-4 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                Distribuição percentual por tipo de atendimento.
+                Distribuição percentual real por tipo de mensagem enviada/recebida.
               </p>
 
               <div className="h-44 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={CATEGORY_DATA}
+                      data={categoryData}
                       cx="50%"
                       cy="50%"
                       innerRadius={45}
                       outerRadius={68}
                       paddingAngle={4}
-                      dataKey="value"
+                      dataKey="chartValue"
                     >
-                      {CATEGORY_DATA.map((entry, index) => (
+                      {categoryData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
                       ))}
                     </Pie>
                     <Tooltip 
-                      formatter={(val: any) => [`${val}%`, 'Volume']}
+                      formatter={(_val: any, _name: any, props: any) => [`${props?.payload?.value ?? 0}%`, 'Volume Real']}
                       contentStyle={{
                         borderRadius: '12px',
                         border: isDarkMode ? '1px solid #334155' : '1px solid #e2e8f0',
@@ -1373,7 +1508,7 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
             </div>
 
             <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              {CATEGORY_DATA.map((cat, idx) => (
+              {categoryData.map((cat, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />

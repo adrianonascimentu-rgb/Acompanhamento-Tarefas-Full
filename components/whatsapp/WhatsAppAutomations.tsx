@@ -42,6 +42,7 @@ import {
   getAutomationRules,
   saveAutomationRules,
   getAutomationLogs,
+  saveAutomationLog,
   clearAutomationLogs,
   getDirectoryConfig,
   saveDirectoryConfig,
@@ -49,7 +50,9 @@ import {
   interpolateTemplate,
   DEFAULT_AUTOMATION_RULES,
   normalizeBrazilPhone,
-  isPlaceholderPhone
+  isPlaceholderPhone,
+  recordMessageInWhatsAppFeed,
+  recordWhatsAppTrafficEvent
 } from '@/lib/whatsappAutomation';
 
 const EXTRA_SUGGESTION_TEMPLATES: Omit<WhatsAppAutomationRule, 'id' | 'totalSentCount'>[] = [
@@ -420,6 +423,30 @@ export default function WhatsAppAutomations() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.success) {
         setLastDiagnosticError(null);
+        recordMessageInWhatsAppFeed(savedDir.adminName, targetPhone, testMsg, 'sent');
+        recordWhatsAppTrafficEvent({
+          direction: 'outbound',
+          mode: 'auto',
+          status: 'sent',
+          recipientName: savedDir.adminName,
+          recipientPhone: targetPhone,
+          text: testMsg,
+          category: 'management',
+          ruleName: 'Teste de Conexão W-API (Admin)'
+        });
+        saveAutomationLog({
+          id: `log-${Date.now()}`,
+          ruleId: 'direct-test',
+          ruleName: 'Teste de Conexão W-API (Admin)',
+          trigger: 'daily_executive_summary',
+          recipientName: savedDir.adminName,
+          recipientPhone: targetPhone,
+          message: testMsg,
+          timestamp: `Hoje, ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+          createdAt: new Date().toISOString(),
+          category: 'management',
+          status: 'sent'
+        });
         showToast(
           `Mensagem enviada via W-API para seu celular (+${targetPhone})! Verifique seu WhatsApp.`,
           'success'
@@ -428,6 +455,16 @@ export default function WhatsAppAutomations() {
         const errText =
           data?.error ||
           'A W-API recusou o envio. Verifique se sua instância está "Conectada" (QR Code lido) no painel w-api.app.';
+        recordWhatsAppTrafficEvent({
+          direction: 'outbound',
+          mode: 'auto',
+          status: 'failed',
+          recipientName: savedDir.adminName,
+          recipientPhone: targetPhone,
+          text: testMsg,
+          category: 'management',
+          ruleName: 'Teste de Conexão W-API (Admin)'
+        });
         setLastDiagnosticError(errText);
         showToast(`Falha no envio W-API: ${errText}`, 'error');
       }

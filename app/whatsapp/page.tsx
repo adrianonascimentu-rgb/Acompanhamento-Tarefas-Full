@@ -36,12 +36,22 @@ import {
   Users,
   User,
   Building2,
-  CheckSquare
+  CheckSquare,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import WhatsAppAnalytics from '@/components/whatsapp/WhatsAppAnalytics';
 import WhatsAppAutomations from '@/components/whatsapp/WhatsAppAutomations';
-import { getAutomatedInboxMessages } from '@/lib/whatsappAutomation';
+import {
+  getAutomatedInboxMessages,
+  getDirectoryConfig,
+  saveDirectoryConfig,
+  normalizeBrazilPhone,
+  isPlaceholderPhone,
+  recordWhatsAppTrafficEvent
+} from '@/lib/whatsappAutomation';
+import { useUI } from '@/hooks/useUI';
 
 interface WhatsAppMessage {
   id: string;
@@ -49,7 +59,8 @@ interface WhatsAppMessage {
   sender: 'user' | 'system';
   name?: string;
   time: string;
-  status?: 'sending' | 'sent' | 'delivered' | 'read';
+  createdAt?: string;
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 }
 
 interface ChatContact {
@@ -58,7 +69,7 @@ interface ChatContact {
   phone: string;
   lastMessage: string;
   lastMessageSender: 'user' | 'system';
-  lastMessageStatus?: 'sending' | 'sent' | 'delivered' | 'read';
+  lastMessageStatus?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
   time: string;
   unread: number;
   online: boolean;
@@ -69,92 +80,8 @@ interface ChatContact {
   notes?: string;
 }
 
-const INITIAL_CHATS: ChatContact[] = [
-  {
-    id: '1',
-    name: 'Almoxarifado Central',
-    phone: '5511999999999',
-    lastMessage: 'Excelente, vou providenciar a retirada no almoxarifado.',
-    lastMessageSender: 'user',
-    lastMessageStatus: 'read',
-    time: '14:32',
-    unread: 0,
-    online: true,
-    type: 'group',
-    roleOrDept: 'Logística & Estoque Interno',
-    tags: ['Prioridade', 'Estoque', 'Interno'],
-    linkedOrder: 'OS #4295 - Compressor Industrial',
-    notes: 'Grupo oficial para liberação imediata de peças e conferência de NF.'
-  },
-  {
-    id: '2',
-    name: 'João Entregador (Frota 04)',
-    phone: '5511888888888',
-    lastMessage: 'Perfeito! Coletar assinatura no canhoto da nota fiscal.',
-    lastMessageSender: 'user',
-    lastMessageStatus: 'read',
-    time: '13:46',
-    unread: 0,
-    online: true,
-    type: 'contact',
-    roleOrDept: 'Motorista / Rota Zona Sul',
-    tags: ['Em Rota', 'Entrega Expressa'],
-    linkedOrder: 'Romaneio #884 - 6 Entregas',
-    notes: 'Confirmar baixa do canhoto digitalizado antes das 17h.'
-  },
-  {
-    id: '3',
-    name: 'Equipe de Vendas',
-    phone: '5511777777777',
-    lastMessage: 'Nova meta batida! 3 novos contratos assinados hoje.',
-    lastMessageSender: 'system',
-    time: '12:10',
-    unread: 1,
-    online: false,
-    type: 'group',
-    roleOrDept: 'Comercial & Prospecção',
-    tags: ['Comercial', 'Metas Q4'],
-    linkedOrder: 'Campanha Outubro - 94% concluída',
-    notes: 'Acompanhamento diário de propostas aprovadas e comissões.'
-  },
-  {
-    id: '4',
-    name: 'Metalúrgica São José',
-    phone: '5511965432100',
-    lastMessage: 'Podem enviar o boleto atualizado e a chave PIX?',
-    lastMessageSender: 'system',
-    time: '11:25',
-    unread: 2,
-    online: true,
-    type: 'contact',
-    roleOrDept: 'Cliente Corporativo B2B',
-    tags: ['Financeiro', 'Cliente VIP'],
-    linkedOrder: 'Pedido #9012 - R$ 8.450,00',
-    notes: 'Cliente solicitou faturamento para 28 dias. Aguardando comprovante.'
-  }
-];
-
-const INITIAL_MESSAGES: Record<string, WhatsAppMessage[]> = {
-  '1': [
-    { id: 'm1', text: 'Bom dia pessoal! Alguma previsão para o compressor?', sender: 'user', time: '10:00', status: 'read' },
-    { id: 'm2', text: 'Bom dia! O pedido acabou de ser conferido pelo financeiro.', sender: 'system', name: 'Ricardo', time: '10:05' },
-    { id: 'm3', text: 'O pedido de compressor foi aprovado no sistema.', sender: 'system', name: 'Sueli', time: '14:30' },
-    { id: 'm4', text: 'Excelente, vou providenciar a retirada no almoxarifado.', sender: 'user', time: '14:32', status: 'read' },
-  ],
-  '2': [
-    { id: 'm5', text: 'João, onde você está com a entrega da OS #4290?', sender: 'user', time: '13:30', status: 'read' },
-    { id: 'm6', text: 'Cheguei no cliente 04 agora para descarregar.', sender: 'system', name: 'João', time: '13:45' },
-    { id: 'm7', text: 'Perfeito! Coletar assinatura no canhoto da nota fiscal.', sender: 'user', time: '13:46', status: 'read' },
-  ],
-  '3': [
-    { id: 'm8', text: 'Boa tarde equipe, conseguimos fechar a meta do trimestre?', sender: 'user', time: '12:00', status: 'read' },
-    { id: 'm9', text: 'Nova meta batida! 3 novos contratos assinados hoje.', sender: 'system', name: 'Carlos', time: '12:10' },
-  ],
-  '4': [
-    { id: 'm10', text: 'Olá! Seu pedido #9012 já foi separado para expedição.', sender: 'user', time: '11:10', status: 'read' },
-    { id: 'm11', text: 'Maravilha! Podem enviar o boleto atualizado e a chave PIX?', sender: 'system', name: 'Marcos (Compras)', time: '11:25' },
-  ]
-};
+const REAL_CHATS_STORAGE_KEY = 'whatsapp_real_chats_v2';
+const REAL_MESSAGES_STORAGE_KEY = 'whatsapp_real_messages_v2';
 
 const QUICK_REPLIES = [
   'Pedido conferido e liberado para entrega!',
@@ -166,17 +93,23 @@ const QUICK_REPLIES = [
 export default function WhatsAppPage() {
   const { isDarkMode } = useTheme();
   const { canAccessWhatsapp } = useRole();
+  const { showToast } = useUI();
   const [viewMode, setViewMode] = useState<'chat' | 'automations' | 'analytics'>('chat');
-  const [chats, setChats] = useState<ChatContact[]>(INITIAL_CHATS);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>('1');
+  const [chats, setChats] = useState<ChatContact[]>([]);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all');
   const [message, setMessage] = useState('');
-  const [showMenu, setShowMenu] = useState(false);
   const [showContextPanel, setShowContextPanel] = useState(true);
-  const [chatMessages, setChatMessages] = useState<Record<string, WhatsAppMessage[]>>(INITIAL_MESSAGES);
-  const [isTyping, setIsTyping] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Record<string, WhatsAppMessage[]>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // New real contact modal state
+  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactRole, setNewContactRole] = useState('Cliente / Colaborador');
+  const [newContactType, setNewContactType] = useState<'contact' | 'group'>('contact');
 
   // Connection states
   const [isConnected, setIsConnected] = useState(true);
@@ -188,11 +121,11 @@ export default function WhatsAppPage() {
   // WhatsApp Provider Integration States
   const [providerMode, setProviderMode] = useState<'meta' | 'alternative' | 'simulation'>('alternative');
   const [configTab, setConfigTab] = useState<'meta' | 'alternative' | 'simulation'>('alternative');
-  const [altServerUrl, setAltServerUrl] = useState('https://api.z-api.io');
+  const [altServerUrl, setAltServerUrl] = useState('https://api.w-api.app');
   const [altApiKey, setAltApiKey] = useState('');
-  const [altInstance, setAltInstance] = useState('instancia_vendas_01');
+  const [altInstance, setAltInstance] = useState('');
   const [qrStatus, setQrStatus] = useState<'idle' | 'generating' | 'waiting' | 'connected'>('connected');
-  const [qrPhoneConnected, setQrPhoneConnected] = useState('5511999999999');
+  const [qrPhoneConnected, setQrPhoneConnected] = useState('');
   const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   // Load saved provider settings on mount
@@ -213,14 +146,21 @@ export default function WhatsAppPage() {
   }, []);
 
   const handleSaveProviderConfig = () => {
+    const cleanInstMatch = altInstance.trim().match(/[?&]instanceId=([^&\s"']+)/i);
+    const finalInstance = cleanInstMatch?.[1]
+      ? decodeURIComponent(cleanInstMatch[1].trim())
+      : altInstance.trim();
+    setAltInstance(finalInstance);
+
     if (typeof window !== 'undefined') {
       localStorage.setItem('whatsapp_provider_mode', configTab);
-      localStorage.setItem('whatsapp_alt_server_url', altServerUrl);
-      localStorage.setItem('whatsapp_alt_api_key', altApiKey);
-      localStorage.setItem('whatsapp_alt_instance', altInstance);
+      localStorage.setItem('whatsapp_alt_server_url', altServerUrl.trim() || 'https://api.w-api.app');
+      localStorage.setItem('whatsapp_alt_api_key', altApiKey.trim().replace(/^Bearer\s+/i, ''));
+      localStorage.setItem('whatsapp_alt_instance', finalInstance);
     }
     setProviderMode(configTab);
     setIsConfiguring(false);
+    showToast('Configurações de conexão salvas!', 'success');
   };
 
   useEffect(() => {
@@ -229,76 +169,173 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages, selectedChatId, isTyping]);
+  }, [chatMessages, selectedChatId]);
 
-  // Sync automated messages dispatched by WhatsAppAutomation rules into chat inbox
+  // Build and sync ONLY real contacts and real messages
   useEffect(() => {
-    const syncAutomatedMessages = () => {
-      const autoMsgs = getAutomatedInboxMessages();
-      if (!autoMsgs || autoMsgs.length === 0) return;
+    const syncRealContactsAndMessages = () => {
+      if (typeof window === 'undefined') return;
 
-      setChats(prevChats => {
-        const nextChats = [...prevChats];
-        autoMsgs.forEach(item => {
-          const existingIdx = nextChats.findIndex(
-            c =>
-              c.phone.replace(/\D/g, '') === item.recipientPhone.replace(/\D/g, '') ||
-              c.name.toLowerCase() === item.recipientName.toLowerCase()
-          );
-          if (existingIdx === -1) {
-            const newChatId = `auto-chat-${item.recipientPhone.replace(/\D/g, '')}`;
-            if (!nextChats.some(c => c.id === newChatId)) {
-              nextChats.unshift({
-                id: newChatId,
-                name: item.recipientName,
-                phone: item.recipientPhone,
-                lastMessage: item.text,
-                lastMessageSender: 'user',
-                lastMessageStatus: 'read',
-                time: item.time,
-                unread: 0,
-                online: true,
-                type: 'contact',
-                roleOrDept: 'Automação WhatsApp',
-                tags: ['Automático', 'Regra Ativa']
-              });
-            }
+      let storedChats: ChatContact[] = [];
+      let storedMsgs: Record<string, WhatsAppMessage[]> = {};
+
+      try {
+        const rawChats = localStorage.getItem(REAL_CHATS_STORAGE_KEY);
+        if (rawChats) {
+          const parsed = JSON.parse(rawChats);
+          if (Array.isArray(parsed)) {
+            storedChats = parsed.filter(c => c.phone && !isPlaceholderPhone(c.phone));
           }
-        });
-        return nextChats;
+        }
+      } catch {}
+
+      try {
+        const rawMsgs = localStorage.getItem(REAL_MESSAGES_STORAGE_KEY);
+        if (rawMsgs) {
+          const parsed = JSON.parse(rawMsgs);
+          if (parsed && typeof parsed === 'object') {
+            storedMsgs = parsed;
+          }
+        }
+      } catch {}
+
+      const dir = getDirectoryConfig();
+      const ensureContactInList = (
+        phoneRaw: string,
+        name: string,
+        roleOrDept: string,
+        type: 'contact' | 'group' = 'contact',
+        tags: string[] = ['Contato Real']
+      ) => {
+        const cleanPhone = normalizeBrazilPhone(phoneRaw);
+        if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return;
+        const chatId = `chat-${cleanPhone}`;
+        const existingIdx = storedChats.findIndex(
+          c => normalizeBrazilPhone(c.phone) === cleanPhone || c.id === chatId
+        );
+        if (existingIdx === -1) {
+          storedChats.push({
+            id: chatId,
+            name,
+            phone: cleanPhone,
+            lastMessage: 'Conversa pronta para envio real via WhatsApp',
+            lastMessageSender: 'user',
+            lastMessageStatus: 'sent',
+            time: 'Ativo',
+            unread: 0,
+            online: true,
+            type,
+            roleOrDept,
+            tags
+          });
+        } else {
+          storedChats[existingIdx] = {
+            ...storedChats[existingIdx],
+            name: storedChats[existingIdx].name || name,
+            phone: cleanPhone
+          };
+        }
+      };
+
+      // 1. Admin real phone if configured
+      if (dir.adminPhone && !isPlaceholderPhone(dir.adminPhone)) {
+        ensureContactInList(
+          dir.adminPhone,
+          dir.adminName || 'Administrador',
+          'Administrador / Gestor Principal',
+          'contact',
+          ['Admin', 'Alertas']
+        );
+        setQrPhoneConnected(normalizeBrazilPhone(dir.adminPhone));
+      }
+
+      // 2. Logistics Group real phone if configured
+      if (dir.logisticsGroupPhone && !isPlaceholderPhone(dir.logisticsGroupPhone)) {
+        ensureContactInList(
+          dir.logisticsGroupPhone,
+          'Grupo de Logística / Expedição',
+          'Logística & Entregas',
+          'group',
+          ['Logística', 'Grupo']
+        );
+      }
+
+      // 3. Real Collaborators & Drivers from Directory
+      Object.entries(dir.collaboratorPhones || {}).forEach(([nameKey, phoneVal]) => {
+        if (phoneVal && !isPlaceholderPhone(phoneVal)) {
+          const formattedName = nameKey
+            .split(' ')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ');
+          ensureContactInList(
+            phoneVal,
+            formattedName,
+            'Colaborador / Motorista Cadastrado',
+            'contact',
+            ['Equipe', 'Automação']
+          );
+        }
       });
 
-      setChatMessages(prevMsgs => {
-        const nextMsgs = { ...prevMsgs };
-        autoMsgs.forEach(item => {
-          const cleanPhone = item.recipientPhone.replace(/\D/g, '');
-          const matchedInitial = INITIAL_CHATS.find(
-            c =>
-              c.phone.replace(/\D/g, '') === cleanPhone ||
-              c.name.toLowerCase() === item.recipientName.toLowerCase()
-          );
-          const chatId = matchedInitial ? matchedInitial.id : `auto-chat-${cleanPhone}`;
-          const currentList = nextMsgs[chatId] || [];
-          if (!currentList.some(m => m.id === item.id)) {
-            nextMsgs[chatId] = [
-              ...currentList,
-              {
-                id: item.id,
-                text: item.text,
-                sender: 'user',
-                time: item.time,
-                status: 'read'
-              }
-            ];
-          }
-        });
-        return nextMsgs;
+      // 4. Sync real automated messages sent
+      const autoMsgs = getAutomatedInboxMessages();
+      autoMsgs.forEach(item => {
+        const cleanPhone = normalizeBrazilPhone(item.recipientPhone);
+        if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return;
+        const chatId = `chat-${cleanPhone}`;
+        ensureContactInList(
+          cleanPhone,
+          item.recipientName,
+          'Destinatário de Automação',
+          'contact',
+          ['Automático', 'W-API']
+        );
+
+        const currentList = storedMsgs[chatId] || [];
+        if (!currentList.some(m => m.id === item.id)) {
+          storedMsgs[chatId] = [
+            ...currentList,
+            {
+              id: item.id,
+              text: item.text,
+              sender: 'user',
+              time: item.time,
+              createdAt: item.createdAt,
+              status: item.status || 'sent'
+            }
+          ];
+        }
+
+        const chatIdx = storedChats.findIndex(c => c.id === chatId || normalizeBrazilPhone(c.phone) === cleanPhone);
+        if (chatIdx !== -1) {
+          storedChats[chatIdx] = {
+            ...storedChats[chatIdx],
+            lastMessage: item.text,
+            lastMessageSender: 'user',
+            lastMessageStatus: item.status || 'sent',
+            time: item.time
+          };
+        }
+      });
+
+      localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(storedChats));
+      localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(storedMsgs));
+
+      setChats(storedChats);
+      setChatMessages(storedMsgs);
+      setSelectedChatId(prev => {
+        if (prev && storedChats.some(c => c.id === prev)) return prev;
+        return storedChats.length > 0 ? storedChats[0].id : null;
       });
     };
 
-    syncAutomatedMessages();
-    window.addEventListener('whatsapp-automation-message-sent', syncAutomatedMessages);
-    return () => window.removeEventListener('whatsapp-automation-message-sent', syncAutomatedMessages);
+    syncRealContactsAndMessages();
+    window.addEventListener('whatsapp-automation-message-sent', syncRealContactsAndMessages);
+    window.addEventListener('whatsapp-automation-updated', syncRealContactsAndMessages);
+    return () => {
+      window.removeEventListener('whatsapp-automation-message-sent', syncRealContactsAndMessages);
+      window.removeEventListener('whatsapp-automation-updated', syncRealContactsAndMessages);
+    };
   }, []);
 
   const checkApiStatus = async () => {
@@ -323,6 +360,72 @@ export default function WhatsAppPage() {
     );
   };
 
+  const handleCreateRealContact = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPhone = normalizeBrazilPhone(newContactPhone);
+    if (!newContactName.trim() || cleanPhone.length < 10) {
+      showToast('Informe o nome e o número real de WhatsApp (com DDD).', 'warning');
+      return;
+    }
+
+    const chatId = `chat-${cleanPhone}`;
+    const newChat: ChatContact = {
+      id: chatId,
+      name: newContactName.trim(),
+      phone: cleanPhone,
+      lastMessage: 'Contato adicionado para conversa real',
+      lastMessageSender: 'user',
+      lastMessageStatus: 'sent',
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      unread: 0,
+      online: true,
+      type: newContactType,
+      roleOrDept: newContactRole.trim() || 'Contato WhatsApp',
+      tags: ['Contato Real']
+    };
+
+    setChats(prev => {
+      const filtered = prev.filter(c => normalizeBrazilPhone(c.phone) !== cleanPhone);
+      const updated = [newChat, ...filtered];
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    // Also link in Automation Directory so automations can use this real contact
+    const dir = getDirectoryConfig();
+    saveDirectoryConfig({
+      ...dir,
+      collaboratorPhones: {
+        ...dir.collaboratorPhones,
+        [newContactName.trim().toLowerCase()]: cleanPhone
+      }
+    });
+
+    setSelectedChatId(chatId);
+    setNewContactName('');
+    setNewContactPhone('');
+    setIsNewChatModalOpen(false);
+    showToast(`Contato ${newChat.name} (+${cleanPhone}) adicionado!`, 'success');
+  };
+
+  const handleDeleteRealChat = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const target = chats.find(c => c.id === chatId);
+    const nextChats = chats.filter(c => c.id !== chatId);
+    setChats(nextChats);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(nextChats));
+    }
+    if (selectedChatId === chatId) {
+      setSelectedChatId(nextChats.length > 0 ? nextChats[0].id : null);
+    }
+    if (target) {
+      showToast(`Conversa com ${target.name} removida da lista.`, 'info');
+    }
+  };
+
   const handleSendMessage = async (customText?: string) => {
     const textToSend = (customText ?? message).trim();
     if (!textToSend || !selectedChatId) return;
@@ -334,95 +437,114 @@ export default function WhatsAppPage() {
     setIsSending(true);
 
     const msgId = 'msg-' + Date.now();
-    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const formattedTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const nowIso = new Date().toISOString();
 
     const newMsg: WhatsAppMessage = {
       id: msgId,
       text: textToSend,
       sender: 'user',
       time: formattedTime,
+      createdAt: nowIso,
       status: 'sending'
     };
 
-    setChatMessages(prev => ({
-      ...prev,
-      [selectedChatId]: [...(prev[selectedChatId] || []), newMsg]
-    }));
+    setChatMessages(prev => {
+      const updated = {
+        ...prev,
+        [selectedChatId]: [...(prev[selectedChatId] || []), newMsg]
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(updated));
+      }
+      return updated;
+    });
+
+    const currentUrl =
+      (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_server_url')) ||
+      altServerUrl ||
+      'https://api.w-api.app';
+    const currentKey =
+      (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_api_key')) ||
+      altApiKey;
+    const currentInstance =
+      (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_instance')) ||
+      altInstance;
+
+    let finalStatus: 'sent' | 'failed' = 'failed';
 
     try {
-      await fetch('/api/whatsapp/send', {
+      const res = await fetch('/api/whatsapp/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: chat.phone,
           message: textToSend,
-          providerMode,
-          altServerUrl,
-          altApiKey,
-          altInstance
+          providerMode: 'alternative',
+          altServerUrl: currentUrl,
+          altApiKey: currentKey,
+          altInstance: currentInstance
         })
       });
-    } catch (err) {
-      console.warn('WhatsApp API send fallback to simulated delivery:', err);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success && !data?.simulated) {
+        finalStatus = 'sent';
+      } else {
+        finalStatus = 'failed';
+        showToast(
+          data?.error || 'Não foi possível enviar pela W-API. Verifique suas credenciais W-API.',
+          'warning'
+        );
+      }
+    } catch {
+      finalStatus = 'failed';
+      showToast('Erro de comunicação ao disparar mensagem.', 'error');
     }
 
     setIsSending(false);
 
-    // 1. Sent after 600ms
-    setTimeout(() => {
-      setChatMessages(prev => ({
+    // Update message with real delivery status (NO fake simulated reply)
+    setChatMessages(prev => {
+      const updated = {
         ...prev,
         [selectedChatId]: (prev[selectedChatId] || []).map(m =>
-          m.id === msgId ? { ...m, status: 'sent' } : m
+          m.id === msgId ? { ...m, status: finalStatus } : m
         )
-      }));
-    }, 600);
+      };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(updated));
+      }
+      return updated;
+    });
 
-    // 2. Delivered after 1500ms
-    setTimeout(() => {
-      setChatMessages(prev => ({
-        ...prev,
-        [selectedChatId]: (prev[selectedChatId] || []).map(m =>
-          m.id === msgId ? { ...m, status: 'delivered' } : m
-        )
-      }));
-    }, 1500);
+    setChats(prev => {
+      const updated = prev.map(c =>
+        c.id === selectedChatId
+          ? {
+              ...c,
+              lastMessage: textToSend,
+              lastMessageSender: 'user' as const,
+              lastMessageStatus: finalStatus,
+              time: formattedTime
+            }
+          : c
+      );
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updated));
+      }
+      return updated;
+    });
 
-    // 3. Read after 2800ms
-    setTimeout(() => {
-      setChatMessages(prev => ({
-        ...prev,
-        [selectedChatId]: (prev[selectedChatId] || []).map(m =>
-          m.id === msgId ? { ...m, status: 'read' } : m
-        )
-      }));
-    }, 2800);
-
-    // 4. Simulated interactive reply from recipient
-    setTimeout(() => {
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-        const contactFirstName = chat.name.split(' ')[0];
-        const replyText =
-          chat.type === 'group'
-            ? 'Recebido pela equipe! Estamos acompanhando a solicitação.'
-            : `Perfeito, mensagem recebida e confirmada por ${contactFirstName}.`;
-
-        const replyMsg: WhatsAppMessage = {
-          id: 'reply-' + Date.now(),
-          text: replyText,
-          sender: 'system',
-          name: chat.type === 'group' ? 'Atendimento' : contactFirstName,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-
-        setChatMessages(prev => ({
-          ...prev,
-          [selectedChatId]: [...(prev[selectedChatId] || []), replyMsg]
-        }));
-      }, 1800);
-    }, 3400);
+    // Record real manual message in traffic analytics
+    recordWhatsAppTrafficEvent({
+      direction: 'outbound',
+      mode: 'manual',
+      status: finalStatus,
+      recipientName: chat.name,
+      recipientPhone: chat.phone,
+      text: textToSend,
+      category: 'manual_chat'
+    });
   };
 
   const filteredChats = useMemo(() => {
@@ -596,35 +718,47 @@ export default function WhatsAppPage() {
               isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
             }`}
           >
-            {/* Search and Filter Controls */}
+            {/* Search, New Contact Button, and Filter Controls */}
             <div className={`p-3.5 border-b space-y-3 shrink-0 ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-              <div className="relative">
-                <Search
-                  size={16}
-                  className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${
-                    isDarkMode ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                />
-                <input
-                  type="text"
-                  placeholder="Buscar contato, telefone ou setor..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className={`w-full pl-9 pr-8 py-2 rounded-xl text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/40 border ${
-                    isDarkMode
-                      ? 'bg-slate-800/90 text-white placeholder-slate-500 border-slate-700/80'
-                      : 'bg-slate-50 text-slate-900 placeholder-slate-400 border-slate-200/90'
-                  }`}
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Search
+                    size={15}
+                    className={`absolute left-3 top-1/2 -translate-y-1/2 ${
+                      isDarkMode ? 'text-slate-500' : 'text-slate-400'
+                    }`}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Buscar contato real..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className={`w-full pl-8 pr-7 py-2 rounded-xl text-xs transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500/40 border ${
+                      isDarkMode
+                        ? 'bg-slate-800/90 text-white placeholder-slate-500 border-slate-700/80'
+                        : 'bg-slate-50 text-slate-900 placeholder-slate-400 border-slate-200/90'
+                    }`}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsNewChatModalOpen(true)}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors shadow-2xs cursor-pointer"
+                  title="Adicionar contato ou iniciar nova conversa real"
+                >
+                  <Plus size={14} />
+                  <span>Novo</span>
+                </button>
               </div>
 
               {/* Filter Tabs */}
@@ -653,7 +787,7 @@ export default function WhatsAppPage() {
               </div>
             </div>
 
-            {/* Conversation Items */}
+            {/* Conversation Items (Strictly Real Contacts) */}
             <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
               {filteredChats.length > 0 ? (
                 filteredChats.map(chat => {
@@ -666,11 +800,15 @@ export default function WhatsAppPage() {
                   const isSelected = selectedChatId === chat.id;
 
                   return (
-                    <button
+                    <div
                       key={chat.id}
-                      type="button"
                       onClick={() => handleSelectChat(chat.id)}
-                      className={`w-full flex items-start gap-3.5 p-3.5 transition-colors text-left ${
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') handleSelectChat(chat.id);
+                      }}
+                      className={`w-full flex items-start gap-3 p-3.5 transition-colors text-left cursor-pointer group ${
                         isSelected
                           ? isDarkMode
                             ? 'bg-emerald-500/10'
@@ -706,16 +844,28 @@ export default function WhatsAppPage() {
                           >
                             {chat.name}
                           </h3>
-                          <span
-                            className={`text-[10px] font-mono shrink-0 ${
-                              chat.unread > 0 ? 'text-emerald-500 font-bold' : 'text-slate-400'
-                            }`}
-                          >
-                            {lastTime}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`text-[10px] font-mono ${
+                                chat.unread > 0 ? 'text-emerald-500 font-bold' : 'text-slate-400'
+                              }`}
+                            >
+                              {lastTime}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={e => handleDeleteRealChat(chat.id, e)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/15 text-slate-400 hover:text-rose-500 transition-all"
+                              title="Remover conversa da lista"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
                         </div>
 
-                        <p className="text-[10px] text-slate-400 truncate mb-1">{chat.roleOrDept}</p>
+                        <p className="text-[10px] font-mono text-slate-400 truncate mb-1">
+                          +{chat.phone} · {chat.roleOrDept}
+                        </p>
 
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1 min-w-0">
@@ -726,7 +876,9 @@ export default function WhatsAppPage() {
                                 ) : lastStatus === 'delivered' ? (
                                   <CheckCheck size={13} className="text-slate-400" />
                                 ) : lastStatus === 'sent' ? (
-                                  <Check size={13} className="text-slate-400" />
+                                  <Check size={13} className="text-emerald-500" />
+                                ) : lastStatus === 'failed' ? (
+                                  <AlertCircle size={12} className="text-rose-500" />
                                 ) : (
                                   <Clock size={11} className="text-slate-400 animate-pulse" />
                                 )}
@@ -752,13 +904,41 @@ export default function WhatsAppPage() {
                           )}
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })
               ) : (
-                <div className="flex flex-col items-center justify-center h-64 p-6 text-center text-slate-400">
-                  <MessageCircle size={36} className="mb-2 opacity-30" />
-                  <p className="text-xs font-medium">Nenhuma conversa encontrada para este filtro.</p>
+                <div className="flex flex-col items-center justify-center h-72 p-6 text-center text-slate-400 space-y-3">
+                  <MessageCircle size={36} className="opacity-30" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      Nenhum contato ou conversa real ainda
+                    </p>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      Adicione um número real de WhatsApp ou cadastre seu telefone em Automações & Regras.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 w-full pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsNewChatModalOpen(true)}
+                      className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Plus size={14} />
+                      <span>Adicionar Contato Real</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('automations')}
+                      className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      Configurar Telefones & W-API
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -804,17 +984,8 @@ export default function WhatsAppPage() {
                           {selectedChat.roleOrDept}
                         </span>
                       </div>
-                      <p
-                        className={`text-[11px] font-medium ${
-                          isTyping
-                            ? 'text-emerald-500 animate-pulse'
-                            : selectedChat.online
-                            ? 'text-emerald-500'
-                            : 'text-slate-400'
-                        }`}
-                      >
-                        +{selectedChat.phone} ·{' '}
-                        {isTyping ? 'digitando mensagem...' : selectedChat.online ? 'Online agora' : 'Visto recentemente'}
+                      <p className="text-[11px] font-mono font-medium text-emerald-500">
+                        +{selectedChat.phone} · Canal W-API Direto
                       </p>
                     </div>
                   </div>
@@ -844,90 +1015,82 @@ export default function WhatsAppPage() {
                 <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 flex flex-col gap-3">
                   <div className="flex justify-center my-2">
                     <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                      Histórico criptografado ponta a ponta · Hoje
+                      Histórico Real de Envios (+{selectedChat.phone})
                     </span>
                   </div>
 
-                  {messages.map(msg => (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col max-w-[85%] sm:max-w-[70%] ${
-                        msg.sender === 'user' ? 'self-end' : 'self-start'
-                      }`}
-                    >
+                  {messages.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-slate-400">
+                      <Send size={28} className="mb-2 opacity-30" />
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        Nenhuma mensagem enviada para +{selectedChat.phone} ainda
+                      </p>
+                      <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
+                        Escreva uma mensagem abaixo para disparar em tempo real para o WhatsApp deste contato via W-API.
+                      </p>
+                    </div>
+                  ) : (
+                    messages.map(msg => (
                       <div
-                        className={`px-3.5 py-2.5 rounded-2xl relative shadow-2xs ${
-                          msg.sender === 'user'
-                            ? isDarkMode
-                              ? 'bg-emerald-600 text-white rounded-tr-xs'
-                              : 'bg-emerald-600 text-white rounded-tr-xs'
-                            : isDarkMode
-                            ? 'bg-slate-900 text-slate-100 rounded-tl-xs border border-slate-800'
-                            : 'bg-white text-slate-900 rounded-tl-xs border border-slate-200/80'
+                        key={msg.id}
+                        className={`flex flex-col max-w-[85%] sm:max-w-[70%] ${
+                          msg.sender === 'user' ? 'self-end' : 'self-start'
                         }`}
                       >
-                        {msg.sender === 'system' && msg.name && (
-                          <p
-                            className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${
-                              isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
-                            }`}
-                          >
-                            {msg.name}
-                          </p>
-                        )}
-                        <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                        <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
-                          <span
-                            className={`text-[10px] font-mono ${
-                              msg.sender === 'user' ? 'text-emerald-100/90' : 'text-slate-400'
-                            }`}
-                          >
-                            {msg.time}
-                          </span>
-                          {msg.sender === 'user' && (
-                            <span className="inline-flex items-center">
-                              {msg.status === 'sending' && (
-                                <Clock size={12} className="text-emerald-200/80 animate-pulse" />
-                              )}
-                              {msg.status === 'sent' && <Check size={13} className="text-emerald-100" />}
-                              {msg.status === 'delivered' && <CheckCheck size={14} className="text-emerald-100" />}
-                              {msg.status === 'read' && (
-                                <CheckCheck size={14} className="text-[#53bdeb] drop-shadow-[0_0_2px_rgba(83,189,235,0.6)]" />
-                              )}
-                            </span>
+                        <div
+                          className={`px-3.5 py-2.5 rounded-2xl relative shadow-2xs ${
+                            msg.sender === 'user'
+                              ? msg.status === 'failed'
+                                ? 'bg-rose-600 text-white rounded-tr-xs'
+                                : 'bg-emerald-600 text-white rounded-tr-xs'
+                              : isDarkMode
+                              ? 'bg-slate-900 text-slate-100 rounded-tl-xs border border-slate-800'
+                              : 'bg-white text-slate-900 rounded-tl-xs border border-slate-200/80'
+                          }`}
+                        >
+                          {msg.sender === 'system' && msg.name && (
+                            <p
+                              className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${
+                                isDarkMode ? 'text-emerald-400' : 'text-emerald-600'
+                              }`}
+                            >
+                              {msg.name}
+                            </p>
                           )}
+                          <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                          <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
+                            <span
+                              className={`text-[10px] font-mono ${
+                                msg.sender === 'user' ? 'text-white/85' : 'text-slate-400'
+                              }`}
+                            >
+                              {msg.time}
+                            </span>
+                            {msg.sender === 'user' && (
+                              <span className="inline-flex items-center gap-1">
+                                {msg.status === 'sending' && (
+                                  <Clock size={12} className="text-emerald-200/80 animate-pulse" />
+                                )}
+                                {msg.status === 'sent' && (
+                                  <CheckCheck size={14} className="text-emerald-100" title="Enviado via W-API" />
+                                )}
+                                {msg.status === 'delivered' && (
+                                  <CheckCheck size={14} className="text-emerald-100" />
+                                )}
+                                {msg.status === 'read' && (
+                                  <CheckCheck size={14} className="text-[#53bdeb]" />
+                                )}
+                                {msg.status === 'failed' && (
+                                  <span className="text-[10px] font-bold flex items-center gap-0.5 text-white">
+                                    <AlertCircle size={12} /> Falha W-API
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-
-                  {isTyping && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="self-start flex flex-col max-w-[75%]"
-                    >
-                      <div
-                        className={`px-4 py-2.5 rounded-2xl rounded-tl-xs border flex items-center gap-1.5 ${
-                          isDarkMode
-                            ? 'bg-slate-900 text-slate-400 border-slate-800'
-                            : 'bg-white text-slate-500 border-slate-200'
-                        }`}
-                      >
-                        <span className="text-xs font-medium mr-1">
-                          {selectedChat.name.split(' ')[0]} está digitando
-                        </span>
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce" />
-                        <span
-                          className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce"
-                          style={{ animationDelay: '150ms' }}
-                        />
-                        <span
-                          className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-bounce"
-                          style={{ animationDelay: '300ms' }}
-                        />
-                      </div>
-                    </motion.div>
+                    ))
                   )}
 
                   <div ref={messagesEndRef} />
@@ -1008,10 +1171,20 @@ export default function WhatsAppPage() {
                 <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center mb-4">
                   <MessageCircle size={32} />
                 </div>
-                <h3 className="text-base font-bold mb-1">Selecione uma conversa ao lado</h3>
-                <p className="text-xs text-slate-500 max-w-sm">
-                  Escolha um cliente, motorista ou grupo interno para visualizar o histórico e disparar mensagens em tempo real.
+                <h3 className="text-base font-bold mb-1">
+                  {chats.length > 0 ? 'Selecione uma conversa ao lado' : 'Adicione um contato real para conversar'}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm mb-4">
+                  Apenas contatos reais cadastrados por você ou acionados pelas automações aparecem aqui.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => setIsNewChatModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-colors cursor-pointer"
+                >
+                  <Plus size={15} />
+                  <span>Adicionar Contato / Nova Conversa</span>
+                </button>
               </div>
             )}
           </main>
@@ -1477,6 +1650,126 @@ export default function WhatsAppPage() {
                     <span>Salvar e Ativar Modo</span>
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* MODAL: ADICIONAR NOVO CONTATO REAL */}
+        {isNewChatModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={`w-full max-w-md rounded-3xl border shadow-2xl overflow-hidden ${
+                isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+              }`}
+            >
+              <div className="p-6 space-y-5">
+                <div className="flex items-center justify-between border-b pb-4 border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-500">
+                      <Plus size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black">Adicionar Contato Real</h3>
+                      <p className="text-xs text-slate-500">
+                        Cadastre um número real do WhatsApp para iniciar conversas
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsNewChatModalOpen(false)}
+                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateRealContact} className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold block mb-1.5">Nome do Contato ou Grupo *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newContactName}
+                      onChange={(e) => setNewContactName(e.target.value)}
+                      placeholder="Ex: Carlos Motorista / Cliente João"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
+                        isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold block mb-1.5">Número do WhatsApp (com DDD) *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={newContactPhone}
+                      onChange={(e) => setNewContactPhone(e.target.value)}
+                      placeholder="Ex: 5583999998888 ou 83999998888"
+                      className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
+                        isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      }`}
+                    />
+                    <span className="text-[10px] text-slate-400 mt-1 block">
+                      Digite apenas números (DDI 55 + DDD + Número). Se não colocar 55, adicionamos automaticamente.
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold block mb-1.5">Setor / Função</label>
+                      <input
+                        type="text"
+                        value={newContactRole}
+                        onChange={(e) => setNewContactRole(e.target.value)}
+                        placeholder="Ex: Motorista / Cliente"
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold block mb-1.5">Tipo</label>
+                      <select
+                        value={newContactType}
+                        onChange={(e) => setNewContactType(e.target.value as 'contact' | 'group')}
+                        className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 ${
+                          isDarkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      >
+                        <option value="contact">Contato Individual</option>
+                        <option value="group">Grupo / Setor</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setIsNewChatModalOpen(false)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors ${
+                        isDarkMode
+                          ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-emerald-600/20"
+                    >
+                      <CheckCircle2 size={15} />
+                      <span>Salvar Contato Real</span>
+                    </button>
+                  </div>
+                </form>
               </div>
             </motion.div>
           </div>

@@ -50,7 +50,23 @@ export interface WhatsAppAutomationLog {
   recipientPhone: string;
   message: string;
   timestamp: string;
+  createdAt?: string;
+  category?: AutomationCategory;
   status: 'sent' | 'simulated' | 'failed';
+}
+
+export interface WhatsAppTrafficEvent {
+  id: string;
+  createdAt: string; // ISO string
+  timeLabel: string; // HH:mm
+  direction: 'outbound' | 'inbound';
+  mode: 'auto' | 'manual';
+  status: 'sent' | 'failed';
+  recipientName: string;
+  recipientPhone: string;
+  text: string;
+  category: AutomationCategory | 'manual_chat';
+  ruleName?: string;
 }
 
 export interface AutomationDirectoryConfig {
@@ -60,26 +76,17 @@ export interface AutomationDirectoryConfig {
   collaboratorPhones: Record<string, string>; // key: lowercase name or id -> phone
 }
 
-const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v1';
-const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v1';
+const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v2_real';
+const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v2_real';
 const DIRECTORY_STORAGE_KEY = 'whatsapp_automation_directory_v1';
-const CHATS_INBOX_SYNC_KEY = 'whatsapp_automated_inbox_messages_v1';
+const CHATS_INBOX_SYNC_KEY = 'whatsapp_automated_inbox_messages_v2_real';
+const TRAFFIC_EVENTS_STORAGE_KEY = 'whatsapp_real_traffic_events_v1';
 
 export const DEFAULT_DIRECTORY_CONFIG: AutomationDirectoryConfig = {
   adminName: 'Adriano Nascimento (Admin)',
-  adminPhone: '5583999990001',
-  logisticsGroupPhone: '5511999999999',
-  collaboratorPhones: {
-    'carlos': '5583988881001',
-    'mariana': '5583988881002',
-    'roberto': '5583988881003',
-    'roberto silva': '5583988881003',
-    'joão pereira': '5583988881004',
-    'joão entregador': '5511888888888',
-    'marcos souza': '5583988881005',
-    'ana': '5583988881006',
-    'alex': '5583988881007',
-  }
+  adminPhone: '',
+  logisticsGroupPhone: '',
+  collaboratorPhones: {}
 };
 
 export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
@@ -93,8 +100,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     recipientTarget: 'assigned_collaborator',
     template:
       '📌 *Nova Tarefa Atribuída a Você*\n\nOlá *{colaborador}*, *{criador}* delegou uma nova tarefa no sistema:\n\n• *Tarefa:* {tarefa}\n• *Prioridade:* {prioridade}\n• *Prazo:* {prazo}\n• *Detalhes:* {descricao}\n\nAcesse o painel para iniciar o atendimento.',
-    totalSentCount: 18,
-    lastTriggeredAt: 'Hoje, 09:15'
+    totalSentCount: 0
   },
   {
     id: 'rule-task-status',
@@ -107,8 +113,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     conditionStatus: ['Em Andamento', 'Revisão', 'Concluída', 'Pendente'],
     template:
       '🔄 *Atualização de Status de Tarefa*\n\nO colaborador *{colaborador}* atualizou uma tarefa:\n\n• *Tarefa:* {tarefa}\n• *Novo Status:* {status}\n• *Progresso:* {progresso}%\n• *Horário:* {horario}',
-    totalSentCount: 34,
-    lastTriggeredAt: 'Hoje, 10:05'
+    totalSentCount: 0
   },
   {
     id: 'rule-driver-daily-schedule',
@@ -121,8 +126,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     scheduleTime: '07:30',
     template:
       '🚚 *Roteiro de Entregas do Dia ({data})*\n\nBom dia, *{motorista}*! Você possui *{total_entregas} entrega(s)* programada(s) para hoje no veículo *{veiculo}*:\n\n{lista_entregas}\n\nBom trabalho e dirija com segurança! A cada entrega concluída, dê baixa pelo aplicativo.',
-    totalSentCount: 12,
-    lastTriggeredAt: 'Hoje, 07:30'
+    totalSentCount: 0
   },
   {
     id: 'rule-delivery-finalized-admin',
@@ -135,8 +139,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     conditionStatus: ['Finalizada', 'Em Andamento'],
     template:
       '✅ *Status de Entrega Atualizado*\n\n• *Motorista:* {motorista} ({veiculo})\n• *Status:* {status}\n• *Produto/Pedido:* {produto}\n• *Destino:* {endereco} - {bairro}/{cidade}\n• *Vendedor:* {vendedor}\n• *Horário da Baixa:* {horario}',
-    totalSentCount: 41,
-    lastTriggeredAt: 'Hoje, 11:20'
+    totalSentCount: 0
   },
   {
     id: 'rule-driver-unfinalized-reminder',
@@ -149,10 +152,8 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     scheduleTime: '17:30',
     template:
       '⏰ *Lembrete de Baixa de Entrega Pendente*\n\nOlá *{motorista}*, identificamos que você ainda possui *{quantidade_pendente} entrega(s)* agendada(s) para hoje sem baixa no sistema:\n\n{lista_entregas}\n\nCaso já tenha realizado a entrega, por favor acesse o aplicativo agora e marque como *Finalizada*.',
-    totalSentCount: 7,
-    lastTriggeredAt: 'Ontem, 17:30'
+    totalSentCount: 0
   },
-  // Extra Suggested Rules (User requested suggestions!)
   {
     id: 'rule-client-delivery-enroute',
     name: 'Aviso ao Cliente: Pedido Saiu para Entrega',
@@ -164,8 +165,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     isSuggested: true,
     template:
       '📦 *Seu Pedido Saiu para Entrega!*\n\nOlá! Informamos que seu pedido (*{produto}*) já está em rota de entrega com nosso motorista *{motorista}* ({veiculo}).\n\n• *Endereço de destino:* {endereco}, {bairro}\n• *Turno previsto:* {turno}\n\nPor favor, mantenha alguém no local para o recebimento.',
-    totalSentCount: 22,
-    lastTriggeredAt: 'Hoje, 09:42'
+    totalSentCount: 0
   },
   {
     id: 'rule-task-overdue-alert',
@@ -179,8 +179,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     isSuggested: true,
     template:
       '⚠️ *Atenção: Prazo de Tarefa*\n\nOlá *{colaborador}*, a tarefa *" {tarefa} "* (Prioridade: {prioridade}) possui vencimento em *{prazo}* e consta com status *{status}*.\n\nPor favor, atualize o andamento no sistema ou conclua a atividade.',
-    totalSentCount: 9,
-    lastTriggeredAt: 'Hoje, 08:30'
+    totalSentCount: 0
   },
   {
     id: 'rule-demand-material-created',
@@ -193,8 +192,7 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
     isSuggested: true,
     template:
       '📋 *Nova Demanda de {categoria}*\n\n• *Solicitante:* {colaborador}\n• *Horário:* {horario}\n• *Descrição / Itens:*\n{descricao}',
-    totalSentCount: 5,
-    lastTriggeredAt: 'Ontem, 15:12'
+    totalSentCount: 0
   },
   {
     id: 'rule-executive-daily-summary',
@@ -349,7 +347,28 @@ export function getDirectoryConfig(): AutomationDirectoryConfig {
   try {
     const raw = localStorage.getItem(DIRECTORY_STORAGE_KEY);
     if (!raw) return DEFAULT_DIRECTORY_CONFIG;
-    return { ...DEFAULT_DIRECTORY_CONFIG, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+
+    // Strip any old fictional placeholder phones from earlier sessions so only real phones remain
+    const cleanedCollab: Record<string, string> = {};
+    if (parsed?.collaboratorPhones && typeof parsed.collaboratorPhones === 'object') {
+      Object.entries(parsed.collaboratorPhones).forEach(([k, v]) => {
+        const phoneStr = normalizeBrazilPhone(String(v || ''));
+        if (phoneStr && !isPlaceholderPhone(phoneStr)) {
+          cleanedCollab[k] = phoneStr;
+        }
+      });
+    }
+
+    const rawAdmin = normalizeBrazilPhone(parsed?.adminPhone || '');
+    const rawGroup = normalizeBrazilPhone(parsed?.logisticsGroupPhone || '');
+
+    return {
+      adminName: parsed?.adminName || DEFAULT_DIRECTORY_CONFIG.adminName,
+      adminPhone: isPlaceholderPhone(rawAdmin) ? '' : rawAdmin,
+      logisticsGroupPhone: isPlaceholderPhone(rawGroup) ? '' : rawGroup,
+      collaboratorPhones: cleanedCollab
+    };
   } catch {
     return DEFAULT_DIRECTORY_CONFIG;
   }
@@ -367,6 +386,7 @@ export function saveDirectoryConfig(config: AutomationDirectoryConfig): void {
 
 const DEMO_PLACEHOLDER_PHONES = new Set([
   '5583999990001',
+  '5583999990002',
   '5511999999999',
   '5583988881001',
   '5583988881002',
@@ -375,7 +395,9 @@ const DEMO_PLACEHOLDER_PHONES = new Set([
   '5583988881005',
   '5583988881006',
   '5583988881007',
-  '5511888888888'
+  '5511888888888',
+  '5511777777777',
+  '5511965432100'
 ]);
 
 export function normalizeBrazilPhone(raw?: string): string {
@@ -423,7 +445,6 @@ export function resolveRecipientPhone(
       dir.collaboratorPhones[collabName.split(' ')[0].toLowerCase()];
     const mappedPhone = normalizeBrazilPhone(mappedRaw);
 
-    // If the collaborator phone is still a demo placeholder and the Admin configured their real phone, use Admin's phone
     const finalPhone =
       !mappedPhone || (isPlaceholderPhone(mappedPhone) && hasRealAdminPhone)
         ? normalizedAdminPhone
@@ -503,20 +524,69 @@ export function interpolateTemplate(template: string, variables: Record<string, 
   });
 }
 
-function recordMessageInWhatsAppFeed(recipientName: string, recipientPhone: string, text: string) {
+export function getWhatsAppTrafficEvents(): WhatsAppTrafficEvent[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(TRAFFIC_EVENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((ev: WhatsAppTrafficEvent) => !isPlaceholderPhone(ev.recipientPhone))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordWhatsAppTrafficEvent(
+  event: Omit<WhatsAppTrafficEvent, 'id' | 'createdAt' | 'timeLabel'>
+): WhatsAppTrafficEvent | null {
+  if (typeof window === 'undefined') return null;
+  const cleanPhone = normalizeBrazilPhone(event.recipientPhone);
+  if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return null;
+
+  try {
+    const now = new Date();
+    const newEvent: WhatsAppTrafficEvent = {
+      ...event,
+      recipientPhone: cleanPhone,
+      id: `traffic-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      createdAt: now.toISOString(),
+      timeLabel: now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    };
+    const current = getWhatsAppTrafficEvents();
+    const updated = [newEvent, ...current].slice(0, 500);
+    localStorage.setItem(TRAFFIC_EVENTS_STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event('whatsapp-traffic-updated'));
+    return newEvent;
+  } catch {
+    return null;
+  }
+}
+
+export function recordMessageInWhatsAppFeed(
+  recipientName: string,
+  recipientPhone: string,
+  text: string,
+  status: 'sent' | 'delivered' | 'read' | 'failed' = 'sent'
+) {
   if (typeof window === 'undefined') return;
+  const cleanPhone = normalizeBrazilPhone(recipientPhone);
+  if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return;
+
   try {
     const raw = localStorage.getItem(CHATS_INBOX_SYNC_KEY);
     const list = raw ? JSON.parse(raw) : [];
     list.unshift({
       id: 'auto-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
       recipientName,
-      recipientPhone,
+      recipientPhone: cleanPhone,
       text,
+      status,
       time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
       createdAt: new Date().toISOString()
     });
-    localStorage.setItem(CHATS_INBOX_SYNC_KEY, JSON.stringify(list.slice(0, 50)));
+    localStorage.setItem(CHATS_INBOX_SYNC_KEY, JSON.stringify(list.slice(0, 100)));
     window.dispatchEvent(new Event('whatsapp-automation-message-sent'));
   } catch {}
 }
@@ -526,13 +596,17 @@ export function getAutomatedInboxMessages(): Array<{
   recipientName: string;
   recipientPhone: string;
   text: string;
+  status?: 'sent' | 'delivered' | 'read' | 'failed';
   time: string;
   createdAt: string;
 }> {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(CHATS_INBOX_SYNC_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list)
+      ? list.filter(item => !isPlaceholderPhone(item.recipientPhone))
+      : [];
   } catch {
     return [];
   }
@@ -567,7 +641,8 @@ export async function triggerWhatsAppAutomation(
   const altInstance = (typeof window !== 'undefined' && localStorage.getItem('whatsapp_alt_instance')) || '';
 
   const createdLogs: WhatsAppAutomationLog[] = [];
-  const nowFormatted = `Hoje, ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  const now = new Date();
+  const nowFormatted = `Hoje, ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   let lastError: string | undefined;
 
   for (const rule of matchingRules) {
@@ -580,13 +655,18 @@ export async function triggerWhatsAppAutomation(
     const recipientName = options?.forceRecipientName || resolved.name;
     const recipientPhone = normalizeBrazilPhone(options?.forceRecipientPhone || resolved.phone);
 
+    if (!recipientPhone || isPlaceholderPhone(recipientPhone)) {
+      lastError = 'Nenhum número real de destino cadastrado para este envio.';
+      continue;
+    }
+
     const finalMessage = interpolateTemplate(rule.template, {
       ...variables,
       colaborador: variables.colaborador || recipientName,
       motorista: variables.motorista || recipientName
     });
 
-    let sendStatus: 'sent' | 'simulated' | 'failed' = 'simulated';
+    let sendStatus: 'sent' | 'simulated' | 'failed' = 'failed';
 
     try {
       const res = await fetch('/api/whatsapp/send', {
@@ -625,25 +705,41 @@ export async function triggerWhatsAppAutomation(
       recipientPhone,
       message: finalMessage,
       timestamp: nowFormatted,
+      createdAt: now.toISOString(),
+      category: rule.category,
       status: sendStatus
     };
 
     saveAutomationLog(logEntry);
-    recordMessageInWhatsAppFeed(recipientName, recipientPhone, finalMessage);
+    if (sendStatus === 'sent') {
+      recordMessageInWhatsAppFeed(recipientName, recipientPhone, finalMessage, 'sent');
+    }
+    recordWhatsAppTrafficEvent({
+      direction: 'outbound',
+      mode: 'auto',
+      status: sendStatus === 'sent' ? 'sent' : 'failed',
+      recipientName,
+      recipientPhone,
+      text: finalMessage,
+      category: rule.category,
+      ruleName: rule.name
+    });
     createdLogs.push(logEntry);
   }
 
-  // Update counters on rules
-  const updatedRules = rules.map(r => {
-    const wasTriggered = matchingRules.some(m => m.id === r.id);
-    if (!wasTriggered) return r;
-    return {
-      ...r,
-      totalSentCount: (r.totalSentCount || 0) + 1,
-      lastTriggeredAt: nowFormatted
-    };
-  });
-  saveAutomationRules(updatedRules);
+  // Update counters on rules only when actually sent
+  if (createdLogs.some(l => l.status === 'sent')) {
+    const updatedRules = rules.map(r => {
+      const wasSent = createdLogs.some(l => l.ruleId === r.id && l.status === 'sent');
+      if (!wasSent) return r;
+      return {
+        ...r,
+        totalSentCount: (r.totalSentCount || 0) + 1,
+        lastTriggeredAt: nowFormatted
+      };
+    });
+    saveAutomationRules(updatedRules);
+  }
 
   return { triggeredCount: createdLogs.length, logs: createdLogs, lastError };
 }
