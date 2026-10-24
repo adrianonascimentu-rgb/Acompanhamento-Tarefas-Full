@@ -9,6 +9,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import { TopTruckBanner } from '@/components/TopTruckBanner';
 import { FloatingDirectoriaBulletin } from '@/components/FloatingDirectoriaBulletin';
+import { DesktopLayoutWrapper } from '@/components/DesktopLayoutWrapper';
 
 const plusJakartaSans = { className: 'font-sans', variable: '--font-sans' };
 
@@ -57,10 +58,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <PWAInstallBanner />
           <NotificationManager />
           <Sidebar />
-          <div className="md:pl-64 min-h-screen flex flex-col pb-24 md:pb-0 transition-[padding] duration-200">
+          <DesktopLayoutWrapper>
             <TopTruckBanner />
             {children}
-          </div>
+          </DesktopLayoutWrapper>
           <FloatingDirectoriaBulletin />
           <BottomNav />
         </ClientProviders>

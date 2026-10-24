@@ -27,6 +27,8 @@ interface UIContextType {
   showToast: (message: string, type?: ToastType) => void;
   showConfirm: (options: ModalOptions) => void;
   showSettingsModal: () => void;
+  isSidebarCollapsed: boolean;
+  toggleSidebar: () => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -35,6 +37,26 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [modal, setModal] = useState<ModalOptions | null>(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('sidebar_collapsed') === 'true';
+      } catch {}
+    }
+    return false;
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('sidebar_collapsed', String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
 
   const showToast = (message: string, type: ToastType = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -67,7 +89,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <UIContext.Provider value={{ showToast, showConfirm, showSettingsModal }}>
+    <UIContext.Provider value={{ showToast, showConfirm, showSettingsModal, isSidebarCollapsed, toggleSidebar }}>
       {children}
       <SystemSettingsModal 
         isOpen={settingsModalOpen} 
@@ -151,8 +173,10 @@ export function useUI() {
     return {
       showToast: () => {},
       showConfirm: () => {},
-      showSettingsModal: false,
-      setShowSettingsModal: () => {}
+      showSettingsModal: () => {},
+      setShowSettingsModal: () => {},
+      isSidebarCollapsed: false,
+      toggleSidebar: () => {}
     };
   }
   return context;

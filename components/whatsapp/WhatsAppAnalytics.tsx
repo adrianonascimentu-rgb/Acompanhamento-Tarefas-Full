@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTheme } from '@/hooks/useTheme';
+import { useRole } from '@/hooks/useRole';
 import {
   getAutomationLogs,
   getWhatsAppTrafficEvents,
@@ -155,6 +156,7 @@ const HOURS_SLOTS = [
 
 export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () => void }) {
   const { isDarkMode } = useTheme();
+  const { isAdmin } = useRole();
   const [dateRange, setDateRange] = useState<7 | 14 | 30>(7);
   const [chartType, setChartType] = useState<'area' | 'bar'>('area');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -629,6 +631,18 @@ export default function WhatsAppAnalytics({ onBackToChat }: { onBackToChat?: () 
     }
     return null;
   };
+
+  if (!isAdmin) {
+    return (
+      <div className={`flex-1 flex flex-col items-center justify-center p-8 text-center ${isDarkMode ? 'bg-slate-950 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
+        <BarChart3 size={48} className="mb-3 opacity-30 text-emerald-500" />
+        <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">Acesso Restrito ao Administrador</h3>
+        <p className="text-xs max-w-sm">
+          A Análise de Tráfego do WhatsApp só pode ser visualizada pelo Administrador.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex-1 flex flex-col h-full overflow-y-auto ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>

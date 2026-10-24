@@ -92,7 +92,7 @@ const QUICK_REPLIES = [
 
 export default function WhatsAppPage() {
   const { isDarkMode } = useTheme();
-  const { canAccessWhatsapp } = useRole();
+  const { canAccessWhatsapp, isAdmin } = useRole();
   const { showToast } = useUI();
   const [viewMode, setViewMode] = useState<'chat' | 'automations' | 'analytics'>('chat');
   const [chats, setChats] = useState<ChatContact[]>([]);
@@ -145,7 +145,18 @@ export default function WhatsAppPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isAdmin) {
+      if (viewMode !== 'chat') setViewMode('chat');
+      if (isConfiguring) setIsConfiguring(false);
+    }
+  }, [isAdmin, viewMode, isConfiguring]);
+
   const handleSaveProviderConfig = () => {
+    if (!isAdmin) {
+      showToast('Apenas o administrador pode alterar as configurações de conexão.', 'warning');
+      return;
+    }
     const cleanInstMatch = altInstance.trim().match(/[?&]instanceId=([^&\s"']+)/i);
     const finalInstance = cleanInstMatch?.[1]
       ? decodeURIComponent(cleanInstMatch[1].trim())
@@ -614,24 +625,26 @@ export default function WhatsAppPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsConfiguring(true)}
-            className={`lg:hidden px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors shrink-0 ${
-              isDarkMode
-                ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
-                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-            }`}
-            title="Configurar Gateway ou API Oficial"
-          >
-            <QrCode size={14} className="text-emerald-500" />
-            <span>Conexão</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsConfiguring(true)}
+              className={`lg:hidden px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors shrink-0 ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                  : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+              }`}
+              title="Configurar Gateway ou API Oficial"
+            >
+              <QrCode size={14} className="text-emerald-500" />
+              <span>Conexão</span>
+            </button>
+          )}
         </div>
 
         {/* Center / Right Navigation & Quick Actions */}
         <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5">
-          <div className={`grid grid-cols-3 sm:flex items-center gap-1 p-1 rounded-xl border w-full sm:w-auto ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200/80'}`}>
+          <div className={`${isAdmin ? 'grid grid-cols-3 sm:flex' : 'flex'} items-center gap-1 p-1 rounded-xl border w-full sm:w-auto ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200/80'}`}>
             <button
               type="button"
               onClick={() => setViewMode('chat')}
@@ -653,58 +666,64 @@ export default function WhatsAppPage() {
                 </span>
               )}
             </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('automations')}
-              className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                viewMode === 'automations'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
-              }`}
-            >
-              <Zap size={14} className="shrink-0" />
-              <span>Automações & Regras</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('analytics')}
-              className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                viewMode === 'analytics'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : isDarkMode
-                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
-              }`}
-            >
-              <BarChart3 size={14} className="shrink-0" />
-              <span>Análise de Tráfego</span>
-            </button>
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('automations')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    viewMode === 'automations'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : isDarkMode
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                  }`}
+                >
+                  <Zap size={14} className="shrink-0" />
+                  <span>Automações & Regras</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('analytics')}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    viewMode === 'analytics'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : isDarkMode
+                      ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                  }`}
+                >
+                  <BarChart3 size={14} className="shrink-0" />
+                  <span>Análise de Tráfego</span>
+                </button>
+              </>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsConfiguring(true)}
-            className={`hidden lg:flex px-3.5 py-2.5 rounded-xl text-xs font-semibold items-center gap-2 border transition-colors whitespace-nowrap shrink-0 ${
-              isDarkMode
-                ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs'
-            }`}
-            title="Configurar Gateway ou API Oficial"
-          >
-            <QrCode size={15} className="text-emerald-500 shrink-0" />
-            <span>Configurar Conexão</span>
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => setIsConfiguring(true)}
+              className={`hidden lg:flex px-3.5 py-2.5 rounded-xl text-xs font-semibold items-center gap-2 border transition-colors whitespace-nowrap shrink-0 ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs'
+              }`}
+              title="Configurar Gateway ou API Oficial"
+            >
+              <QrCode size={15} className="text-emerald-500 shrink-0" />
+              <span>Configurar Conexão</span>
+            </button>
+          )}
         </div>
       </header>
 
       {/* Main Content Split View */}
-      {viewMode === 'automations' ? (
+      {isAdmin && viewMode === 'automations' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <WhatsAppAutomations />
         </div>
-      ) : viewMode === 'analytics' ? (
+      ) : isAdmin && viewMode === 'analytics' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <WhatsAppAnalytics onBackToChat={() => setViewMode('chat')} />
         </div>
@@ -915,7 +934,9 @@ export default function WhatsAppPage() {
                       Nenhum contato ou conversa real ainda
                     </p>
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Adicione um número real de WhatsApp ou cadastre seu telefone em Automações & Regras.
+                      {isAdmin
+                        ? 'Adicione um número real de WhatsApp ou cadastre seu telefone em Automações & Regras.'
+                        : 'Adicione um número real de WhatsApp para iniciar uma conversa.'}
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 w-full pt-1">
@@ -927,17 +948,19 @@ export default function WhatsAppPage() {
                       <Plus size={14} />
                       <span>Adicionar Contato Real</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode('automations')}
-                      className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
-                        isDarkMode
-                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      Configurar Telefones & W-API
-                    </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('automations')}
+                        className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+                          isDarkMode
+                            ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        Configurar Telefones & W-API
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1293,21 +1316,23 @@ export default function WhatsAppPage() {
                     <ChevronRight size={14} className="text-slate-400" />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('analytics')}
-                    className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors ${
-                      isDarkMode
-                        ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800 text-slate-200'
-                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <BarChart3 size={14} className="text-emerald-500" />
-                      Ver Métricas de SLA
-                    </span>
-                    <ChevronRight size={14} className="text-slate-400" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('analytics')}
+                      className={`w-full py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between transition-colors ${
+                        isDarkMode
+                          ? 'bg-slate-800/80 border-slate-700 hover:bg-slate-800 text-slate-200'
+                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <BarChart3 size={14} className="text-emerald-500" />
+                        Ver Métricas de SLA
+                      </span>
+                      <ChevronRight size={14} className="text-slate-400" />
+                    </button>
+                  )}
                 </div>
               </div>
             </aside>
@@ -1317,7 +1342,7 @@ export default function WhatsAppPage() {
 
       {/* Configuration Modal */}
       <AnimatePresence>
-        {isConfiguring && (
+        {isConfiguring && isAdmin && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}

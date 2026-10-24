@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useUI } from '@/hooks/useUI';
+import { useRole } from '@/hooks/useRole';
 import {
   Zap,
   Plus,
@@ -114,6 +115,7 @@ const RECIPIENT_LABELS: Record<RecipientTarget, string> = {
 export default function WhatsAppAutomations() {
   const { isDarkMode } = useTheme();
   const { showToast } = useUI();
+  const { isAdmin } = useRole();
 
   const [rules, setRules] = useState<WhatsAppAutomationRule[]>([]);
   const [logs, setLogs] = useState<WhatsAppAutomationLog[]>([]);
@@ -644,6 +646,18 @@ export default function WhatsAppAutomations() {
       ? 'bg-slate-950 border-slate-700/90 text-slate-100 placeholder-slate-500 focus:border-emerald-500'
       : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-emerald-600'
   }`;
+
+  if (!isAdmin) {
+    return (
+      <div className={`flex-1 flex flex-col items-center justify-center p-8 text-center ${isDarkMode ? 'bg-slate-950 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
+        <ShieldCheck size={48} className="mb-3 opacity-30 text-emerald-500" />
+        <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">Acesso Restrito ao Administrador</h3>
+        <p className="text-xs max-w-sm">
+          As configurações de Automação & Regras do WhatsApp só podem ser visualizadas e alteradas pelo Administrador.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div

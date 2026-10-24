@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X } from 'lucide-react';
+import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -80,7 +80,7 @@ export default function Dashboard() {
     logout 
   } = useRole();
   const { notifications, unreadCount, markAsRead, clearAll, createNotification } = useNotifications();
-  const { showToast, showConfirm, showSettingsModal } = useUI();
+  const { showToast, showConfirm, showSettingsModal, isSidebarCollapsed, toggleSidebar } = useUI();
   const [isDemandModalOpen, setIsDemandModalOpen] = useState(false);
   const [isPermanentModalOpen, setIsPermanentModalOpen] = useState(false);
   const [isHomeCardsModalOpen, setIsHomeCardsModalOpen] = useState(false);
@@ -952,7 +952,7 @@ export default function Dashboard() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-4 flex flex-col gap-5 pb-8">
+      <main className="flex-1 w-full max-w-none px-4 sm:px-6 md:px-8 py-4 flex flex-col gap-5 pb-8 transition-all duration-300">
         {/* Central de Módulos & Administração - Ocupando toda a largura da página com distribuição equilibrada no desktop */}
         {canViewHomeCard('card_central_modulos') && (
           <section className={`w-full p-3.5 sm:p-5 rounded-2xl border shadow-xs transition-all ${
