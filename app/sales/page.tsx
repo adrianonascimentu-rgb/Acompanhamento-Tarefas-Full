@@ -24,7 +24,12 @@ import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
 import { CalendarPlus } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { loadSavedSalesCycle, isSalesResultFromCurrentCycle } from '@/lib/salesCycle';
+import {
+  loadSavedSalesCycle,
+  isSalesResultFromCurrentCycle,
+  isDateInSalesCycle,
+  formatDateBR,
+} from '@/lib/salesCycle';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
@@ -288,10 +293,17 @@ export default function SalesModulePage() {
   if (!isAuthenticated) return <LoginForm onLogin={login} />;
   if (!canAccessSales) return <div className="p-4">Acesso negado.</div>;
 
-  // Dashboard Stats
-  const totalRevenue = sales.reduce((acc, s) => acc + (s.total_value || 0), 0);
-  const totalSales = sales.length;
-  const avgTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
+  // Dashboard Stats filtered by the active commercial cycle (e.g. day 26 of previous month to day 25 of current month)
+  const activeCycle = loadSavedSalesCycle();
+  const cycleSales = sales.filter(s => isDateInSalesCycle(s.sale_date || s.created_at, activeCycle));
+  const consolidatedCycleRevenue = salesResults.reduce(
+    (acc, r) => acc + (isSalesResultFromCurrentCycle(r, activeCycle) ? Number(r.result_2026 || 0) : 0),
+    0
+  );
+  const directCycleRevenue = cycleSales.reduce((acc, s) => acc + (Number(s.total_value) || 0), 0);
+  const totalRevenue = Math.max(directCycleRevenue, consolidatedCycleRevenue);
+  const totalSales = cycleSales.length;
+  const avgTicket = totalSales > 0 ? directCycleRevenue / totalSales : 0;
 
   const handleTriggerPDFExport = () => {
     exportSalesDashboardToPDF({
@@ -379,19 +391,21 @@ export default function SalesModulePage() {
       </div>
 
       {/* GSAP Sales Progress vs Target Feature Card */}
-      <div className={`p-6 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'} space-y-5`}>
+      <div id="faturamento-meta-card" className={`p-6 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'} space-y-5`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <TrendingUp size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-black uppercase tracking-wider">Metas & Receita de Vendas</h3>
-              <p className="text-[11px] text-slate-400 font-medium">Animação suave de faturamento vs. metas via GSAP</p>
+              <h3 className="text-sm font-black uppercase tracking-wider">Faturamento Realizado vs Meta</h3>
+              <p className="text-[11px] text-slate-400 font-medium">
+                Ciclo comercial de {formatDateBR(activeCycle.startDate)} a {formatDateBR(activeCycle.endDate)}
+              </p>
             </div>
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-200/50 dark:border-emerald-900/50">
-            Mês Atual
+            Ciclo {activeCycle.shortLabel}
           </span>
         </div>
 
@@ -399,7 +413,7 @@ export default function SalesModulePage() {
           currentRevenue={totalRevenue}
           targetGoal={salesResults.reduce((acc, curr) => acc + (parseFloat(curr.target_2026 || curr.goal) || 0), 0) || 120000}
           label="Progresso da Meta Global de Faturamento"
-          subtitle="Acompanhamento em tempo real de receita acumulada x meta do mês"
+          subtitle={`Vendas filtradas no intervalo do ciclo comercial (${formatDateBR(activeCycle.startDate)} a ${formatDateBR(activeCycle.endDate)})`}
           isDarkMode={isDarkMode}
           showDetails={true}
           barHeight="h-3.5"
@@ -410,13 +424,17 @@ export default function SalesModulePage() {
         {sellers.length > 0 && (
           <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
             <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
-              Progresso por Vendedor
+              Progresso por Vendedor no Ciclo Atual
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {sellers.slice(0, 4).map((seller, idx) => {
-                const sellerSales = sales.filter(s => s.seller_id === seller.id);
-                const sellerRevenue = sellerSales.reduce((acc, s) => acc + (s.total_value || 0), 0);
+                const sellerSales = cycleSales.filter(s => s.seller_id === seller.id);
+                const sellerDirectRevenue = sellerSales.reduce((acc, s) => acc + (Number(s.total_value) || 0), 0);
                 const resultObj = salesResults.find(r => r.collaborator_id === seller.id);
+                const sellerConsolidatedRevenue = isSalesResultFromCurrentCycle(resultObj, activeCycle)
+                  ? Number(resultObj?.result_2026 || 0)
+                  : 0;
+                const sellerRevenue = Math.max(sellerDirectRevenue, sellerConsolidatedRevenue);
                 const sellerTarget = resultObj?.target_2026 || 25000;
                 
                 return (

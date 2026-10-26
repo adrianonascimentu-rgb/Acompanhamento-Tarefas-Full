@@ -87,7 +87,17 @@ export function SalesCycleDateSelector({
   const handleStartDateChange = async (newStart: string) => {
     if (!newStart) return;
     const todayStr = getTodayLocalYYYYMMDD();
-    const end = newStart > cycleRange.endDate ? newStart : cycleRange.endDate;
+    let end = cycleRange.endDate;
+    if (newStart > cycleRange.endDate) {
+      const parsedStart = new Date(`${newStart}T12:00:00Z`);
+      const autoCycle = getDefaultSalesCycleForDate(
+        parsedStart,
+        startDayInput || 26,
+        endDayInput || 25,
+        activeScopeBadge
+      );
+      end = autoCycle.endDate >= newStart ? autoCycle.endDate : newStart;
+    }
     const isHistorical = end < todayStr;
     const updated = saveSalesCycleRange(newStart, end, activeScopeBadge, !isHistorical);
     onChange(updated);

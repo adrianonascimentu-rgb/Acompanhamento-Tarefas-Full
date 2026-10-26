@@ -37,6 +37,7 @@ import {
   getCycleDaysProgress,
   getTodayLocalYYYYMMDD,
   isSalesResultFromCurrentCycle,
+  isDateInSalesCycle,
 } from '@/lib/salesCycle';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
@@ -120,18 +121,54 @@ export default function SalesResultsPage() {
 
       if (profilesError) throw profilesError;
 
-      // 1. Fetch daily sales in the selected [startDate, endDate] range
+      // 1. Fetch daily sales and direct sales strictly within the commercial cycle interval [startDate, endDate]
       let dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
+      let hasDailyRegistryInSystem = false;
       try {
         const dailyRes = await fetch(
-          `/api/sales/daily?startDate=${cycleRange.startDate}&endDate=${cycleRange.endDate}`
+          `/api/sales/daily?startDate=${cycleRange.startDate}&endDate=${cycleRange.endDate}`,
+          { cache: 'no-store' }
         );
         if (dailyRes.ok) {
           const dailyJson = await dailyRes.json();
-          dailyBySeller = dailyJson.by_seller || {};
+          const rawEntries: any[] = Array.isArray(dailyJson.entries) ? dailyJson.entries : [];
+          hasDailyRegistryInSystem =
+            Number(dailyJson.total_registry_entries) > 0 || rawEntries.length > 0;
+          const cycleEntries = rawEntries.filter(entry =>
+            isDateInSalesCycle(entry?.date || entry?.sale_date, cycleRange)
+          );
+          for (const entry of cycleEntries) {
+            if (!dailyBySeller[entry.collaborator_id]) {
+              dailyBySeller[entry.collaborator_id] = { sales_amount: 0, orders_count: 0 };
+            }
+            dailyBySeller[entry.collaborator_id].sales_amount += Number(entry.sales_amount) || 0;
+            dailyBySeller[entry.collaborator_id].orders_count += Number(entry.orders_count) || 0;
+          }
         }
       } catch (e) {
         console.warn('Falha ao buscar vendas diárias por período:', e);
+      }
+
+      const directSalesBySeller: Record<string, number> = {};
+      try {
+        const { data: directSales } = await supabase
+          .from('sales')
+          .select('seller_id, total_value, sale_date, created_at, status')
+          .gte('sale_date', `${cycleRange.startDate}T00:00:00`)
+          .lte('sale_date', `${cycleRange.endDate}T23:59:59`);
+
+        if (directSales && directSales.length > 0) {
+          for (const sale of directSales) {
+            if (sale.status && sale.status !== 'completed') continue;
+            if (!isDateInSalesCycle(sale.sale_date || sale.created_at, cycleRange)) continue;
+            if (sale.seller_id) {
+              directSalesBySeller[sale.seller_id] =
+                (directSalesBySeller[sale.seller_id] || 0) + (Number(sale.total_value) || 0);
+            }
+          }
+        }
+      } catch (e) {
+        // Optional fallback if sales table is unused
       }
 
       // 2. Fetch existing sales entries strictly for the active cycle's reference month/year
@@ -190,14 +227,16 @@ export default function SalesResultsPage() {
             .filter(d => d.month === nonZero.month && d.year === nonZero.year)
             .map(r => ({
               ...r,
-              result_2026: isSalesResultFromCurrentCycle(r, {
-                startDate: cycleRange.startDate,
-                endDate: cycleRange.endDate,
-                refMonth: selectedMonth,
-                refYear: selectedYear,
-              })
-                ? r.result_2026
-                : 0,
+              result_2026:
+                !hasDailyRegistryInSystem &&
+                isSalesResultFromCurrentCycle(r, {
+                  startDate: cycleRange.startDate,
+                  endDate: cycleRange.endDate,
+                  refMonth: selectedMonth,
+                  refYear: selectedYear,
+                })
+                  ? r.result_2026
+                  : 0,
             }));
         }
       }
@@ -222,18 +261,21 @@ export default function SalesResultsPage() {
             : 0;
           
           const res2025 = Number(entry?.result_2025 || 0);
-          const isCurrentCycleRow = isSalesResultFromCurrentCycle(entry, {
-            startDate: cycleRange.startDate,
-            endDate: cycleRange.endDate,
-            refMonth: selectedMonth,
-            refYear: selectedYear,
-          });
+          const isCurrentCycleRow =
+            !hasDailyRegistryInSystem &&
+            isSalesResultFromCurrentCycle(entry, {
+              startDate: cycleRange.startDate,
+              endDate: cycleRange.endDate,
+              refMonth: selectedMonth,
+              refYear: selectedYear,
+            });
           const consolidatedRes2026 = isCurrentCycleRow ? Number(entry?.result_2026 || 0) : 0;
           const dailySellerAmount = Number(dailyBySeller[profile.id]?.sales_amount || 0);
+          const directSellerAmount = Number(directSalesBySeller[profile.id] || 0);
 
           // For each seller, the realized revenue is the max between the informed consolidated result
-          // for THIS cycle and their recorded daily sales in [startDate, endDate].
-          const res2026 = Math.max(consolidatedRes2026, dailySellerAmount);
+          // for THIS commercial cycle and their recorded sales in [startDate, endDate].
+          const res2026 = Math.max(consolidatedRes2026, dailySellerAmount, directSellerAmount);
 
           const yoyGrowth = res2025 > 0 
             ? ((res2026 - res2025) / res2025) * 100 
@@ -683,7 +725,7 @@ export default function SalesResultsPage() {
             </div>
 
             {/* GSAP Sales Target Progress Bar Card */}
-            <div className={`p-6 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+            <div id="faturamento-meta-card" className={`p-6 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
               <GsapSalesProgressBar
                 currentRevenue={totals.res2026}
                 targetGoal={totals.meta2026}

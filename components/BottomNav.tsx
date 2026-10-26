@@ -30,7 +30,8 @@ import {
   Tag,
   Package,
   DollarSign,
-  ShoppingBag
+  ShoppingBag,
+  Wind
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRole } from '@/hooks/useRole';
@@ -124,6 +125,7 @@ export function BottomNav() {
   const allModules = [
     { href: user?.id ? `/collaborators/${user.id}` : '#', label: 'Meu Perfil', icon: User, show: true },
     { href: '/products', label: 'Catálogo de Peças', icon: Package, show: true },
+    { href: '/tabela-split', label: 'Tabela de Split', icon: Wind, show: true },
     { href: '/demands', label: 'Demandas', icon: ListTodo, show: true },
     { href: '/routes', label: 'Rotas & GPS', icon: Truck, show: true },
     { href: '/whatsapp', label: 'WhatsApp', icon: MessageSquare, show: canAccessWhatsapp },

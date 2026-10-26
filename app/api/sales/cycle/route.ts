@@ -16,22 +16,18 @@ async function rolloverIfExpired(
 ): Promise<SalesCyclePreference | null> {
   if (!pref || !pref.endDate) return pref;
 
-  const updatedDateStr = pref.updatedAt ? String(pref.updatedAt).slice(0, 10) : '';
-  const isManualHistoricalToday = pref.autoRollover === false && updatedDateStr === todayStr;
+  const startDay = Number(pref.startDay) || 26;
+  const endDay = Number(pref.endDay) || 25;
+  const scope = pref.scope || 'company';
+  const currentDefault = getDefaultSalesCycleForDate(new Date(), startDay, endDay, scope);
 
-  if (pref.endDate < todayStr && !isManualHistoricalToday) {
-    const rolled = getDefaultSalesCycleForDate(
-      new Date(),
-      Number(pref.startDay) || 26,
-      Number(pref.endDay) || 25,
-      pref.scope || 'company'
-    );
+  if (pref.endDate < todayStr) {
     const updatedPref: SalesCyclePreference = {
       ...pref,
-      startDay: rolled.startDay,
-      endDay: rolled.endDay,
-      startDate: rolled.startDate,
-      endDate: rolled.endDate,
+      startDay: currentDefault.startDay,
+      endDay: currentDefault.endDay,
+      startDate: currentDefault.startDate,
+      endDate: currentDefault.endDate,
       autoRollover: true,
       updatedAt: new Date().toISOString(),
     };

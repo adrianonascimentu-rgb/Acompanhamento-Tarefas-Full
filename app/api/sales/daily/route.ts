@@ -267,6 +267,7 @@ export async function GET(req: NextRequest) {
         entries: filtered,
         days_summary: byDate,
         by_seller: bySeller,
+        total_registry_entries: all.length,
         summary
       });
     }

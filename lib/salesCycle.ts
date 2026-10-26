@@ -1,4 +1,14 @@
 import { supabase } from '@/lib/supabase';
+import {
+  subDays,
+  addDays,
+  startOfDay,
+  endOfDay,
+  isWithinInterval,
+  parseISO,
+  isValid,
+  format,
+} from 'date-fns';
 
 export interface SalesCycleRange {
   startDate: string; // YYYY-MM-DD
@@ -26,7 +36,8 @@ export interface SalesCyclePreference {
   updatedAt?: string;
 }
 
-const STORAGE_KEY_CYCLE = 'sales_custom_cycle_range_v1';
+const STORAGE_KEY_CYCLE = 'sales_custom_cycle_range_v3';
+const LEGACY_STORAGE_KEYS = ['sales_custom_cycle_range_v1', 'sales_custom_cycle_range_v2'];
 export const SUPABASE_COMPANY_CYCLE_KEY = 'sales_cycle_config_company';
 export const getSupabaseUserCycleKey = (userId: string) => `sales_cycle_config_user_${userId}`;
 
@@ -52,9 +63,25 @@ export function formatShortDateBR(yyyyMmDd: string): string {
 }
 
 /**
+ * Calcula a data de fechamento de um mês comercial (base de 30 dias) subtraindo 5 dias
+ * da data final do mês comercial utilizando `subDays` do `date-fns` (30 - 5 = dia 25).
+ */
+export function getCommercialMonthClosingDate(
+  year: number,
+  month1To12: number,
+  endDay: number = 25
+): Date {
+  const safeEndDay = clampDayForMonth(year, month1To12, endDay || 25);
+  // A data final do mês comercial de 30 dias fica 5 dias após o dia de fechamento (25 + 5 = 30).
+  // Subtraímos 5 dias com `subDays` do `date-fns` para obter com precisão o dia 25 do mês comercial.
+  const commercialMonthFinalDate = addDays(new Date(year, month1To12 - 1, safeEndDay, 12, 0, 0, 0), 5);
+  return subDays(commercialMonthFinalDate, 5);
+}
+
+/**
  * Given a reference month (1-12) and year, returns the sales cycle:
- * By default starts on the 26th of the previous month and ends on the 25th of the reference month.
- * Also supports custom startDay and endDay configured by the user or company.
+ * Subtracts 5 days from each commercial month's final date via `date-fns` (`subDays`),
+ * so the cycle starts on the 26th of the previous month and ends on the 25th of the reference month.
  */
 export function getSalesCycleForMonthYear(
   refMonth: number,
@@ -81,11 +108,21 @@ export function getSalesCycleForMonthYear(
     startYear = refYear;
   }
 
-  const clampedStartDay = clampDayForMonth(startYear, startMonth, safeStartDay);
-  const clampedEndDay = clampDayForMonth(refYear, refMonth, safeEndDay);
+  // Subtrai 5 dias da data final do mês comercial de referência (dia 30 comercial - 5 dias = dia 25)
+  const closingDateObj = getCommercialMonthClosingDate(refYear, refMonth, safeEndDay);
 
-  const startDate = `${startYear}-${pad2(startMonth)}-${pad2(clampedStartDay)}`;
-  const endDate = `${refYear}-${pad2(refMonth)}-${pad2(clampedEndDay)}`;
+  // Para o início do ciclo (padrão dia 26 do mês anterior = fechamento do mês comercial anterior + 1 dia)
+  let openingDateObj: Date;
+  if (safeStartDay === 26 && safeEndDay === 25) {
+    const prevClosingDateObj = getCommercialMonthClosingDate(startYear, startMonth, safeEndDay);
+    openingDateObj = addDays(prevClosingDateObj, 1);
+  } else {
+    const clampedStartDay = clampDayForMonth(startYear, startMonth, safeStartDay);
+    openingDateObj = new Date(startYear, startMonth - 1, clampedStartDay, 12, 0, 0, 0);
+  }
+
+  const startDate = format(openingDateObj, 'yyyy-MM-dd');
+  const endDate = format(closingDateObj, 'yyyy-MM-dd');
 
   const monthName = new Date(refYear, refMonth - 1, 1).toLocaleString('pt-BR', { month: 'long' });
   const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
@@ -105,15 +142,13 @@ export function getSalesCycleForMonthYear(
 }
 
 export function getTodayLocalYYYYMMDD(date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = pad2(date.getMonth() + 1);
-  const day = pad2(date.getDate());
-  return `${year}-${month}-${day}`;
+  return format(date, 'yyyy-MM-dd');
 }
 
 /**
- * Given any date (defaults to today), determines which sales cycle (default 26-to-25) it belongs to.
- * If day >= startDay (when startDay > endDay), it belongs to next month's cycle.
+ * Given any date (defaults to today), determines which sales cycle (default 26-to-25) it belongs to
+ * by subtracting 5 days from the current commercial month's end date via `date-fns` (`subDays`).
+ * If `date` is after the current month's closing date (day > 25, i.e. day >= 26), it belongs to next month's cycle.
  */
 export function getDefaultSalesCycleForDate(
   date: Date = new Date(),
@@ -124,17 +159,19 @@ export function getDefaultSalesCycleForDate(
   const safeStartDay = Math.min(31, Math.max(1, Number(startDay) || 26));
   const safeEndDay = Math.min(31, Math.max(1, Number(endDay) || 25));
 
-  const day = date.getDate();
   let refMonth = date.getMonth() + 1;
   let refYear = date.getFullYear();
 
-  if (safeStartDay > safeEndDay && day >= safeStartDay) {
+  // Data de fechamento do mês comercial atual (ex: dia 30 comercial - 5 dias via subDays = dia 25 às 23:59:59)
+  const currentMonthClosing = endOfDay(getCommercialMonthClosingDate(refYear, refMonth, safeEndDay));
+
+  if (safeStartDay > safeEndDay && date.getTime() > currentMonthClosing.getTime()) {
     refMonth += 1;
     if (refMonth > 12) {
       refMonth = 1;
       refYear += 1;
     }
-  } else if (safeStartDay <= safeEndDay && day > safeEndDay) {
+  } else if (safeStartDay <= safeEndDay && date.getDate() > safeEndDay) {
     refMonth += 1;
     if (refMonth > 12) {
       refMonth = 1;
@@ -143,6 +180,54 @@ export function getDefaultSalesCycleForDate(
   }
 
   return getSalesCycleForMonthYear(refMonth, refYear, safeStartDay, safeEndDay, scope);
+}
+
+/**
+ * Parses a date string (YYYY-MM-DD or ISO timestamp) or Date object into a local Date instance.
+ */
+export function parseSaleDateLocal(rawDate: string | Date | null | undefined): Date | null {
+  if (!rawDate) return null;
+  if (rawDate instanceof Date) {
+    return isValid(rawDate) ? rawDate : null;
+  }
+  const str = String(rawDate).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    const parsed = parseISO(`${str}T12:00:00`);
+    return isValid(parsed) ? parsed : null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const parsed = parseISO(`${str.slice(0, 10)}T12:00:00`);
+    return isValid(parsed) ? parsed : null;
+  }
+  const fallback = new Date(str);
+  return isValid(fallback) ? fallback : null;
+}
+
+/**
+ * Checks whether a date string (YYYY-MM-DD or ISO timestamp) or Date object falls
+ * strictly within the commercial sales cycle interval [startDate, endDate] (inclusive)
+ * using `date-fns` (`subDays`, `startOfDay`, `endOfDay`, `isWithinInterval`).
+ */
+export function isDateInSalesCycle(
+  rawDate: string | Date | null | undefined,
+  cycleRange: Pick<SalesCycleRange, 'startDate' | 'endDate'>
+): boolean {
+  if (!rawDate || !cycleRange?.startDate || !cycleRange?.endDate) return false;
+
+  const saleDate = parseSaleDateLocal(rawDate);
+  const startRaw = parseSaleDateLocal(cycleRange.startDate);
+  const endRaw = parseSaleDateLocal(cycleRange.endDate);
+
+  if (!saleDate || !startRaw || !endRaw) return false;
+
+  // Subtrai 5 dias da data final do mês comercial correspondente (ou preserva o limite final configurado)
+  const commercialEndBase = addDays(endRaw, 5);
+  const cycleEnd = endOfDay(subDays(commercialEndBase, 5));
+  const cycleStart = startOfDay(startRaw);
+
+  if (cycleStart.getTime() > cycleEnd.getTime()) return false;
+
+  return isWithinInterval(saleDate, { start: cycleStart, end: cycleEnd });
 }
 
 /**
@@ -161,9 +246,8 @@ export function isSalesResultFromCurrentCycle(
   }
 
   const rawTimestamp = row.updated_at || row.created_at;
-  if (rawTimestamp && cycleRange.startDate) {
-    const rowDateStr = String(rawTimestamp).slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(rowDateStr) && rowDateStr < cycleRange.startDate) {
+  if (rawTimestamp && cycleRange.startDate && cycleRange.endDate) {
+    if (!isDateInSalesCycle(rawTimestamp, cycleRange)) {
       return false;
     }
   }
@@ -246,41 +330,42 @@ export function loadSavedSalesCycle(): SalesCycleRange {
   }
   const todayStr = getTodayLocalYYYYMMDD();
   try {
+    // Clean up legacy keys from prior versions so stale cycle ranges are never reused
+    LEGACY_STORAGE_KEYS.forEach(k => localStorage.removeItem(k));
+
     const raw = localStorage.getItem(STORAGE_KEY_CYCLE);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed?.startDate && parsed?.endDate) {
-        const isManualHistoricalToday =
-          parsed.autoRollover === false && parsed.savedOnDate === todayStr;
+        const startDay = Number(parsed.startDay) || 26;
+        const endDay = Number(parsed.endDay) || 25;
+        const scope = parsed.scope || 'company';
+        const currentDefault = getDefaultSalesCycleForDate(new Date(), startDay, endDay, scope);
 
-        // If the saved cycle already ended before today, automatically roll over to the new active cycle
-        if (parsed.endDate < todayStr && !isManualHistoricalToday) {
-          const rolled = getDefaultSalesCycleForDate(
-            new Date(),
-            Number(parsed.startDay) || 26,
-            Number(parsed.endDay) || 25,
-            parsed.scope || 'company'
-          );
+        // If the saved cycle already ended before today (parsed.endDate < todayStr),
+        // roll over to the active commercial cycle using the configured startDay and endDay
+        if (parsed.endDate < todayStr) {
           localStorage.setItem(
             STORAGE_KEY_CYCLE,
             JSON.stringify({
-              startDate: rolled.startDate,
-              endDate: rolled.endDate,
-              startDay: rolled.startDay,
-              endDay: rolled.endDay,
-              scope: rolled.scope,
+              startDate: currentDefault.startDate,
+              endDate: currentDefault.endDate,
+              startDay: currentDefault.startDay,
+              endDay: currentDefault.endDay,
+              scope: currentDefault.scope,
               autoRollover: true,
               savedOnDate: todayStr,
             })
           );
-          return rolled;
+          return currentDefault;
         }
 
-        return buildCustomSalesCycleRange(
-          parsed.startDate,
-          parsed.endDate,
-          parsed.scope || 'company'
-        );
+        const customRange = buildCustomSalesCycleRange(parsed.startDate, parsed.endDate, scope);
+        return {
+          ...customRange,
+          startDay,
+          endDay,
+        };
       }
     }
   } catch (e) {
@@ -321,7 +406,8 @@ export function saveSalesCycleRange(
 
 /**
  * Fetches the saved sales cycle preference from Supabase (user preference first, then company preference).
- * Automatically rolls over to the current cycle if the saved cycle's endDate is in the past.
+ * Automatically rolls over to the current cycle if the saved cycle's endDate is in the past
+ * or if a new commercial cycle has started.
  */
 export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
   range: SalesCycleRange;
@@ -331,20 +417,25 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
 
   try {
     const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-    const res = await fetch(`/api/sales/cycle${query}`);
+    const res = await fetch(`/api/sales/cycle${query}`, { cache: 'no-store' });
     if (res.ok) {
       const json = await res.json();
       const pref: SalesCyclePreference | null = json.activePreference || null;
       if (pref && pref.startDate && pref.endDate) {
-        const isExpired = pref.endDate < todayStr && pref.autoRollover !== false;
-        const range = isExpired
-          ? getDefaultSalesCycleForDate(
-              new Date(),
-              Number(pref.startDay) || 26,
-              Number(pref.endDay) || 25,
-              pref.scope || 'company'
-            )
-          : buildCustomSalesCycleRange(pref.startDate, pref.endDate, pref.scope || 'company');
+        const startDay = Number(pref.startDay) || 26;
+        const endDay = Number(pref.endDay) || 25;
+        const scope = pref.scope || 'company';
+        const currentDefault = getDefaultSalesCycleForDate(new Date(), startDay, endDay, scope);
+
+        const isExpired = pref.endDate < todayStr;
+        const baseRange = isExpired
+          ? currentDefault
+          : buildCustomSalesCycleRange(pref.startDate, pref.endDate, scope);
+        const range: SalesCycleRange = {
+          ...baseRange,
+          startDay: isExpired ? currentDefault.startDay : startDay,
+          endDay: isExpired ? currentDefault.endDay : endDay,
+        };
 
         if (typeof window !== 'undefined') {
           localStorage.setItem(
@@ -355,7 +446,7 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
               startDay: range.startDay,
               endDay: range.endDay,
               scope: range.scope,
-              autoRollover: pref.autoRollover ?? true,
+              autoRollover: true,
               savedOnDate: todayStr,
             })
           );
@@ -366,6 +457,8 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
             ...pref,
             startDate: range.startDate,
             endDate: range.endDate,
+            startDay: range.startDay,
+            endDay: range.endDay,
           },
         };
       }
@@ -391,21 +484,28 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
       const chosen = (userEntry?.value || companyEntry?.value) as SalesCyclePreference | undefined;
 
       if (chosen?.startDate && chosen?.endDate) {
-        const isExpired = chosen.endDate < todayStr && chosen.autoRollover !== false;
-        const range = isExpired
-          ? getDefaultSalesCycleForDate(
-              new Date(),
-              Number(chosen.startDay) || 26,
-              Number(chosen.endDay) || 25,
-              chosen.scope || 'company'
-            )
-          : buildCustomSalesCycleRange(chosen.startDate, chosen.endDate, chosen.scope || 'company');
+        const startDay = Number(chosen.startDay) || 26;
+        const endDay = Number(chosen.endDay) || 25;
+        const scope = chosen.scope || 'company';
+        const currentDefault = getDefaultSalesCycleForDate(new Date(), startDay, endDay, scope);
+
+        const isExpired = chosen.endDate < todayStr;
+        const baseRange = isExpired
+          ? currentDefault
+          : buildCustomSalesCycleRange(chosen.startDate, chosen.endDate, scope);
+        const range: SalesCycleRange = {
+          ...baseRange,
+          startDay: isExpired ? currentDefault.startDay : startDay,
+          endDay: isExpired ? currentDefault.endDay : endDay,
+        };
         return {
           range,
           preference: {
             ...chosen,
             startDate: range.startDate,
             endDate: range.endDate,
+            startDay: range.startDay,
+            endDay: range.endDay,
           },
         };
       }

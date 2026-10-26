@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X, PanelLeftClose, PanelLeftOpen, Wind } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -1255,6 +1255,55 @@ export default function Dashboard() {
                   >
                     <Search size={15} className="text-blue-600 dark:text-white shrink-0" />
                     <span className="whitespace-nowrap">Abrir Catálogo de Peças</span>
+                    <ChevronRight size={15} className="dark:text-white shrink-0" />
+                  </Link>
+                </div>
+
+                {/* Tabela de Split - Logo abaixo do Catálogo de Peças */}
+                <Link
+                  href="/tabela-split"
+                  className="sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm bg-sky-600 hover:bg-sky-500 border-sky-500 text-white"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
+                      <Wind size={17} />
+                    </div>
+                    <span className="font-bold text-xs truncate text-white">
+                      Tabela de Split (Agratto, Gree e Elgin)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white text-sky-700 text-xs font-black shadow-xs shrink-0 whitespace-nowrap">
+                    <Search size={13} className="shrink-0" />
+                    <span>Preços</span>
+                    <ChevronRight size={13} className="shrink-0" />
+                  </div>
+                </Link>
+
+                <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
+                  isDarkMode
+                    ? 'bg-gradient-to-r from-sky-950/70 to-cyan-950/60 border-sky-900/60 shadow-lg'
+                    : 'bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-sky-600/20'
+                }`}>
+                  <div className="flex items-start gap-3.5 mb-4">
+                    <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
+                      <Wind size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                        Tabela de Split — Ar Condicionado
+                      </h3>
+                      <p className="text-[11px] text-sky-100 opacity-90 mt-0.5 leading-relaxed">
+                        Consulte preços de 1x a 10x (Total e Prestação) das tabelas Agratto, Gree e Elgin.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    href="/tabela-split"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-sky-700 hover:bg-sky-50 dark:bg-sky-600 dark:hover:bg-sky-500 dark:text-white dark:shadow-md dark:shadow-sky-600/30 text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer whitespace-nowrap"
+                  >
+                    <Wind size={15} className="text-sky-600 dark:text-white shrink-0" />
+                    <span className="whitespace-nowrap">Abrir Tabela de Split</span>
                     <ChevronRight size={15} className="dark:text-white shrink-0" />
                   </Link>
                 </div>
