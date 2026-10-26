@@ -137,17 +137,24 @@ export async function POST(req: NextRequest) {
           headers["Client-Token"] = cleanToken;
         }
 
+        const requestedDelay = Number(body.delayMessage);
+        const safeDelaySeconds =
+          !isNaN(requestedDelay) && requestedDelay >= 1 && requestedDelay <= 15
+            ? Math.round(requestedDelay)
+            : Math.floor(Math.random() * 3) + 1;
+
         const payload = isWApi
           ? {
               phone: cleanTo,
               message: message,
-              delayMessage: 1
+              delayMessage: safeDelaySeconds
             }
           : {
               phone: cleanTo,
               number: cleanTo,
               message: message,
-              text: message
+              text: message,
+              delay: safeDelaySeconds * 1000
             };
 
         const res = await fetch(sendEndpoint, {

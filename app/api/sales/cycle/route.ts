@@ -6,12 +6,55 @@ import {
   getSupabaseUserCycleKey,
   getDefaultSalesCycleForDate,
   getSalesCycleForMonthYear,
+  getTodayLocalYYYYMMDD,
 } from '@/lib/salesCycle';
+
+async function rolloverIfExpired(
+  pref: SalesCyclePreference | null,
+  settingKey: string,
+  todayStr: string
+): Promise<SalesCyclePreference | null> {
+  if (!pref || !pref.endDate) return pref;
+
+  const updatedDateStr = pref.updatedAt ? String(pref.updatedAt).slice(0, 10) : '';
+  const isManualHistoricalToday = pref.autoRollover === false && updatedDateStr === todayStr;
+
+  if (pref.endDate < todayStr && !isManualHistoricalToday) {
+    const rolled = getDefaultSalesCycleForDate(
+      new Date(),
+      Number(pref.startDay) || 26,
+      Number(pref.endDay) || 25,
+      pref.scope || 'company'
+    );
+    const updatedPref: SalesCyclePreference = {
+      ...pref,
+      startDay: rolled.startDay,
+      endDay: rolled.endDay,
+      startDate: rolled.startDate,
+      endDate: rolled.endDate,
+      autoRollover: true,
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await supabase.from('system_settings').upsert({
+        key: settingKey,
+        value: updatedPref,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Warning persisting rolled over sales cycle:', e);
+    }
+    return updatedPref;
+  }
+
+  return pref;
+}
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get('userId') || undefined;
+    const todayStr = getTodayLocalYYYYMMDD();
 
     const keysToFetch = userId
       ? [getSupabaseUserCycleKey(userId), SUPABASE_COMPANY_CYCLE_KEY]
@@ -34,6 +77,22 @@ export async function GET(req: NextRequest) {
           companyPreference = row.value as SalesCyclePreference;
         }
       }
+    }
+
+    if (userId && userPreference) {
+      userPreference = await rolloverIfExpired(
+        userPreference,
+        getSupabaseUserCycleKey(userId),
+        todayStr
+      );
+    }
+
+    if (companyPreference) {
+      companyPreference = await rolloverIfExpired(
+        companyPreference,
+        SUPABASE_COMPANY_CYCLE_KEY,
+        todayStr
+      );
     }
 
     // Default company cycle (26 of previous month to 25 of current/next month) if none stored yet

@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 import { supabase, getSafeSupabaseConfig } from '@/lib/supabase';
-import { getDefaultSalesCycleForDate, formatShortDateBR } from '@/lib/salesCycle';
+import {
+  getDefaultSalesCycleForDate,
+  formatShortDateBR,
+  isSalesResultFromCurrentCycle,
+} from '@/lib/salesCycle';
 
 const DEFAULT_VAPID_PUBLIC_KEY =
   'BPrDi0R_L7n0ubuljp_LsSYD2IcckhvrtucPpDGDHBT91VMuoW_0IH2NlJ7fg_qjkXFjnAUosLaPjxuwGqGuOks';
@@ -275,13 +279,13 @@ export async function evaluateAndDispatchSalesMilestones(options?: {
     sellersMap.set(p.id, p.name || 'Vendedor');
   });
 
-  // 2. Fetch sales_results — sellers' informed values in sales_results already correspond to the 26-to-25 cycle
+  // 2. Fetch sales_results strictly for the active cycle's reference month/year
   const [startY, startM] = startDate.split('-').map(Number);
   const [endY, endM] = endDate.split('-').map(Number);
 
   let salesQuery = supabase
     .from('sales_results')
-    .select('collaborator_id, target_2026, result_2026, month, year')
+    .select('collaborator_id, target_2026, result_2026, month, year, updated_at, created_at')
     .eq('month', refMonth)
     .eq('year', refYear);
 
@@ -290,16 +294,17 @@ export async function evaluateAndDispatchSalesMilestones(options?: {
   }
 
   const { data: salesRows } = await salesQuery;
-  let activeSalesRows = salesRows || [];
+  let activeSalesRows: any[] = salesRows || [];
 
-  const hasNonZeroInRef = activeSalesRows.some(
-    (r: any) => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0
+  const hasTargetsInRef = activeSalesRows.some(
+    (r: any) => (Number(r.target_2026) || 0) > 0
   );
 
-  if (!hasNonZeroInRef && startM && startY && (startM !== endM || startY !== endY)) {
+  // If the new cycle has no configured targets yet, fallback to previous cycle ONLY for target_2026
+  if (!hasTargetsInRef && startM && startY && (startM !== endM || startY !== endY)) {
     let startMonthQuery = supabase
       .from('sales_results')
-      .select('collaborator_id, target_2026, result_2026, month, year')
+      .select('collaborator_id, target_2026, result_2026, month, year, updated_at, created_at')
       .eq('month', startM)
       .eq('year', startY);
 
@@ -310,20 +315,23 @@ export async function evaluateAndDispatchSalesMilestones(options?: {
     const { data: startRows } = await startMonthQuery;
     if (
       startRows &&
-      startRows.some((r: any) => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
+      startRows.some((r: any) => (Number(r.target_2026) || 0) > 0)
     ) {
-      activeSalesRows = startRows;
+      activeSalesRows = startRows.map((r: any) => ({
+        ...r,
+        result_2026: 0,
+      }));
     }
   }
 
   if (
     !activeSalesRows.some(
-      (r: any) => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0
+      (r: any) => (Number(r.target_2026) || 0) > 0
     )
   ) {
     let fallbackQuery = supabase
       .from('sales_results')
-      .select('collaborator_id, target_2026, result_2026, month, year')
+      .select('collaborator_id, target_2026, result_2026, month, year, updated_at, created_at')
       .order('year', { ascending: false })
       .order('month', { ascending: false })
       .limit(40);
@@ -336,11 +344,16 @@ export async function evaluateAndDispatchSalesMilestones(options?: {
     if (fallbackRows && fallbackRows.length > 0) {
       const nonZero =
         fallbackRows.find(
-          (d: any) => (Number(d.result_2026) || 0) > 0 || (Number(d.target_2026) || 0) > 0
+          (d: any) => (Number(d.target_2026) || 0) > 0
         ) || fallbackRows[0];
-      activeSalesRows = fallbackRows.filter(
-        (d: any) => d.month === nonZero.month && d.year === nonZero.year
-      );
+      activeSalesRows = fallbackRows
+        .filter((d: any) => d.month === nonZero.month && d.year === nonZero.year)
+        .map((r: any) => ({
+          ...r,
+          result_2026: isSalesResultFromCurrentCycle(r, { startDate, endDate, refMonth, refYear })
+            ? r.result_2026
+            : 0,
+        }));
     }
   }
 
@@ -377,7 +390,13 @@ export async function evaluateAndDispatchSalesMilestones(options?: {
     if (target <= 0) continue;
 
     const dailySum = dailySalesBySeller[sellerId]?.amount;
-    const consolidated = Number(row.result_2026) || 0;
+    const isCurrentCycleRow = isSalesResultFromCurrentCycle(row, {
+      startDate,
+      endDate,
+      refMonth,
+      refYear,
+    });
+    const consolidated = isCurrentCycleRow ? Number(row.result_2026) || 0 : 0;
     const realized = dailySum !== undefined && dailySum > 0 ? Math.max(dailySum, consolidated) : consolidated;
     const percentage = Math.round((realized / target) * 1000) / 10;
 

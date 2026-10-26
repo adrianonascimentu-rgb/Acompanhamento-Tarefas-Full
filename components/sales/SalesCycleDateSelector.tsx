@@ -21,6 +21,7 @@ import {
   saveSalesCycleToSupabase,
   fetchSalesCycleFromSupabase,
   formatDateBR,
+  getTodayLocalYYYYMMDD,
 } from '@/lib/salesCycle';
 
 interface SalesCycleDateSelectorProps {
@@ -85,8 +86,10 @@ export function SalesCycleDateSelector({
 
   const handleStartDateChange = async (newStart: string) => {
     if (!newStart) return;
+    const todayStr = getTodayLocalYYYYMMDD();
     const end = newStart > cycleRange.endDate ? newStart : cycleRange.endDate;
-    const updated = saveSalesCycleRange(newStart, end, activeScopeBadge);
+    const isHistorical = end < todayStr;
+    const updated = saveSalesCycleRange(newStart, end, activeScopeBadge, !isHistorical);
     onChange(updated);
 
     setSaving(true);
@@ -98,6 +101,7 @@ export function SalesCycleDateSelector({
       scope: isManagerial ? saveScope : 'user',
       userId,
       userName,
+      autoRollover: !isHistorical,
     });
     setSaving(false);
     triggerFeedback(
@@ -109,8 +113,10 @@ export function SalesCycleDateSelector({
 
   const handleEndDateChange = async (newEnd: string) => {
     if (!newEnd) return;
+    const todayStr = getTodayLocalYYYYMMDD();
     const start = newEnd < cycleRange.startDate ? newEnd : cycleRange.startDate;
-    const updated = saveSalesCycleRange(start, newEnd, activeScopeBadge);
+    const isHistorical = newEnd < todayStr;
+    const updated = saveSalesCycleRange(start, newEnd, activeScopeBadge, !isHistorical);
     onChange(updated);
 
     setSaving(true);
@@ -122,6 +128,7 @@ export function SalesCycleDateSelector({
       scope: isManagerial ? saveScope : 'user',
       userId,
       userName,
+      autoRollover: !isHistorical,
     });
     setSaving(false);
     triggerFeedback(
@@ -148,7 +155,9 @@ export function SalesCycleDateSelector({
       endDayInput || 25,
       activeScopeBadge
     );
-    const updated = saveSalesCycleRange(shifted.startDate, shifted.endDate, activeScopeBadge);
+    const todayStr = getTodayLocalYYYYMMDD();
+    const isHistorical = shifted.endDate < todayStr;
+    const updated = saveSalesCycleRange(shifted.startDate, shifted.endDate, activeScopeBadge, !isHistorical);
     onChange(updated);
 
     await saveSalesCycleToSupabase({
@@ -159,6 +168,7 @@ export function SalesCycleDateSelector({
       scope: isManagerial ? saveScope : 'user',
       userId,
       userName,
+      autoRollover: !isHistorical,
     });
   };
 

@@ -13,6 +13,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { LoginForm } from '@/components/auth/LoginForm';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { getDefaultSalesCycleForDate, loadSavedSalesCycle } from '@/lib/salesCycle';
 
 export default function SalesAdminPage() {
   const router = useRouter();
@@ -22,15 +23,22 @@ export default function SalesAdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
-  // Data State
+  // Data State — default to the current active sales cycle (26 to 25)
+  const initialCycle = getDefaultSalesCycleForDate();
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const [salesEntries, setSalesEntries] = useState<Record<string, any>>({});
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(initialCycle.refMonth);
+  const [selectedYear, setSelectedYear] = useState(initialCycle.refYear);
 
   // Permissions State
   const [profiles, setProfiles] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const saved = loadSavedSalesCycle();
+    setSelectedMonth(saved.refMonth);
+    setSelectedYear(saved.refYear);
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -55,15 +63,36 @@ export default function SalesAdminPage() {
         .eq('year', selectedYear);
 
       const entries: Record<string, any> = {};
-      salesData?.forEach(item => {
-        entries[item.collaborator_id] = {
-          id: item.id,
-          result_2025: item.result_2025,
-          target_suggestion: item.target_suggestion,
-          target_2026: item.target_2026,
-          result_2026: item.result_2026
-        };
-      });
+      if (salesData && salesData.length > 0) {
+        salesData.forEach(item => {
+          entries[item.collaborator_id] = {
+            id: item.id,
+            result_2025: item.result_2025,
+            target_suggestion: item.target_suggestion,
+            target_2026: item.target_2026,
+            result_2026: item.result_2026
+          };
+        });
+      } else {
+        // When a new cycle starts and has no rows yet, inherit only the targets (Meta)
+        // from the previous cycle and start result_2026 at 0
+        const prevMonth = selectedMonth === 1 ? 12 : selectedMonth - 1;
+        const prevYear = selectedMonth === 1 ? selectedYear - 1 : selectedYear;
+        const { data: prevSalesData } = await supabase
+          .from('sales_results')
+          .select('*')
+          .eq('month', prevMonth)
+          .eq('year', prevYear);
+
+        prevSalesData?.forEach(item => {
+          entries[item.collaborator_id] = {
+            result_2025: item.result_2025 || 0,
+            target_suggestion: item.target_suggestion || 0,
+            target_2026: item.target_2026 || 0,
+            result_2026: 0
+          };
+        });
+      }
       setSalesEntries(entries);
 
     } catch (error: any) {

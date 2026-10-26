@@ -24,6 +24,7 @@ import { DailySalesInputModal } from '@/components/sales/DailySalesInputModal';
 import { CalendarPlus } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { loadSavedSalesCycle, isSalesResultFromCurrentCycle } from '@/lib/salesCycle';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
@@ -107,19 +108,39 @@ export default function SalesModulePage() {
       if (profilesError) throw profilesError;
       setSellers(profilesData || []);
 
-      // Fetch sales results (targets and results)
-      const currentMonth = new Date().getMonth() + 1;
-      const currentYear = new Date().getFullYear();
+      // Fetch sales results (targets and results) for the active sales cycle
+      const activeCycle = loadSavedSalesCycle();
       const { data: resultsData, error: resultsError } = await supabase
         .from('sales_results')
         .select('*')
-        .eq('month', currentMonth)
-        .eq('year', currentYear);
+        .eq('month', activeCycle.refMonth)
+        .eq('year', activeCycle.refYear);
 
       if (resultsError && resultsError.code !== 'PGRST116') {
         console.error('Error fetching sales results:', resultsError);
+      } else if (resultsData && resultsData.length > 0) {
+        setSalesResults(
+          resultsData.map(r => ({
+            ...r,
+            result_2026: isSalesResultFromCurrentCycle(r, activeCycle) ? r.result_2026 : 0,
+          }))
+        );
       } else {
-        setSalesResults(resultsData || []);
+        // Fallback only for target_2026 (Meta), keeping result_2026 at 0 for the new cycle
+        const [startY, startM] = activeCycle.startDate.split('-').map(Number);
+        const { data: prevResults } = await supabase
+          .from('sales_results')
+          .select('*')
+          .eq('month', startM)
+          .eq('year', startY);
+        setSalesResults(
+          (prevResults || []).map(r => ({
+            ...r,
+            month: activeCycle.refMonth,
+            year: activeCycle.refYear,
+            result_2026: 0,
+          }))
+        );
       }
 
     } catch (error: any) {

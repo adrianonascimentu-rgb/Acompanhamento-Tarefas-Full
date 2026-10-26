@@ -107,6 +107,9 @@ export interface WhatsAppCloudState {
   };
   rules: any[];
   rulesUpdatedAt?: string;
+  antiBanConfig?: any;
+  customerContacts?: any[];
+  campaigns?: any[];
   chats: any[];
   deletedChatIds: string[];
   chatMessages: Record<string, any[]>;
@@ -132,6 +135,9 @@ const DEFAULT_CLOUD_STATE: WhatsAppCloudState = {
     collaboratorPhones: {}
   },
   rules: [],
+  antiBanConfig: null,
+  customerContacts: [],
+  campaigns: [],
   chats: [],
   deletedChatIds: [],
   chatMessages: {},
@@ -167,6 +173,12 @@ function parseStoredValue(raw: any): WhatsAppCloudState {
     },
     rules: Array.isArray(parsed.rules) ? parsed.rules : [],
     rulesUpdatedAt: parsed.rulesUpdatedAt,
+    antiBanConfig:
+      parsed.antiBanConfig && typeof parsed.antiBanConfig === 'object'
+        ? parsed.antiBanConfig
+        : null,
+    customerContacts: Array.isArray(parsed.customerContacts) ? parsed.customerContacts : [],
+    campaigns: Array.isArray(parsed.campaigns) ? parsed.campaigns : [],
     chats: Array.isArray(parsed.chats) ? parsed.chats : [],
     deletedChatIds: Array.isArray(parsed.deletedChatIds) ? parsed.deletedChatIds : [],
     chatMessages:
@@ -384,6 +396,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 3.5 Merge Anti-Ban Config
+    let mergedAntiBanConfig = currentCloud.antiBanConfig || null;
+    if (body.antiBanConfig && typeof body.antiBanConfig === 'object') {
+      if (body.forceAntiBanUpdate || !mergedAntiBanConfig) {
+        mergedAntiBanConfig = {
+          ...(mergedAntiBanConfig || {}),
+          ...body.antiBanConfig,
+          updatedAt: nowIso
+        };
+      }
+    }
+
     // 4. Deleted Chat IDs tracking
     const deletedSet = new Set<string>(currentCloud.deletedChatIds || []);
     if (Array.isArray(body.deletedChatIds)) {
@@ -540,11 +564,30 @@ export async function POST(req: NextRequest) {
       500
     );
 
+    const mergedCustomerContacts = body.forceCustomersUpdate && Array.isArray(body.customerContacts)
+      ? body.customerContacts
+      : dedupeById(
+          currentCloud.customerContacts || [],
+          Array.isArray(body.customerContacts) ? body.customerContacts : [],
+          1000
+        );
+
+    const mergedCampaigns = body.forceCampaignsUpdate && Array.isArray(body.campaigns)
+      ? body.campaigns
+      : dedupeById(
+          currentCloud.campaigns || [],
+          Array.isArray(body.campaigns) ? body.campaigns : [],
+          150
+        );
+
     const nextState: WhatsAppCloudState = {
       providerConfig: mergedProviderConfig,
       directory: mergedDirectory,
       rules: mergedRules,
       rulesUpdatedAt,
+      antiBanConfig: mergedAntiBanConfig,
+      customerContacts: mergedCustomerContacts,
+      campaigns: mergedCampaigns,
       chats: mergedChats,
       deletedChatIds: Array.from(deletedSet),
       chatMessages: mergedChatMessages,

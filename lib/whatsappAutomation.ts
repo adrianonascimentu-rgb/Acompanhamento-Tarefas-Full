@@ -95,6 +95,53 @@ export interface CollaboratorProfilePhone {
   type?: string;
 }
 
+export type WhatsAppAntiBanProfile = 'conservative' | 'balanced' | 'intensive' | 'custom';
+
+export interface WhatsAppAntiBanConfig {
+  enabled: boolean;
+  profile: WhatsAppAntiBanProfile;
+  // Regra 1: Cadência Inteligente & Atraso Randômico (Anti-Rajada)
+  randomDelayEnabled: boolean;
+  minDelaySeconds: number;
+  maxDelaySeconds: number;
+  simulateTyping: boolean;
+  // Regra 2: Limite de Volume (Minuto / Hora / Dia) & Pausa de Respiro
+  rateLimitEnabled: boolean;
+  maxMessagesPerMinute: number;
+  maxMessagesPerHour: number;
+  maxMessagesPerDay: number;
+  burstThreshold: number;
+  pauseSecondsOnBurst: number;
+  // Regra 3: Anti-Spam por Destinatário & Bloqueio de Duplicidade
+  deduplicationEnabled: boolean;
+  blockDuplicateWindowMinutes: number;
+  recipientCooldownSeconds: number;
+  // Regra 4: Polimorfismo & Humanização Dinâmica de Mensagem
+  dynamicVariationEnabled: boolean;
+  varyGreetings: boolean;
+  appendUniqueProtocol: boolean;
+  // Regra 5: Janela de Horário Comercial Seguro (Anti-Denúncia Noturna)
+  safeHoursEnabled: boolean;
+  safeHoursStart: string;
+  safeHoursEnd: string;
+  allowHighPriorityOutsideSafeHours: boolean;
+  updatedAt?: string;
+}
+
+export interface WhatsAppAntiBanStats {
+  sentLastMinute: number;
+  sentLastHour: number;
+  sentToday: number;
+  queuedCount: number;
+  blockedDuplicatesCount: number;
+  blockedRateLimitCount: number;
+  humanizedMessagesCount: number;
+  lastDelayAppliedSeconds: number;
+  consecutiveBurstCount: number;
+  healthScore: number;
+  lastProtectedAction?: string;
+}
+
 export const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v2_real';
 export const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v2_real';
 export const DIRECTORY_STORAGE_KEY = 'whatsapp_automation_directory_v1';
@@ -104,6 +151,86 @@ export const REAL_CHATS_STORAGE_KEY = 'whatsapp_real_chats_v2';
 export const REAL_MESSAGES_STORAGE_KEY = 'whatsapp_real_messages_v2';
 export const DELETED_CHATS_STORAGE_KEY = 'whatsapp_deleted_chat_ids_v1';
 export const PROFILE_PHONES_CACHE_KEY = 'whatsapp_profile_phones_cache_v1';
+export const ANTIBAN_CONFIG_STORAGE_KEY = 'whatsapp_antiban_config_v1';
+export const ANTIBAN_STATS_STORAGE_KEY = 'whatsapp_antiban_runtime_stats_v1';
+
+export const ANTIBAN_PROFILE_PRESETS: Record<
+  Exclude<WhatsAppAntiBanProfile, 'custom'>,
+  Omit<WhatsAppAntiBanConfig, 'enabled' | 'profile' | 'updatedAt'>
+> = {
+  conservative: {
+    randomDelayEnabled: true,
+    minDelaySeconds: 8,
+    maxDelaySeconds: 18,
+    simulateTyping: true,
+    rateLimitEnabled: true,
+    maxMessagesPerMinute: 3,
+    maxMessagesPerHour: 25,
+    maxMessagesPerDay: 120,
+    burstThreshold: 6,
+    pauseSecondsOnBurst: 45,
+    deduplicationEnabled: true,
+    blockDuplicateWindowMinutes: 30,
+    recipientCooldownSeconds: 25,
+    dynamicVariationEnabled: true,
+    varyGreetings: true,
+    appendUniqueProtocol: true,
+    safeHoursEnabled: true,
+    safeHoursStart: '07:00',
+    safeHoursEnd: '20:30',
+    allowHighPriorityOutsideSafeHours: true
+  },
+  balanced: {
+    randomDelayEnabled: true,
+    minDelaySeconds: 4,
+    maxDelaySeconds: 11,
+    simulateTyping: true,
+    rateLimitEnabled: true,
+    maxMessagesPerMinute: 6,
+    maxMessagesPerHour: 45,
+    maxMessagesPerDay: 250,
+    burstThreshold: 10,
+    pauseSecondsOnBurst: 30,
+    deduplicationEnabled: true,
+    blockDuplicateWindowMinutes: 15,
+    recipientCooldownSeconds: 12,
+    dynamicVariationEnabled: true,
+    varyGreetings: true,
+    appendUniqueProtocol: true,
+    safeHoursEnabled: false,
+    safeHoursStart: '07:00',
+    safeHoursEnd: '21:30',
+    allowHighPriorityOutsideSafeHours: true
+  },
+  intensive: {
+    randomDelayEnabled: true,
+    minDelaySeconds: 2,
+    maxDelaySeconds: 6,
+    simulateTyping: true,
+    rateLimitEnabled: true,
+    maxMessagesPerMinute: 12,
+    maxMessagesPerHour: 90,
+    maxMessagesPerDay: 500,
+    burstThreshold: 18,
+    pauseSecondsOnBurst: 20,
+    deduplicationEnabled: true,
+    blockDuplicateWindowMinutes: 5,
+    recipientCooldownSeconds: 6,
+    dynamicVariationEnabled: true,
+    varyGreetings: true,
+    appendUniqueProtocol: true,
+    safeHoursEnabled: false,
+    safeHoursStart: '06:00',
+    safeHoursEnd: '22:30',
+    allowHighPriorityOutsideSafeHours: true
+  }
+};
+
+export const DEFAULT_ANTIBAN_CONFIG: WhatsAppAntiBanConfig = {
+  enabled: true,
+  profile: 'balanced',
+  ...ANTIBAN_PROFILE_PRESETS.balanced
+};
 
 export const DEFAULT_DIRECTORY_CONFIG: AutomationDirectoryConfig = {
   adminName: 'Adriano Nascimento (Admin)',
@@ -525,6 +652,19 @@ export function normalizeBrazilPhone(raw?: string): string {
     return `55${digits}`;
   }
   return digits;
+}
+
+export function formatPhoneDisplay(raw?: string): string {
+  const digits = normalizeBrazilPhone(raw);
+  if (!digits) return '';
+  const local = digits.startsWith('55') && digits.length >= 12 ? digits.slice(2) : digits;
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+  return `+${digits}`;
 }
 
 export function isPlaceholderPhone(phone?: string): boolean {
@@ -967,12 +1107,527 @@ export function applyCloudStateToLocalStorage(cloudState: any, profilePhones?: C
       localStorage.setItem(TRAFFIC_EVENTS_STORAGE_KEY, JSON.stringify(cloudState.trafficEvents));
     }
 
+    if (cloudState.antiBanConfig && typeof cloudState.antiBanConfig === 'object') {
+      const mergedAntiBan: WhatsAppAntiBanConfig = {
+        ...DEFAULT_ANTIBAN_CONFIG,
+        ...cloudState.antiBanConfig
+      };
+      localStorage.setItem(ANTIBAN_CONFIG_STORAGE_KEY, JSON.stringify(mergedAntiBan));
+    }
+
+    if (Array.isArray(cloudState.customerContacts) && cloudState.customerContacts.length > 0) {
+      localStorage.setItem('whatsapp_customer_contacts_v1', JSON.stringify(cloudState.customerContacts));
+    }
+
+    if (Array.isArray(cloudState.campaigns) && cloudState.campaigns.length > 0) {
+      localStorage.setItem('whatsapp_campaigns_v1', JSON.stringify(cloudState.campaigns));
+    }
+
     window.dispatchEvent(new Event('whatsapp-cloud-synced'));
     window.dispatchEvent(new Event('whatsapp-automation-updated'));
     window.dispatchEvent(new Event('whatsapp-traffic-updated'));
+    window.dispatchEvent(new Event('whatsapp-antiban-updated'));
+    window.dispatchEvent(new Event('whatsapp-campaigns-updated'));
   } catch (err) {
     console.warn('Error applying WhatsApp cloud state to localStorage:', err);
   }
+}
+
+export function getAntiBanConfig(): WhatsAppAntiBanConfig {
+  if (typeof window === 'undefined') return DEFAULT_ANTIBAN_CONFIG;
+  try {
+    const raw = localStorage.getItem(ANTIBAN_CONFIG_STORAGE_KEY);
+    if (!raw) return DEFAULT_ANTIBAN_CONFIG;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_ANTIBAN_CONFIG;
+    return {
+      ...DEFAULT_ANTIBAN_CONFIG,
+      ...parsed
+    };
+  } catch {
+    return DEFAULT_ANTIBAN_CONFIG;
+  }
+}
+
+export function saveAntiBanConfig(
+  config: WhatsAppAntiBanConfig,
+  syncCloud = true
+): WhatsAppAntiBanConfig {
+  const normalized: WhatsAppAntiBanConfig = {
+    ...DEFAULT_ANTIBAN_CONFIG,
+    ...config,
+    minDelaySeconds: Math.max(1, Number(config.minDelaySeconds) || 4),
+    maxDelaySeconds: Math.max(
+      Math.max(1, Number(config.minDelaySeconds) || 4),
+      Number(config.maxDelaySeconds) || 11
+    ),
+    maxMessagesPerMinute: Math.max(1, Number(config.maxMessagesPerMinute) || 6),
+    maxMessagesPerHour: Math.max(5, Number(config.maxMessagesPerHour) || 45),
+    maxMessagesPerDay: Math.max(10, Number(config.maxMessagesPerDay) || 250),
+    burstThreshold: Math.max(2, Number(config.burstThreshold) || 10),
+    pauseSecondsOnBurst: Math.max(5, Number(config.pauseSecondsOnBurst) || 30),
+    blockDuplicateWindowMinutes: Math.max(1, Number(config.blockDuplicateWindowMinutes) || 15),
+    recipientCooldownSeconds: Math.max(2, Number(config.recipientCooldownSeconds) || 12),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(ANTIBAN_CONFIG_STORAGE_KEY, JSON.stringify(normalized));
+    window.dispatchEvent(new Event('whatsapp-antiban-updated'));
+    window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({
+        antiBanConfig: normalized,
+        forceAntiBanUpdate: true
+      });
+    }
+  }
+  return normalized;
+}
+
+// Runtime tracking for sequential Anti-Ban Queue
+let activeQueueLength = 0;
+let lastDispatchCompletedAt = 0;
+let consecutiveBurstCounter = 0;
+const lastRecipientSentAtMap = new Map<string, number>();
+let dispatchChainPromise: Promise<any> = Promise.resolve();
+
+interface RuntimeAntiBanCounters {
+  blockedDuplicatesCount: number;
+  blockedRateLimitCount: number;
+  humanizedMessagesCount: number;
+  lastDelayAppliedSeconds: number;
+  lastProtectedAction?: string;
+}
+
+function getRuntimeCounters(): RuntimeAntiBanCounters {
+  if (typeof window === 'undefined') {
+    return {
+      blockedDuplicatesCount: 0,
+      blockedRateLimitCount: 0,
+      humanizedMessagesCount: 0,
+      lastDelayAppliedSeconds: 0
+    };
+  }
+  try {
+    const raw = localStorage.getItem(ANTIBAN_STATS_STORAGE_KEY);
+    if (!raw) {
+      return {
+        blockedDuplicatesCount: 0,
+        blockedRateLimitCount: 0,
+        humanizedMessagesCount: 0,
+        lastDelayAppliedSeconds: 0
+      };
+    }
+    return {
+      blockedDuplicatesCount: 0,
+      blockedRateLimitCount: 0,
+      humanizedMessagesCount: 0,
+      lastDelayAppliedSeconds: 0,
+      ...JSON.parse(raw)
+    };
+  } catch {
+    return {
+      blockedDuplicatesCount: 0,
+      blockedRateLimitCount: 0,
+      humanizedMessagesCount: 0,
+      lastDelayAppliedSeconds: 0
+    };
+  }
+}
+
+function updateRuntimeCounters(patch: Partial<RuntimeAntiBanCounters>) {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getRuntimeCounters();
+    const updated = { ...current, ...patch };
+    localStorage.setItem(ANTIBAN_STATS_STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new Event('whatsapp-antiban-updated'));
+  } catch {}
+}
+
+export function getAntiBanLiveStats(): WhatsAppAntiBanStats {
+  const cfg = getAntiBanConfig();
+  const events = getWhatsAppTrafficEvents().filter(
+    ev => ev.direction === 'outbound' && (ev.status === 'sent' || ev.status === 'delivered')
+  );
+  const nowMs = Date.now();
+  const oneMinAgo = nowMs - 60 * 1000;
+  const oneHourAgo = nowMs - 60 * 60 * 1000;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTodayMs = startOfToday.getTime();
+
+  let sentLastMinute = 0;
+  let sentLastHour = 0;
+  let sentToday = 0;
+
+  for (const ev of events) {
+    const t = new Date(ev.createdAt || ev.timestamp).getTime();
+    if (isNaN(t)) continue;
+    if (t >= oneMinAgo) sentLastMinute++;
+    if (t >= oneHourAgo) sentLastHour++;
+    if (t >= startOfTodayMs) sentToday++;
+  }
+
+  const counters = getRuntimeCounters();
+
+  // Compute health score (0-100) based on enabled protections and current load vs limits
+  let score = cfg.enabled ? 100 : 45;
+  if (cfg.enabled) {
+    if (!cfg.randomDelayEnabled) score -= 18;
+    if (!cfg.rateLimitEnabled) score -= 15;
+    if (!cfg.deduplicationEnabled) score -= 12;
+    if (!cfg.dynamicVariationEnabled) score -= 12;
+    const hourRatio = sentLastHour / Math.max(1, cfg.maxMessagesPerHour);
+    const dayRatio = sentToday / Math.max(1, cfg.maxMessagesPerDay);
+    if (hourRatio > 0.85 || dayRatio > 0.85) score -= 15;
+    else if (hourRatio > 0.6 || dayRatio > 0.6) score -= 5;
+  }
+
+  return {
+    sentLastMinute,
+    sentLastHour,
+    sentToday,
+    queuedCount: activeQueueLength,
+    blockedDuplicatesCount: counters.blockedDuplicatesCount,
+    blockedRateLimitCount: counters.blockedRateLimitCount,
+    humanizedMessagesCount: counters.humanizedMessagesCount,
+    lastDelayAppliedSeconds: counters.lastDelayAppliedSeconds,
+    consecutiveBurstCount: consecutiveBurstCounter,
+    healthScore: Math.max(10, Math.min(100, score)),
+    lastProtectedAction: counters.lastProtectedAction
+  };
+}
+
+function getContextualGreeting(): string {
+  const hour = new Date().getHours();
+  const timeGreeting = hour >= 5 && hour < 12 ? 'Bom dia' : hour >= 12 && hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const options = [
+    `Olá! ${timeGreeting}`,
+    `${timeGreeting}, tudo bem?`,
+    `Oi, ${timeGreeting.toLowerCase()}`,
+    `Olá`,
+    `${timeGreeting}`
+  ];
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+export function humanizeWhatsAppMessage(rawText: string, config = getAntiBanConfig()): string {
+  if (!config.enabled || !config.dynamicVariationEnabled) return rawText;
+  let result = rawText;
+
+  // 1. Vary standard greeting openings so repeated templates aren't byte-identical at the start
+  if (config.varyGreetings) {
+    const greeting = getContextualGreeting();
+    if (/^(Olá|Oi|Bom dia|Boa tarde|Boa noite)\b/i.test(result)) {
+      result = result.replace(/^(Olá|Oi|Bom dia|Boa tarde|Boa noite)(!|,)?/i, `${greeting},`);
+    } else {
+      result = result.replace(/\n\n(Olá|Oi|Bom dia|Boa tarde|Boa noite)(!|,)?/i, `\n\n${greeting},`);
+    }
+  }
+
+  // 2. Append subtle unique operational verification hash + timestamp so every message has a unique payload hash
+  if (config.appendUniqueProtocol && !result.includes('Protocolo #') && !result.includes('Ref: #')) {
+    const shortHash = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    result = `${result}\n\n_🔒 Ref: #${shortHash} • ${timeStr}_`;
+  }
+
+  return result;
+}
+
+function normalizeMessageForComparison(text: string): string {
+  return String(text || '')
+    .replace(/_🔒 Ref: #[A-Z0-9]+ • \d{2}:\d{2}_/g, '')
+    .replace(/^(Olá|Oi|Bom dia|Boa tarde|Boa noite)[^\n]*/im, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+export function isWithinSafeHours(config = getAntiBanConfig()): boolean {
+  if (!config.enabled || !config.safeHoursEnabled) return true;
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+  const [startH, startM] = (config.safeHoursStart || '07:00').split(':').map(Number);
+  const [endH, endM] = (config.safeHoursEnd || '21:30').split(':').map(Number);
+  const startMinutes = (isNaN(startH) ? 7 : startH) * 60 + (isNaN(startM) ? 0 : startM);
+  const endMinutes = (isNaN(endH) ? 21 : endH) * 60 + (isNaN(endM) ? 30 : endM);
+
+  if (startMinutes <= endMinutes) {
+    return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+  }
+  return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+}
+
+export async function executeSafeWhatsAppSend(params: {
+  to: string;
+  recipientName: string;
+  message: string;
+  providerMode: string;
+  altServerUrl: string;
+  altApiKey: string;
+  altInstance: string;
+  isManualChat?: boolean;
+  isDirectTest?: boolean;
+  isHighPriority?: boolean;
+}): Promise<{
+  ok: boolean;
+  status: 'sent' | 'simulated' | 'failed' | 'blocked_antiban';
+  finalMessage: string;
+  delayAppliedSeconds: number;
+  error?: string;
+  data?: any;
+}> {
+  const cleanTo = normalizeBrazilPhone(params.to);
+  const config = getAntiBanConfig();
+
+  // Check 1: Anti-Duplication Window (same phone + same message content within blockDuplicateWindowMinutes)
+  if (
+    config.enabled &&
+    config.deduplicationEnabled &&
+    !params.isDirectTest &&
+    !params.isManualChat
+  ) {
+    const windowMs = (config.blockDuplicateWindowMinutes || 15) * 60 * 1000;
+    const nowMs = Date.now();
+    const targetFingerprint = normalizeMessageForComparison(params.message);
+    const recentEvents = getWhatsAppTrafficEvents();
+
+    const isDuplicate = recentEvents.some(ev => {
+      if (ev.direction !== 'outbound') return false;
+      if (ev.status !== 'sent' && ev.status !== 'delivered') return false;
+      if (normalizeBrazilPhone(ev.recipientPhone) !== cleanTo) return false;
+      const evTime = new Date(ev.createdAt || ev.timestamp).getTime();
+      if (isNaN(evTime) || nowMs - evTime > windowMs) return false;
+      return normalizeMessageForComparison(ev.text || '') === targetFingerprint;
+    });
+
+    if (isDuplicate) {
+      const counters = getRuntimeCounters();
+      const actionMsg = `Duplicidade bloqueada para +${cleanTo} (mesma mensagem enviada há menos de ${config.blockDuplicateWindowMinutes} min).`;
+      updateRuntimeCounters({
+        blockedDuplicatesCount: counters.blockedDuplicatesCount + 1,
+        lastProtectedAction: actionMsg
+      });
+      return {
+        ok: false,
+        status: 'blocked_antiban',
+        finalMessage: params.message,
+        delayAppliedSeconds: 0,
+        error: `Proteção Anti-Ban: ${actionMsg}`
+      };
+    }
+  }
+
+  // Check 2: Safe Hours Window
+  if (
+    config.enabled &&
+    config.safeHoursEnabled &&
+    !params.isDirectTest &&
+    !params.isManualChat &&
+    !(config.allowHighPriorityOutsideSafeHours && params.isHighPriority)
+  ) {
+    if (!isWithinSafeHours(config)) {
+      const actionMsg = `Envio automático retido fora da janela de horário seguro (${config.safeHoursStart} às ${config.safeHoursEnd}).`;
+      updateRuntimeCounters({ lastProtectedAction: actionMsg });
+      return {
+        ok: false,
+        status: 'blocked_antiban',
+        finalMessage: params.message,
+        delayAppliedSeconds: 0,
+        error: `Proteção Anti-Ban: ${actionMsg}`
+      };
+    }
+  }
+
+  // Check 3: Hourly & Daily Rate Limits
+  if (config.enabled && config.rateLimitEnabled && !params.isDirectTest) {
+    const liveStats = getAntiBanLiveStats();
+    if (liveStats.sentToday >= config.maxMessagesPerDay) {
+      const counters = getRuntimeCounters();
+      const actionMsg = `Limite diário de segurança atingido (${config.maxMessagesPerDay} mensagens/dia).`;
+      updateRuntimeCounters({
+        blockedRateLimitCount: counters.blockedRateLimitCount + 1,
+        lastProtectedAction: actionMsg
+      });
+      return {
+        ok: false,
+        status: 'blocked_antiban',
+        finalMessage: params.message,
+        delayAppliedSeconds: 0,
+        error: `Proteção Anti-Ban: ${actionMsg}`
+      };
+    }
+    if (liveStats.sentLastHour >= config.maxMessagesPerHour) {
+      const counters = getRuntimeCounters();
+      const actionMsg = `Limite por hora atingido (${config.maxMessagesPerHour} mensagens/hora). Aguarde para proteger o chip.`;
+      updateRuntimeCounters({
+        blockedRateLimitCount: counters.blockedRateLimitCount + 1,
+        lastProtectedAction: actionMsg
+      });
+      return {
+        ok: false,
+        status: 'blocked_antiban',
+        finalMessage: params.message,
+        delayAppliedSeconds: 0,
+        error: `Proteção Anti-Ban: ${actionMsg}`
+      };
+    }
+  }
+
+  // Enqueue into the sequential cadence queue so concurrent sends never collide
+  activeQueueLength++;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('whatsapp-antiban-updated'));
+  }
+
+  const runTask = async () => {
+    try {
+      let delayMs = 0;
+
+      if (config.enabled && !params.isDirectTest) {
+        const now = Date.now();
+        const elapsedSinceLastSend = lastDispatchCompletedAt > 0 ? now - lastDispatchCompletedAt : Infinity;
+
+        // 1. Random cadence delay if another message was sent recently
+        if (config.randomDelayEnabled && !params.isManualChat) {
+          const minMs = Math.max(1, config.minDelaySeconds) * 1000;
+          const maxMs = Math.max(minMs, config.maxDelaySeconds * 1000);
+          const randomJitterMs = Math.floor(minMs + Math.random() * (maxMs - minMs + 1));
+
+          if (elapsedSinceLastSend < randomJitterMs) {
+            delayMs = Math.max(delayMs, randomJitterMs - elapsedSinceLastSend);
+          } else if (activeQueueLength > 1) {
+            delayMs = Math.max(delayMs, randomJitterMs);
+          }
+        }
+
+        // 2. Per-recipient cooldown if sending multiple messages to the exact same phone number
+        if (config.deduplicationEnabled && !params.isManualChat) {
+          const lastRecipientSent = lastRecipientSentAtMap.get(cleanTo) || 0;
+          const elapsedForRecipient = lastRecipientSent > 0 ? now - lastRecipientSent : Infinity;
+          const cooldownMs = (config.recipientCooldownSeconds || 12) * 1000;
+          if (elapsedForRecipient < cooldownMs) {
+            delayMs = Math.max(delayMs, cooldownMs - elapsedForRecipient);
+          }
+        }
+
+        // 3. Per-minute rate limit smoothing
+        if (config.rateLimitEnabled) {
+          const currentStats = getAntiBanLiveStats();
+          if (currentStats.sentLastMinute >= config.maxMessagesPerMinute) {
+            delayMs = Math.max(delayMs, 12000);
+          }
+        }
+
+        // 4. Burst breathing pause every N consecutive messages
+        if (
+          config.rateLimitEnabled &&
+          consecutiveBurstCounter > 0 &&
+          consecutiveBurstCounter % config.burstThreshold === 0 &&
+          !params.isManualChat
+        ) {
+          delayMs = Math.max(delayMs, Math.min(config.pauseSecondsOnBurst * 1000, 25000));
+        }
+      }
+
+      const appliedDelaySec = Math.round(delayMs / 1000);
+      if (delayMs > 0) {
+        updateRuntimeCounters({
+          lastDelayAppliedSeconds: appliedDelaySec,
+          lastProtectedAction: `Cadência inteligente aplicou intervalo de ${appliedDelaySec}s antes de enviar para +${cleanTo}.`
+        });
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      // Apply dynamic text variation / humanization for automated dispatches
+      const finalMessage =
+        params.isManualChat
+          ? params.message
+          : humanizeWhatsAppMessage(params.message, config);
+
+      if (finalMessage !== params.message) {
+        const counters = getRuntimeCounters();
+        updateRuntimeCounters({
+          humanizedMessagesCount: counters.humanizedMessagesCount + 1,
+          lastDelayAppliedSeconds: appliedDelaySec
+        });
+      }
+
+      // Calculate natural typing simulation delay for W-API (1 to 4 seconds)
+      const typingDelaySeconds =
+        config.enabled && config.simulateTyping
+          ? Math.min(5, Math.max(1, Math.round(finalMessage.length / 95) + Math.floor(Math.random() * 2)))
+          : 1;
+
+      const res = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: cleanTo,
+          message: finalMessage,
+          providerMode: params.providerMode,
+          altServerUrl: params.altServerUrl,
+          altApiKey: params.altApiKey,
+          altInstance: params.altInstance,
+          delayMessage: typingDelaySeconds
+        })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      lastDispatchCompletedAt = Date.now();
+      lastRecipientSentAtMap.set(cleanTo, lastDispatchCompletedAt);
+      consecutiveBurstCounter++;
+
+      if (res.ok && data.success && !data.simulated) {
+        return {
+          ok: true,
+          status: 'sent' as const,
+          finalMessage,
+          delayAppliedSeconds: appliedDelaySec || typingDelaySeconds,
+          data
+        };
+      } else if (data.simulated) {
+        return {
+          ok: false,
+          status: 'simulated' as const,
+          finalMessage,
+          delayAppliedSeconds: appliedDelaySec,
+          error: data.error,
+          data
+        };
+      } else {
+        return {
+          ok: false,
+          status: 'failed' as const,
+          finalMessage,
+          delayAppliedSeconds: appliedDelaySec,
+          error: data.error || 'Falha ao enviar pela W-API',
+          data
+        };
+      }
+    } catch (err: any) {
+      return {
+        ok: false,
+        status: 'failed' as const,
+        finalMessage: params.message,
+        delayAppliedSeconds: 0,
+        error: err?.message || 'Erro de conexão ao disparar WhatsApp'
+      };
+    } finally {
+      activeQueueLength = Math.max(0, activeQueueLength - 1);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('whatsapp-antiban-updated'));
+      }
+    }
+  };
+
+  const resultPromise = dispatchChainPromise.then(runTask, runTask);
+  dispatchChainPromise = resultPromise.catch(() => {});
+  return resultPromise;
 }
 
 export async function pushWhatsAppCloudUpdate(payload: Record<string, any>): Promise<any> {
@@ -1003,6 +1658,7 @@ export async function syncWhatsAppStateWithCloud(): Promise<any> {
     const localLogs = getAutomationLogs();
     const localAutoInbox = getAutomatedInboxMessages();
     const localTraffic = getWhatsAppTrafficEvents();
+    const localAntiBan = getAntiBanConfig();
 
     let localChats: any[] = [];
     let localMessages: Record<string, any[]> = {};
@@ -1039,6 +1695,9 @@ export async function syncWhatsAppStateWithCloud(): Promise<any> {
         providerConfig: localProvider,
         directory: localDirectory,
         rules: localRules,
+        antiBanConfig: localAntiBan,
+        customerContacts: getCustomerContacts(),
+        campaigns: getWhatsAppCampaigns(),
         chats: localChats,
         deletedChatIds: localDeletedIds,
         chatMessages: localMessages,
@@ -1115,6 +1774,12 @@ export async function triggerWhatsAppAutomation(
   const nowFormatted = `Hoje, ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
   let lastError: string | undefined;
 
+  const isDirectTest = Boolean(options?.forceRuleId);
+  const isHighPriority =
+    String(variables.prioridade || '').toLowerCase() === 'alta' ||
+    String(variables.prioridade || '').toLowerCase() === 'urgente' ||
+    trigger === 'special_delivery_alert';
+
   for (const rule of matchingRules) {
     const resolved = resolveRecipientPhone(
       rule.recipientTarget,
@@ -1130,40 +1795,33 @@ export async function triggerWhatsAppAutomation(
       continue;
     }
 
-    const finalMessage = interpolateTemplate(rule.template, {
+    const baseInterpolatedMessage = interpolateTemplate(rule.template, {
       ...variables,
       colaborador: variables.colaborador || recipientName,
       motorista: variables.motorista || recipientName
     });
 
-    let sendStatus: 'sent' | 'simulated' | 'failed' = 'failed';
+    const dispatchResult = await executeSafeWhatsAppSend({
+      to: recipientPhone,
+      recipientName,
+      message: baseInterpolatedMessage,
+      providerMode,
+      altServerUrl,
+      altApiKey,
+      altInstance,
+      isDirectTest,
+      isHighPriority
+    });
 
-    try {
-      const res = await fetch('/api/whatsapp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: recipientPhone,
-          message: finalMessage,
-          providerMode,
-          altServerUrl,
-          altApiKey,
-          altInstance
-        })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success && !data.simulated) {
-        sendStatus = 'sent';
-      } else if (data.simulated) {
-        sendStatus = 'simulated';
-        if (data.error) lastError = data.error;
-      } else {
-        sendStatus = 'failed';
-        lastError = data.error || 'Falha ao enviar pela W-API';
-      }
-    } catch (err: any) {
-      sendStatus = 'failed';
-      lastError = err?.message || 'Erro de conexão ao disparar WhatsApp';
+    if (dispatchResult.status === 'blocked_antiban') {
+      lastError = dispatchResult.error;
+      continue;
+    }
+
+    const sendStatus: 'sent' | 'simulated' | 'failed' = dispatchResult.status;
+    const finalMessage = dispatchResult.finalMessage;
+    if (dispatchResult.error) {
+      lastError = dispatchResult.error;
     }
 
     const logEntry: WhatsAppAutomationLog = {
@@ -1175,7 +1833,7 @@ export async function triggerWhatsAppAutomation(
       recipientPhone,
       message: finalMessage,
       timestamp: nowFormatted,
-      createdAt: now.toISOString(),
+      createdAt: new Date().toISOString(),
       category: rule.category,
       status: sendStatus
     };
@@ -1213,3 +1871,858 @@ export async function triggerWhatsAppAutomation(
 
   return { triggeredCount: createdLogs.length, logs: createdLogs, lastError };
 }
+
+// ============================================================================
+// MASS CAMPAIGNS, CUSTOMER AUDIENCE & REPLY TRACKING ENGINE
+// ============================================================================
+
+const CUSTOMER_CONTACTS_STORAGE_KEY = 'whatsapp_customer_contacts_v1';
+const CAMPAIGNS_STORAGE_KEY = 'whatsapp_campaigns_v1';
+
+export type WhatsAppCampaignCategory =
+  | 'novidades'
+  | 'promocao'
+  | 'acao_loja'
+  | 'queima_estoque'
+  | 'vip_cupom'
+  | 'pos_venda';
+
+export interface WhatsAppCustomerContact {
+  id: string;
+  name: string;
+  phone: string;
+  tags: string[];
+  cityOrNeighborhood?: string;
+  notes?: string;
+  optOut?: boolean;
+  lastCampaignAt?: string;
+  lastReplyAt?: string;
+  lastReplyText?: string;
+  createdAt: string;
+}
+
+export type CampaignRecipientStatus =
+  | 'pending'
+  | 'sending'
+  | 'sent'
+  | 'delivered'
+  | 'read'
+  | 'replied'
+  | 'failed'
+  | 'skipped_optout'
+  | 'blocked_antiban';
+
+export type CampaignReplyIntent =
+  | 'interesse'
+  | 'duvida'
+  | 'agradecimento'
+  | 'optout'
+  | 'outro';
+
+export type CampaignFollowUpStatus =
+  | 'aguardando_atendimento'
+  | 'em_atendimento'
+  | 'convertido'
+  | 'arquivado';
+
+export interface WhatsAppCampaignRecipient {
+  id: string;
+  customerId?: string;
+  name: string;
+  phone: string;
+  tags: string[];
+  status: CampaignRecipientStatus;
+  sentMessage?: string;
+  sentAt?: string;
+  sentAtIso?: string;
+  delayAppliedSeconds?: number;
+  error?: string;
+  repliedAt?: string;
+  repliedAtIso?: string;
+  replyText?: string;
+  replyIntent?: CampaignReplyIntent;
+  followUpStatus?: CampaignFollowUpStatus;
+  followUpNotes?: string;
+}
+
+export interface WhatsAppCampaign {
+  id: string;
+  name: string;
+  category: WhatsAppCampaignCategory;
+  storeName: string;
+  couponCode?: string;
+  ctaLinkOrAction?: string;
+  template: string;
+  targetTags: string[];
+  status: 'draft' | 'running' | 'paused' | 'completed';
+  includeOptOutFooter: boolean;
+  recipients: WhatsAppCampaignRecipient[];
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+}
+
+export const CUSTOMER_SEGMENT_TAGS = [
+  'VIP',
+  'Varejo',
+  'Atacado',
+  'Obras & Construção',
+  'Novidades',
+  'Promoções',
+  'Pós-Venda',
+  'Reativação'
+];
+
+export const CAMPAIGN_CATEGORY_META: Record<
+  WhatsAppCampaignCategory,
+  { label: string; badgeColor: string; description: string }
+> = {
+  novidades: {
+    label: 'Novidades da Loja',
+    badgeColor: 'blue',
+    description: 'Lançamentos, reposição de mercadorias e novos produtos em estoque'
+  },
+  promocao: {
+    label: 'Promoção & Ofertas',
+    badgeColor: 'emerald',
+    description: 'Descontos especiais, ofertas da semana e condições imperdíveis'
+  },
+  acao_loja: {
+    label: 'Ação da Loja & Eventos',
+    badgeColor: 'purple',
+    description: 'Sábado premiado, café na loja, feirão de fábrica e ações presenciais'
+  },
+  queima_estoque: {
+    label: 'Queima de Estoque',
+    badgeColor: 'amber',
+    description: 'Liquidação relâmpago de pontas de estoque com giro rápido'
+  },
+  vip_cupom: {
+    label: 'Clube VIP & Cupom',
+    badgeColor: 'rose',
+    description: 'Condição exclusiva ou cupom de desconto para clientes recorrentes'
+  },
+  pos_venda: {
+    label: 'Pós-Venda & Retorno',
+    badgeColor: 'cyan',
+    description: 'Acompanhamento de satisfação, recompra e relacionamento ativo'
+  }
+};
+
+export const STORE_CAMPAIGN_TEMPLATES: Array<{
+  id: string;
+  title: string;
+  category: WhatsAppCampaignCategory;
+  couponCode?: string;
+  template: string;
+}> = [
+  {
+    id: 'tpl-novidades-estoque',
+    title: 'Chegaram Novidades na Loja',
+    category: 'novidades',
+    couponCode: 'NOVIDADE10',
+    template:
+      'Olá, *{primeiro_nome}*! Tudo bem?\n\nAcabaram de chegar novidades incríveis aqui na *{loja}*! Separamos condições especiais para você conferir em primeira mão:\n\n✨ *Destaques da Semana:*\n• Produtos selecionados a pronta-entrega\n• Condições facilitadas e entrega rápida\n• Cupom especial: *{cupom}*\n\nResponda *EU QUERO* aqui no WhatsApp que te envio o catálogo atualizado ou separo seu pedido agora mesmo!'
+  },
+  {
+    id: 'tpl-promocao-relampago',
+    title: 'Promoção Relâmpago / Oferta da Semana',
+    category: 'promocao',
+    couponCode: 'OFERTA15',
+    template:
+      'Oi, *{primeiro_nome}*! Passando com uma oportunidade especial da *{loja}* para você:\n\n🔥 *PROMOÇÃO DA SEMANA LIBERADA!*\nLiberamos descontos reais em itens selecionados da loja somente até esgotar o lote atual.\n\n🎟️ Apresente ou informe o código *{cupom}* no atendimento.\n\nQuer saber os valores ou garantir o seu? Me chama aqui dizendo qual item você procura!'
+  },
+  {
+    id: 'tpl-acao-loja-fim-semana',
+    title: 'Ação Especial na Loja / Feirão',
+    category: 'acao_loja',
+    couponCode: 'VIPFEIRAO',
+    template:
+      'Olá, *{primeiro_nome}*! Convite especial da equipe *{loja}* 🎯\n\nPreparamos uma *Ação Especial na Loja* com preços direto de fábrica, atendimento prioritário e entrega agilizada para sua região!\n\n📍 Você pode garantir os mesmos preços da ação diretamente por aqui no WhatsApp.\n\nResponda *ORÇAMENTO* ou mande sua lista para nossa equipe cotar agora para você!'
+  },
+  {
+    id: 'tpl-queima-estoque',
+    title: 'Queima de Estoque / Últimas Unidades',
+    category: 'queima_estoque',
+    couponCode: 'LIQUIDA20',
+    template:
+      '*{primeiro_nome}*, alerta de oportunidade na *{loja}*! ⚡\n\nAbrimos nossa *Queima de Estoque* em lotes selecionados com preços abaixo da tabela para giro rápido.\n\n✅ Pronta-entrega imediata\n✅ Reserva rápida pelo WhatsApp\n\nResponda *TABELA* aqui na conversa que te mando os itens disponíveis antes que acabem!'
+  },
+  {
+    id: 'tpl-clube-vip',
+    title: 'Benefício Exclusivo Cliente VIP',
+    category: 'vip_cupom',
+    couponCode: 'CLIENTEVIP',
+    template:
+      'Olá, *{primeiro_nome}*! Como você é um cliente especial da *{loja}*, liberamos um benefício exclusivo no seu cadastro hoje:\n\n🎁 *Condição VIP + Brinde/Desconto com o cupom {cupom}*\n\nPrecisa repor algum item ou fazer uma cotação rápida? É só responder esta mensagem que já te atendo com prioridade!'
+  },
+  {
+    id: 'tpl-pos-venda',
+    title: 'Pós-Venda & Pesquisa de Satisfação',
+    category: 'pos_venda',
+    couponCode: 'VOLTE10',
+    template:
+      'Oi, *{primeiro_nome}*! Aqui é da *{loja}*.\n\nPassando para saber se deu tudo certo com sua última compra/entrega e se você ficou satisfeito(a) com nosso atendimento!\n\nPara sua próxima compra, deixamos o cupom *{cupom}* ativo no seu número. Qualquer dúvida ou necessidade, estamos à disposição por aqui!'
+  }
+];
+
+export function getCustomerContacts(): WhatsAppCustomerContact[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CUSTOMER_CONTACTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((c: any) => c && c.phone && !isPlaceholderPhone(c.phone))
+      .map((c: any) => ({
+        ...c,
+        phone: normalizeBrazilPhone(c.phone),
+        tags: Array.isArray(c.tags) && c.tags.length > 0 ? c.tags : ['Varejo']
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomerContacts(
+  contacts: WhatsAppCustomerContact[],
+  syncCloud = true
+): WhatsAppCustomerContact[] {
+  const dedupedMap = new Map<string, WhatsAppCustomerContact>();
+  for (const c of contacts) {
+    const cleanPhone = normalizeBrazilPhone(c.phone);
+    if (!cleanPhone || isPlaceholderPhone(cleanPhone)) continue;
+    const existing = dedupedMap.get(cleanPhone);
+    if (existing) {
+      const mergedTags = Array.from(new Set([...(existing.tags || []), ...(c.tags || [])]));
+      dedupedMap.set(cleanPhone, {
+        ...existing,
+        ...c,
+        phone: cleanPhone,
+        tags: mergedTags.length > 0 ? mergedTags : ['Varejo']
+      });
+    } else {
+      dedupedMap.set(cleanPhone, {
+        ...c,
+        id: c.id || `cust-${cleanPhone}`,
+        phone: cleanPhone,
+        tags: Array.isArray(c.tags) && c.tags.length > 0 ? c.tags : ['Varejo'],
+        createdAt: c.createdAt || new Date().toISOString()
+      });
+    }
+  }
+
+  const finalContacts = Array.from(dedupedMap.values());
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(CUSTOMER_CONTACTS_STORAGE_KEY, JSON.stringify(finalContacts));
+    window.dispatchEvent(new Event('whatsapp-campaigns-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({
+        customerContacts: finalContacts,
+        forceCustomersUpdate: true
+      });
+    }
+  }
+  return finalContacts;
+}
+
+export function importCustomersFromWhatsAppChatsAndDeliveries(): {
+  importedCount: number;
+  totalCount: number;
+  contacts: WhatsAppCustomerContact[];
+} {
+  if (typeof window === 'undefined') {
+    return { importedCount: 0, totalCount: 0, contacts: [] };
+  }
+
+  const current = getCustomerContacts();
+  const existingPhones = new Set(current.map(c => normalizeBrazilPhone(c.phone)));
+  const profilePhones = new Set(
+    getCachedProfilePhones().map(p => normalizeBrazilPhone(p.phone))
+  );
+
+  const newlyFound: WhatsAppCustomerContact[] = [];
+
+  // 1. Scan real WhatsApp chats (whatsapp_chats_v2)
+  try {
+    const rawChats = localStorage.getItem(REAL_CHATS_STORAGE_KEY);
+    if (rawChats) {
+      const chats = JSON.parse(rawChats);
+      if (Array.isArray(chats)) {
+        for (const ch of chats) {
+          const cleanPhone = normalizeBrazilPhone(ch?.phone);
+          if (!cleanPhone || isPlaceholderPhone(cleanPhone)) continue;
+          // Skip internal team members unless they are already customers
+          const roleLower = String(ch?.roleOrDept || '').toLowerCase();
+          const isInternalCollab =
+            profilePhones.has(cleanPhone) ||
+            roleLower.includes('(perfil)') ||
+            roleLower.includes('motorista') ||
+            roleLower.includes('colaborador');
+          if (isInternalCollab && existingPhones.size > 0) continue;
+
+          if (!existingPhones.has(cleanPhone)) {
+            existingPhones.add(cleanPhone);
+            newlyFound.push({
+              id: `cust-${cleanPhone}`,
+              name: String(ch.name || `Cliente ${cleanPhone.slice(-4)}`).trim(),
+              phone: cleanPhone,
+              tags: ['Varejo', 'Novidades', 'Promoções'],
+              cityOrNeighborhood: ch.roleOrDept && !isInternalCollab ? ch.roleOrDept : 'Atendimento WhatsApp',
+              optOut: false,
+              createdAt: new Date().toISOString()
+            });
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 2. If still no external contacts and admin/profile phones exist, allow importing from chats so admin can test
+  if (current.length === 0 && newlyFound.length === 0) {
+    try {
+      const rawChats = localStorage.getItem(REAL_CHATS_STORAGE_KEY);
+      if (rawChats) {
+        const chats = JSON.parse(rawChats);
+        if (Array.isArray(chats)) {
+          for (const ch of chats) {
+            const cleanPhone = normalizeBrazilPhone(ch?.phone);
+            if (!cleanPhone || isPlaceholderPhone(cleanPhone)) continue;
+            if (!existingPhones.has(cleanPhone)) {
+              existingPhones.add(cleanPhone);
+              newlyFound.push({
+                id: `cust-${cleanPhone}`,
+                name: String(ch.name || `Contato ${cleanPhone.slice(-4)}`).trim(),
+                phone: cleanPhone,
+                tags: ['VIP', 'Novidades', 'Promoções'],
+                cityOrNeighborhood: ch.roleOrDept || 'WhatsApp',
+                optOut: false,
+                createdAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  const combined = saveCustomerContacts([...newlyFound, ...current]);
+  return {
+    importedCount: newlyFound.length,
+    totalCount: combined.length,
+    contacts: combined
+  };
+}
+
+export function importCustomersFromBulkText(
+  rawText: string,
+  defaultTags: string[] = ['Varejo', 'Promoções']
+): { importedCount: number; contacts: WhatsAppCustomerContact[] } {
+  const lines = String(rawText || '')
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  const current = getCustomerContacts();
+  const newItems: WhatsAppCustomerContact[] = [];
+
+  for (const line of lines) {
+    // Supports "Nome, Telefone, Bairro/Tag" or "Nome; Telefone" or "Nome - Telefone" or just "Telefone"
+    const parts = line.split(/[,;|\t]+/).map(p => p.trim()).filter(Boolean);
+    let name = '';
+    let phone = '';
+    let extraTagOrCity = '';
+
+    if (parts.length >= 2) {
+      // Find which part looks like a phone number
+      const phoneIdx = parts.findIndex(p => p.replace(/\D/g, '').length >= 10);
+      if (phoneIdx !== -1) {
+        phone = normalizeBrazilPhone(parts[phoneIdx]);
+        name = parts[phoneIdx === 0 ? 1 : 0] || `Cliente ${phone.slice(-4)}`;
+        extraTagOrCity = parts.find((_, idx) => idx !== phoneIdx && idx !== (phoneIdx === 0 ? 1 : 0)) || '';
+      }
+    } else {
+      // Try splitting by hyphen "João Silva - 83999998888"
+      const dashMatch = line.match(/^(.+?)\s*[-:]\s*([+\d()\s-]{10,})$/);
+      if (dashMatch) {
+        name = dashMatch[1].trim();
+        phone = normalizeBrazilPhone(dashMatch[2]);
+      } else {
+        const digits = line.replace(/\D/g, '');
+        if (digits.length >= 10) {
+          phone = normalizeBrazilPhone(digits);
+          const alphaPart = line.replace(/[+\d()\s-]+/g, ' ').trim();
+          name = alphaPart.length >= 2 ? alphaPart : `Cliente ${phone.slice(-4)}`;
+        }
+      }
+    }
+
+    if (phone && !isPlaceholderPhone(phone)) {
+      const tags = Array.from(
+        new Set([
+          ...defaultTags,
+          ...(extraTagOrCity &&CUSTOMER_SEGMENT_TAGS.includes(extraTagOrCity) ? [extraTagOrCity] : [])
+        ])
+      );
+      newItems.push({
+        id: `cust-${phone}`,
+        name: name || `Cliente ${phone.slice(-4)}`,
+        phone,
+        tags: tags.length > 0 ? tags : ['Varejo'],
+        cityOrNeighborhood: extraTagOrCity || undefined,
+        optOut: false,
+        createdAt: new Date().toISOString()
+      });
+    }
+  }
+
+  const updated = saveCustomerContacts([...newItems, ...current]);
+  return {
+    importedCount: newItems.length,
+    contacts: updated
+  };
+}
+
+export function getWhatsAppCampaigns(): WhatsAppCampaign[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CAMPAIGNS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveWhatsAppCampaigns(
+  campaigns: WhatsAppCampaign[],
+  syncCloud = true
+): WhatsAppCampaign[] {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(CAMPAIGNS_STORAGE_KEY, JSON.stringify(campaigns));
+    window.dispatchEvent(new Event('whatsapp-campaigns-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({
+        campaigns,
+        forceCampaignsUpdate: true
+      });
+    }
+  }
+  return campaigns;
+}
+
+export function interpolateCampaignMessage(
+  template: string,
+  params: {
+    customerName: string;
+    storeName?: string;
+    couponCode?: string;
+    includeOptOutFooter?: boolean;
+  }
+): string {
+  const fullName = String(params.customerName || 'Cliente').trim();
+  const firstName = fullName.split(/\s+/)[0] || 'Cliente';
+  const hour = new Date().getHours();
+  const saudacao = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+  const todayStr = new Date().toLocaleDateString('pt-BR');
+
+  const vars: Record<string, string> = {
+    nome: fullName,
+    primeiro_nome: firstName,
+    cliente: fullName,
+    saudacao,
+    loja: params.storeName || 'Nossa Loja',
+    cupom: params.couponCode || 'VIP10',
+    data: todayStr
+  };
+
+  let body = String(template || '').replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) => {
+    const k = String(key).toLowerCase();
+    return vars[k] !== undefined ? vars[k] : match;
+  });
+
+  if (
+    params.includeOptOutFooter &&
+    !body.toLowerCase().includes('responda sair') &&
+    !body.toLowerCase().includes('digite sair')
+  ) {
+    body = `${body.trim()}\n\n_Caso não queira mais receber nossas novidades, responda SAIR._`;
+  }
+
+  return body;
+}
+
+function classifyCustomerReplyIntent(text: string): CampaignReplyIntent {
+  const norm = normalizeSearchKey(text);
+  if (
+    /\b(sair|parar|cancelar|descadastrar|nao quero|pare|remover|bloqueia)\b/.test(norm)
+  ) {
+    return 'optout';
+  }
+  if (
+    /\b(quero|eu quero|valor|preco|quanto|orcamento|cotacao|tabela|separar|reserva|reservar|tem|comprar|entrega|pix|cartao|manda|envia|catalogo|interesse|pedido)\b/.test(
+      norm
+    )
+  ) {
+    return 'interesse';
+  }
+  if (
+    text.includes('?') ||
+    /\b(como|onde|qual|quais|funciona|horario|aberto|endereco|frete|prazo|garantia|duvida)\b/.test(norm)
+  ) {
+    return 'duvida';
+  }
+  if (/\b(obrigado|obrigada|valeu|show|top|perfeito|otimo|beleza|ok|combinado)\b/.test(norm)) {
+    return 'agradecimento';
+  }
+  return 'outro';
+}
+
+/**
+ * Automatically scans real WhatsApp chat messages (whatsapp_chat_messages_v2)
+ * and correlates customer replies back to active/completed campaigns & customer records.
+ */
+export function syncCampaignRepliesFromChatMessages(): {
+  campaigns: WhatsAppCampaign[];
+  newRepliesDetected: number;
+} {
+  if (typeof window === 'undefined') {
+    return { campaigns: [], newRepliesDetected: 0 };
+  }
+
+  const campaigns = getWhatsAppCampaigns();
+  if (campaigns.length === 0) {
+    return { campaigns: [], newRepliesDetected: 0 };
+  }
+
+  let chatMessagesMap: Record<string, any[]> = {};
+  try {
+    const rawMsgs = localStorage.getItem(REAL_MESSAGES_STORAGE_KEY);
+    if (rawMsgs) {
+      const parsed = JSON.parse(rawMsgs);
+      if (parsed && typeof parsed === 'object') {
+        chatMessagesMap = parsed;
+      }
+    }
+  } catch {}
+
+  // Build a lookup from normalized phone -> list of inbound messages
+  const inboundByPhone = new Map<string, any[]>();
+  for (const [chatId, msgs] of Object.entries(chatMessagesMap)) {
+    if (!Array.isArray(msgs)) continue;
+    const chatPhone = normalizeBrazilPhone(chatId.replace(/^chat-/, ''));
+    if (!chatPhone) continue;
+
+    const inboundMsgs = msgs.filter(
+      m =>
+        m &&
+        m.text &&
+        m.sender !== 'user' &&
+        m.sender !== 'me' &&
+        !String(m.text).startsWith('📋')
+    );
+
+    if (inboundMsgs.length > 0) {
+      const existing = inboundByPhone.get(chatPhone) || [];
+      inboundByPhone.set(chatPhone, [...existing, ...inboundMsgs]);
+    }
+  }
+
+  let newRepliesDetected = 0;
+  let campaignsChanged = false;
+  const customers = getCustomerContacts();
+  let customersChanged = false;
+
+  const updatedCampaigns = campaigns.map(camp => {
+    let campModified = false;
+    const updatedRecipients = (camp.recipients || []).map(rec => {
+      if (
+        rec.status !== 'sent' &&
+        rec.status !== 'delivered' &&
+        rec.status !== 'read' &&
+        rec.status !== 'replied'
+      ) {
+        return rec;
+      }
+
+      const cleanPhone = normalizeBrazilPhone(rec.phone);
+      const inboundList = inboundByPhone.get(cleanPhone) || [];
+      if (inboundList.length === 0) return rec;
+
+      const sentTimeMs = rec.sentAtIso ? new Date(rec.sentAtIso).getTime() : 0;
+      // Find the latest inbound message that arrived after sentTimeMs (with 60s clock tolerance)
+      const matchingReplies = inboundList.filter(m => {
+        if (!m.createdAt) return true;
+        const msgMs = new Date(m.createdAt).getTime();
+        if (isNaN(msgMs) || !sentTimeMs) return true;
+        return msgMs >= sentTimeMs - 60000;
+      });
+
+      if (matchingReplies.length === 0) return rec;
+
+      const latestReply = matchingReplies[matchingReplies.length - 1];
+      const replyText = String(latestReply.text || '').trim();
+      if (!replyText) return rec;
+
+      if (rec.status === 'replied' && rec.replyText === replyText) {
+        return rec;
+      }
+
+      const intent = classifyCustomerReplyIntent(replyText);
+      const replyTimeLabel =
+        latestReply.time ||
+        new Date(latestReply.createdAt || Date.now()).toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      const replyIso = latestReply.createdAt || new Date().toISOString();
+
+      campModified = true;
+      campaignsChanged = true;
+      newRepliesDetected++;
+
+      // Update customer contact record (lastReplyText and optOut if requested)
+      const custIdx = customers.findIndex(c => normalizeBrazilPhone(c.phone) === cleanPhone);
+      if (custIdx !== -1) {
+        customers[custIdx] = {
+          ...customers[custIdx],
+          lastReplyAt: replyTimeLabel,
+          lastReplyText: replyText,
+          optOut: intent === 'optout' ? true : customers[custIdx].optOut
+        };
+        customersChanged = true;
+      }
+
+      return {
+        ...rec,
+        status: 'replied' as CampaignRecipientStatus,
+        repliedAt: replyTimeLabel,
+        repliedAtIso: replyIso,
+        replyText,
+        replyIntent: intent,
+        followUpStatus:
+          rec.followUpStatus ||
+          (intent === 'optout'
+            ? 'arquivado'
+            : intent === 'interesse' || intent === 'duvida'
+            ? 'aguardando_atendimento'
+            : 'em_atendimento')
+      };
+    });
+
+    if (!campModified) return camp;
+    return {
+      ...camp,
+      recipients: updatedRecipients,
+      updatedAt: new Date().toISOString()
+    };
+  });
+
+  if (customersChanged) {
+    saveCustomerContacts(customers, true);
+  }
+  if (campaignsChanged) {
+    saveWhatsAppCampaigns(updatedCampaigns, true);
+  }
+
+  return {
+    campaigns: campaignsChanged ? updatedCampaigns : campaigns,
+    newRepliesDetected
+  };
+}
+
+/**
+ * Records a message directly in the WhatsApp Chat history (`whatsapp_chats_v2` + `whatsapp_chat_messages_v2`)
+ * so that every campaign broadcast or simulated reply appears seamlessly inside the "Conversas" tab.
+ */
+export function appendCampaignMessageToChatHistory(params: {
+  phone: string;
+  name: string;
+  text: string;
+  sender: 'user' | 'client';
+  campaignName?: string;
+}): void {
+  if (typeof window === 'undefined') return;
+  const cleanPhone = normalizeBrazilPhone(params.phone);
+  if (!cleanPhone || isPlaceholderPhone(cleanPhone)) return;
+
+  const chatId = `chat-${cleanPhone}`;
+  const now = new Date();
+  const timeLabel = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const nowIso = now.toISOString();
+
+  try {
+    // 1. Update messages map
+    const rawMsgs = localStorage.getItem(REAL_MESSAGES_STORAGE_KEY);
+    const messagesMap: Record<string, any[]> = rawMsgs ? JSON.parse(rawMsgs) : {};
+    const existingList = Array.isArray(messagesMap[chatId]) ? messagesMap[chatId] : [];
+
+    const newMsg = {
+      id: `camp-msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      text: params.text,
+      sender: params.sender,
+      time: timeLabel,
+      createdAt: nowIso,
+      status: 'delivered',
+      isAutomated: params.sender === 'user',
+      campaignName: params.campaignName
+    };
+
+    messagesMap[chatId] = [...existingList, newMsg].slice(-250);
+    localStorage.setItem(REAL_MESSAGES_STORAGE_KEY, JSON.stringify(messagesMap));
+
+    // 2. Ensure chat exists in whatsapp_chats_v2
+    const rawChats = localStorage.getItem(REAL_CHATS_STORAGE_KEY);
+    const chatsList: any[] = rawChats ? JSON.parse(rawChats) : [];
+    const existingIdx = chatsList.findIndex(
+      c => c && (c.id === chatId || normalizeBrazilPhone(c.phone) === cleanPhone)
+    );
+
+    if (existingIdx !== -1) {
+      const prev = chatsList[existingIdx];
+      chatsList[existingIdx] = {
+        ...prev,
+        id: chatId,
+        name: params.name || prev.name,
+        phone: cleanPhone,
+        lastMessage: params.text,
+        lastMessageSender: params.sender,
+        lastMessageStatus: 'delivered',
+        time: timeLabel,
+        unread: params.sender === 'client' ? (prev.unread || 0) + 1 : prev.unread || 0
+      };
+    } else {
+      chatsList.unshift({
+        id: chatId,
+        name: params.name || `Cliente ${cleanPhone.slice(-4)}`,
+        phone: cleanPhone,
+        lastMessage: params.text,
+        lastMessageSender: params.sender,
+        lastMessageStatus: 'delivered',
+        time: timeLabel,
+        unread: params.sender === 'client' ? 1 : 0,
+        online: true,
+        type: 'contact',
+        roleOrDept: 'Cliente (Campanha)',
+        tags: ['Cliente', 'Campanha']
+      });
+    }
+
+    localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(chatsList));
+    window.dispatchEvent(new Event('whatsapp-cloud-synced'));
+  } catch (err) {
+    console.warn('Error appending campaign message to chat history:', err);
+  }
+}
+
+/**
+ * Safely dispatches a single campaign recipient message through the Anti-Ban Engine
+ * (`executeSafeWhatsAppSend`) and updates the chat history + traffic analytics.
+ */
+export async function dispatchCampaignRecipient(params: {
+  campaign: WhatsAppCampaign;
+  recipient: WhatsAppCampaignRecipient;
+  isTestToAdmin?: boolean;
+  overridePhone?: string;
+}): Promise<{
+  ok: boolean;
+  status: CampaignRecipientStatus;
+  finalMessage: string;
+  delayAppliedSeconds: number;
+  error?: string;
+}> {
+  const currentProv = getProviderConfig();
+  const providerMode = currentProv.providerMode || 'alternative';
+  const altServerUrl = currentProv.altServerUrl || 'https://api.w-api.app';
+  const altApiKey = currentProv.altApiKey || '';
+  const altInstance = currentProv.altInstance || '';
+
+  const targetPhone = normalizeBrazilPhone(params.overridePhone || params.recipient.phone);
+  if (!targetPhone || isPlaceholderPhone(targetPhone)) {
+    return {
+      ok: false,
+      status: 'failed',
+      finalMessage: '',
+      delayAppliedSeconds: 0,
+      error: 'Número de telefone inválido.'
+    };
+  }
+
+  const interpolated = interpolateCampaignMessage(params.campaign.template, {
+    customerName: params.recipient.name,
+    storeName: params.campaign.storeName,
+    couponCode: params.campaign.couponCode,
+    includeOptOutFooter: params.campaign.includeOptOutFooter
+  });
+
+  const result = await executeSafeWhatsAppSend({
+    to: targetPhone,
+    recipientName: params.recipient.name,
+    message: interpolated,
+    providerMode,
+    altServerUrl,
+    altApiKey,
+    altInstance,
+    isDirectTest: Boolean(params.isTestToAdmin),
+    isHighPriority: false
+  });
+
+  if (result.status === 'blocked_antiban') {
+    return {
+      ok: false,
+      status: 'blocked_antiban',
+      finalMessage: result.finalMessage,
+      delayAppliedSeconds: result.delayAppliedSeconds,
+      error: result.error
+    };
+  }
+
+  if (result.status === 'sent' || result.status === 'simulated') {
+    appendCampaignMessageToChatHistory({
+      phone: targetPhone,
+      name: params.recipient.name,
+      text: result.finalMessage,
+      sender: 'user',
+      campaignName: params.campaign.name
+    });
+    recordMessageInWhatsAppFeed(
+      params.recipient.name,
+      targetPhone,
+      result.finalMessage,
+      'sent',
+      false
+    );
+    recordWhatsAppTrafficEvent(
+      {
+        direction: 'outbound',
+        mode: 'auto',
+        status: 'sent',
+        recipientName: params.recipient.name,
+        recipientPhone: targetPhone,
+        text: result.finalMessage,
+        category: `campanha_${params.campaign.category}`,
+        ruleName: `Campanha: ${params.campaign.name}`
+      },
+      false
+    );
+
+    return {
+      ok: true,
+      status: 'sent',
+      finalMessage: result.finalMessage,
+      delayAppliedSeconds: result.delayAppliedSeconds
+    };
+  }
+
+  return {
+    ok: false,
+    status: 'failed',
+    finalMessage: result.finalMessage,
+    delayAppliedSeconds: result.delayAppliedSeconds,
+    error: result.error || 'Erro no envio'
+  };
+}
+

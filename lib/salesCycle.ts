@@ -104,6 +104,13 @@ export function getSalesCycleForMonthYear(
   };
 }
 
+export function getTodayLocalYYYYMMDD(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Given any date (defaults to today), determines which sales cycle (default 26-to-25) it belongs to.
  * If day >= startDay (when startDay > endDay), it belongs to next month's cycle.
@@ -127,9 +134,41 @@ export function getDefaultSalesCycleForDate(
       refMonth = 1;
       refYear += 1;
     }
+  } else if (safeStartDay <= safeEndDay && day > safeEndDay) {
+    refMonth += 1;
+    if (refMonth > 12) {
+      refMonth = 1;
+      refYear += 1;
+    }
   }
 
   return getSalesCycleForMonthYear(refMonth, refYear, safeStartDay, safeEndDay, scope);
+}
+
+/**
+ * Checks whether a sales_results database row's realized revenue (result_2026)
+ * genuinely belongs to the given sales cycle range, preventing past-cycle values
+ * from bleeding into a newly started cycle.
+ */
+export function isSalesResultFromCurrentCycle(
+  row: { month?: number | null; year?: number | null; updated_at?: string | null; created_at?: string | null } | null | undefined,
+  cycleRange: Pick<SalesCycleRange, 'startDate' | 'endDate' | 'refMonth' | 'refYear'>
+): boolean {
+  if (!row) return false;
+
+  if (Number(row.month) !== Number(cycleRange.refMonth) || Number(row.year) !== Number(cycleRange.refYear)) {
+    return false;
+  }
+
+  const rawTimestamp = row.updated_at || row.created_at;
+  if (rawTimestamp && cycleRange.startDate) {
+    const rowDateStr = String(rawTimestamp).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rowDateStr) && rowDateStr < cycleRange.startDate) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -205,11 +244,38 @@ export function loadSavedSalesCycle(): SalesCycleRange {
   if (typeof window === 'undefined') {
     return getDefaultSalesCycleForDate();
   }
+  const todayStr = getTodayLocalYYYYMMDD();
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CYCLE);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed?.startDate && parsed?.endDate) {
+        const isManualHistoricalToday =
+          parsed.autoRollover === false && parsed.savedOnDate === todayStr;
+
+        // If the saved cycle already ended before today, automatically roll over to the new active cycle
+        if (parsed.endDate < todayStr && !isManualHistoricalToday) {
+          const rolled = getDefaultSalesCycleForDate(
+            new Date(),
+            Number(parsed.startDay) || 26,
+            Number(parsed.endDay) || 25,
+            parsed.scope || 'company'
+          );
+          localStorage.setItem(
+            STORAGE_KEY_CYCLE,
+            JSON.stringify({
+              startDate: rolled.startDate,
+              endDate: rolled.endDate,
+              startDay: rolled.startDay,
+              endDay: rolled.endDay,
+              scope: rolled.scope,
+              autoRollover: true,
+              savedOnDate: todayStr,
+            })
+          );
+          return rolled;
+        }
+
         return buildCustomSalesCycleRange(
           parsed.startDate,
           parsed.endDate,
@@ -226,11 +292,13 @@ export function loadSavedSalesCycle(): SalesCycleRange {
 export function saveSalesCycleRange(
   startDate: string,
   endDate: string,
-  scope: 'company' | 'user' = 'company'
+  scope: 'company' | 'user' = 'company',
+  autoRollover: boolean = true
 ): SalesCycleRange {
   const range = buildCustomSalesCycleRange(startDate, endDate, scope);
   if (typeof window !== 'undefined') {
     try {
+      const todayStr = getTodayLocalYYYYMMDD();
       localStorage.setItem(
         STORAGE_KEY_CYCLE,
         JSON.stringify({
@@ -239,6 +307,8 @@ export function saveSalesCycleRange(
           startDay: range.startDay,
           endDay: range.endDay,
           scope: range.scope,
+          autoRollover,
+          savedOnDate: todayStr,
         })
       );
       window.dispatchEvent(new CustomEvent('sales_cycle_updated', { detail: range }));
@@ -251,12 +321,14 @@ export function saveSalesCycleRange(
 
 /**
  * Fetches the saved sales cycle preference from Supabase (user preference first, then company preference).
- * Also updates local cache and dispatches 'sales_cycle_updated' if a saved preference is found.
+ * Automatically rolls over to the current cycle if the saved cycle's endDate is in the past.
  */
 export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
   range: SalesCycleRange;
   preference: SalesCyclePreference | null;
 }> {
+  const todayStr = getTodayLocalYYYYMMDD();
+
   try {
     const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
     const res = await fetch(`/api/sales/cycle${query}`);
@@ -264,7 +336,16 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
       const json = await res.json();
       const pref: SalesCyclePreference | null = json.activePreference || null;
       if (pref && pref.startDate && pref.endDate) {
-        const range = buildCustomSalesCycleRange(pref.startDate, pref.endDate, pref.scope || 'company');
+        const isExpired = pref.endDate < todayStr && pref.autoRollover !== false;
+        const range = isExpired
+          ? getDefaultSalesCycleForDate(
+              new Date(),
+              Number(pref.startDay) || 26,
+              Number(pref.endDay) || 25,
+              pref.scope || 'company'
+            )
+          : buildCustomSalesCycleRange(pref.startDate, pref.endDate, pref.scope || 'company');
+
         if (typeof window !== 'undefined') {
           localStorage.setItem(
             STORAGE_KEY_CYCLE,
@@ -274,10 +355,19 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
               startDay: range.startDay,
               endDay: range.endDay,
               scope: range.scope,
+              autoRollover: pref.autoRollover ?? true,
+              savedOnDate: todayStr,
             })
           );
         }
-        return { range, preference: pref };
+        return {
+          range,
+          preference: {
+            ...pref,
+            startDate: range.startDate,
+            endDate: range.endDate,
+          },
+        };
       }
     }
   } catch (err) {
@@ -301,8 +391,23 @@ export async function fetchSalesCycleFromSupabase(userId?: string): Promise<{
       const chosen = (userEntry?.value || companyEntry?.value) as SalesCyclePreference | undefined;
 
       if (chosen?.startDate && chosen?.endDate) {
-        const range = buildCustomSalesCycleRange(chosen.startDate, chosen.endDate, chosen.scope || 'company');
-        return { range, preference: chosen };
+        const isExpired = chosen.endDate < todayStr && chosen.autoRollover !== false;
+        const range = isExpired
+          ? getDefaultSalesCycleForDate(
+              new Date(),
+              Number(chosen.startDay) || 26,
+              Number(chosen.endDay) || 25,
+              chosen.scope || 'company'
+            )
+          : buildCustomSalesCycleRange(chosen.startDate, chosen.endDate, chosen.scope || 'company');
+        return {
+          range,
+          preference: {
+            ...chosen,
+            startDate: range.startDate,
+            endDate: range.endDate,
+          },
+        };
       }
     }
   } catch (err) {
@@ -329,7 +434,12 @@ export async function saveSalesCycleToSupabase(params: {
   userName?: string;
   autoRollover?: boolean;
 }): Promise<{ ok: boolean; range: SalesCycleRange; preference?: SalesCyclePreference }> {
-  const range = saveSalesCycleRange(params.startDate, params.endDate, params.scope);
+  const range = saveSalesCycleRange(
+    params.startDate,
+    params.endDate,
+    params.scope,
+    params.autoRollover ?? true
+  );
 
   const preferencePayload: SalesCyclePreference = {
     scope: params.scope,

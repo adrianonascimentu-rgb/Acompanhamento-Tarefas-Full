@@ -18,7 +18,9 @@ import {
   getDefaultSalesCycleForDate,
   getCycleDaysProgress,
   loadSavedSalesCycle,
-  formatDateBR
+  formatDateBR,
+  getTodayLocalYYYYMMDD,
+  isSalesResultFromCurrentCycle,
 } from '@/lib/salesCycle';
 
 interface SalesPerformanceCardProps {
@@ -80,7 +82,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
   const fetchTodayDailySales = useCallback(async () => {
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getTodayLocalYYYYMMDD();
       const res = await fetch(`/api/sales/daily?date=${todayStr}`);
       if (res.ok) {
         const json = await res.json();
@@ -135,14 +137,13 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           console.warn('Falha ao buscar vendas diárias por período:', e);
         }
 
-        // 2. Fetch sales results — the values already informed for sellers in sales_results
-        // already correspond to the 26-to-25 sales cycle.
+        // 2. Fetch sales results strictly for the current cycle's reference month/year
         const [startY, startM] = cycleRange.startDate.split('-').map(Number);
         const [endY, endM] = cycleRange.endDate.split('-').map(Number);
 
         let salesQuery = supabase
           .from('sales_results')
-          .select('collaborator_id, target_2026, result_2026, month, year')
+          .select('collaborator_id, target_2026, result_2026, month, year, updated_at, created_at')
           .eq('month', cycleRange.refMonth)
           .eq('year', cycleRange.refYear);
         
@@ -152,16 +153,17 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
         const { data, error } = await salesQuery;
 
-        let activeRows = (!error && data && data.length > 0) ? data : [];
-        const hasNonZeroInRef = activeRows.some(
-          r => (parseFloat(r.result_2026) || 0) > 0 || (parseFloat(r.target_2026) || 0) > 0
+        let activeRows: any[] = (!error && data && data.length > 0) ? data : [];
+        const hasTargetInRef = activeRows.some(
+          r => (parseFloat(r.target_2026) || 0) > 0
         );
 
-        // If the end-month has no informed values, check the start-month of the 26-to-25 cycle
-        if (!hasNonZeroInRef && startM && startY && (startM !== endM || startY !== endY)) {
+        // If the new cycle's reference month does not have targets configured yet,
+        // fallback to the previous cycle ONLY for target_2026 (Meta), NEVER for result_2026 (Faturamento Realizado)!
+        if (!hasTargetInRef && startM && startY && (startM !== endM || startY !== endY)) {
           let startMonthQuery = supabase
             .from('sales_results')
-            .select('collaborator_id, target_2026, result_2026, month, year')
+            .select('collaborator_id, target_2026, result_2026, month, year, updated_at, created_at')
             .eq('month', startM)
             .eq('year', startY);
 
@@ -172,22 +174,24 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           const { data: startMonthData } = await startMonthQuery;
           if (
             startMonthData &&
-            startMonthData.some(
-              r => (parseFloat(r.result_2026) || 0) > 0 || (parseFloat(r.target_2026) || 0) > 0
-            )
+            startMonthData.some(r => (parseFloat(r.target_2026) || 0) > 0)
           ) {
-            activeRows = startMonthData;
+            activeRows = startMonthData.map(r => ({
+              ...r,
+              // Realized sales from the previous cycle must NEVER carry over into the new cycle
+              result_2026: 0,
+            }));
           }
         }
 
-        // Fallback to most recent recorded period with informed values if still empty
-        const stillEmpty = !activeRows.some(
-          r => (parseFloat(r.result_2026) || 0) > 0 || (parseFloat(r.target_2026) || 0) > 0
+        // Fallback to most recent recorded period ONLY for target_2026 (Meta) if still without targets
+        const stillNoTargets = !activeRows.some(
+          r => (parseFloat(r.target_2026) || 0) > 0
         );
-        if (activeRows.length === 0 || stillEmpty) {
+        if (activeRows.length === 0 || stillNoTargets) {
           let fallbackQuery = supabase
             .from('sales_results')
-            .select('collaborator_id, target_2026, result_2026, month, year')
+            .select('collaborator_id, target_2026, result_2026, month, year, updated_at, created_at')
             .order('year', { ascending: false })
             .order('month', { ascending: false })
             .limit(40);
@@ -199,11 +203,17 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           const { data: fallbackData } = await fallbackQuery;
           if (fallbackData && fallbackData.length > 0) {
             const nonZeroRow = fallbackData.find(
-              d => (parseFloat(d.result_2026) || 0) > 0 || (parseFloat(d.target_2026) || 0) > 0
+              d => (parseFloat(d.target_2026) || 0) > 0
             ) || fallbackData[0];
             const latestMonth = nonZeroRow.month;
             const latestYear = nonZeroRow.year;
-            activeRows = fallbackData.filter(d => d.month === latestMonth && d.year === latestYear);
+            activeRows = fallbackData
+              .filter(d => d.month === latestMonth && d.year === latestYear)
+              .map(r => ({
+                ...r,
+                // Keep result_2026 only if this row genuinely belongs to the current cycle
+                result_2026: isSalesResultFromCurrentCycle(r, cycleRange) ? r.result_2026 : 0,
+              }));
           }
         }
 
@@ -213,12 +223,13 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
 
         const totalGoal = relevantData.reduce((acc, curr) => acc + (parseFloat(curr.target_2026) || 0), 0);
 
-        // For each seller, the realized sales amount is the maximum of their informed consolidated result
-        // and their accumulated daily sales in the cycle, ensuring accurate, non-zero faturamento real for everyone.
+        // For each seller, only count consolidated result_2026 if the row belongs to the active cycle
+        // and was updated on or after cycleRange.startDate, combined with daily sales in [startDate, endDate].
         const sellerResultsMap = new Map<string, { goal: number; result: number }>();
         relevantData.forEach(row => {
           const sId = row.collaborator_id;
-          const consolidated = parseFloat(row.result_2026) || 0;
+          const isCurrentCycleRow = isSalesResultFromCurrentCycle(row, cycleRange);
+          const consolidated = isCurrentCycleRow ? (parseFloat(row.result_2026) || 0) : 0;
           const goal = parseFloat(row.target_2026) || 0;
           const daily = Number(dailyBySeller[sId]?.sales_amount) || 0;
           const finalResult = Math.max(consolidated, daily);
@@ -239,7 +250,7 @@ export function SalesPerformanceCard({ isDarkMode }: SalesPerformanceCardProps) 
           }
         });
 
-        // Total realized revenue sum (SOMA DO FATURAMENTO REAL)
+        // Total realized revenue sum (SOMA DO FATURAMENTO REAL NO CICLO ATUAL)
         let totalResult = Array.from(sellerResultsMap.values()).reduce((acc, curr) => acc + curr.result, 0);
 
         // Fallback to pure daily sales if sales_results was totally empty

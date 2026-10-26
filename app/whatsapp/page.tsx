@@ -38,11 +38,13 @@ import {
   Building2,
   CheckSquare,
   Plus,
-  Trash2
+  Trash2,
+  Megaphone
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import WhatsAppAnalytics from '@/components/whatsapp/WhatsAppAnalytics';
 import WhatsAppAutomations from '@/components/whatsapp/WhatsAppAutomations';
+import WhatsAppCampaigns from '@/components/whatsapp/WhatsAppCampaigns';
 import {
   getAutomatedInboxMessages,
   getDirectoryConfig,
@@ -56,7 +58,12 @@ import {
   isPlaceholderPhone,
   recordWhatsAppTrafficEvent,
   syncCollaboratorPhonesFromProfiles,
-  getCachedProfilePhones
+  getCachedProfilePhones,
+  executeSafeWhatsAppSend,
+  getAntiBanConfig,
+  getAntiBanLiveStats,
+  syncCampaignRepliesFromChatMessages,
+  getWhatsAppCampaigns
 } from '@/lib/whatsappAutomation';
 import { supabase } from '@/lib/supabase';
 import { useUI } from '@/hooks/useUI';
@@ -102,7 +109,11 @@ export default function WhatsAppPage() {
   const { isDarkMode } = useTheme();
   const { canAccessWhatsapp, isAdmin } = useRole();
   const { showToast } = useUI();
-  const [viewMode, setViewMode] = useState<'chat' | 'automations' | 'analytics'>('chat');
+  const [viewMode, setViewMode] = useState<'chat' | 'campaigns' | 'automations' | 'analytics'>('chat');
+  const [automationsSubView, setAutomationsSubView] = useState<'rules' | 'antiban' | 'suggestions' | 'logs' | 'directory'>('rules');
+  const [antiBanEnabled, setAntiBanEnabled] = useState(true);
+  const [antiBanScore, setAntiBanScore] = useState(100);
+  const [campaignRepliesCount, setCampaignRepliesCount] = useState(0);
   const [chats, setChats] = useState<ChatContact[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -150,6 +161,20 @@ export default function WhatsAppPage() {
       if (pc.altInstance !== undefined) setAltInstance(pc.altInstance);
       if (pc.qrStatus) setQrStatus(pc.qrStatus);
       if (pc.qrPhoneConnected) setQrPhoneConnected(pc.qrPhoneConnected);
+      const ab = getAntiBanConfig();
+      const abStats = getAntiBanLiveStats();
+      setAntiBanEnabled(ab.enabled);
+      setAntiBanScore(abStats.healthScore);
+
+      const { campaigns: syncedCamps } = syncCampaignRepliesFromChatMessages();
+      const camps = syncedCamps.length > 0 ? syncedCamps : getWhatsAppCampaigns();
+      let repliesTotal = 0;
+      for (const c of camps) {
+        for (const r of c.recipients || []) {
+          if (r.status === 'replied') repliesTotal++;
+        }
+      }
+      setCampaignRepliesCount(repliesTotal);
     };
 
     loadProviderFromLocal();
@@ -158,6 +183,8 @@ export default function WhatsAppPage() {
 
     window.addEventListener('whatsapp-cloud-synced', loadProviderFromLocal);
     window.addEventListener('whatsapp-automation-updated', loadProviderFromLocal);
+    window.addEventListener('whatsapp-antiban-updated', loadProviderFromLocal);
+    window.addEventListener('whatsapp-campaigns-updated', loadProviderFromLocal);
 
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
@@ -192,6 +219,8 @@ export default function WhatsAppPage() {
     return () => {
       window.removeEventListener('whatsapp-cloud-synced', loadProviderFromLocal);
       window.removeEventListener('whatsapp-automation-updated', loadProviderFromLocal);
+      window.removeEventListener('whatsapp-antiban-updated', loadProviderFromLocal);
+      window.removeEventListener('whatsapp-campaigns-updated', loadProviderFromLocal);
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       clearInterval(pollInterval);
@@ -203,10 +232,45 @@ export default function WhatsAppPage() {
 
   useEffect(() => {
     if (!isAdmin) {
-      if (viewMode !== 'chat') setViewMode('chat');
+      if (viewMode === 'automations' || viewMode === 'analytics') setViewMode('chat');
       if (isConfiguring) setIsConfiguring(false);
     }
   }, [isAdmin, viewMode, isConfiguring]);
+
+  const handleOpenChatByPhone = (rawPhone: string, customerName: string) => {
+    const cleanPhone = normalizeBrazilPhone(rawPhone);
+    if (!cleanPhone) return;
+    const chatId = `chat-${cleanPhone}`;
+
+    setChats(prev => {
+      const exists = prev.some(
+        c => c.id === chatId || normalizeBrazilPhone(c.phone) === cleanPhone
+      );
+      if (exists) return prev;
+      const newChat: ChatContact = {
+        id: chatId,
+        name: customerName || `Cliente ${cleanPhone.slice(-4)}`,
+        phone: cleanPhone,
+        lastMessage: 'Cliente de Campanha / Promoção',
+        lastMessageSender: 'user',
+        lastMessageStatus: 'sent',
+        time: 'Agora',
+        unread: 0,
+        online: true,
+        type: 'contact',
+        roleOrDept: 'Cliente (Campanha)',
+        tags: ['Cliente', 'Campanha']
+      };
+      const updated = [newChat, ...prev];
+      try {
+        localStorage.setItem(REAL_CHATS_STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    setSelectedChatId(chatId);
+    setViewMode('chat');
+  };
 
   const handleSaveProviderConfig = () => {
     if (!isAdmin) {
@@ -641,25 +705,22 @@ export default function WhatsAppPage() {
     let finalStatus: 'sent' | 'failed' = 'failed';
 
     try {
-      const res = await fetch('/api/whatsapp/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: chat.phone,
-          message: textToSend,
-          providerMode: 'alternative',
-          altServerUrl: currentUrl,
-          altApiKey: currentKey,
-          altInstance: currentInstance
-        })
+      const dispatchRes = await executeSafeWhatsAppSend({
+        to: chat.phone,
+        recipientName: chat.name,
+        message: textToSend,
+        providerMode: 'alternative',
+        altServerUrl: currentUrl,
+        altApiKey: currentKey,
+        altInstance: currentInstance,
+        isManualChat: true
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.success && !data?.simulated) {
+      if (dispatchRes.ok && dispatchRes.status === 'sent') {
         finalStatus = 'sent';
       } else {
         finalStatus = 'failed';
         showToast(
-          data?.error || 'Não foi possível enviar pela W-API. Verifique suas credenciais W-API.',
+          dispatchRes.error || 'Não foi possível enviar pela W-API. Verifique suas credenciais W-API.',
           'warning'
         );
       }
@@ -802,7 +863,7 @@ export default function WhatsAppPage() {
 
         {/* Center / Right Navigation & Quick Actions */}
         <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2.5">
-          <div className={`${isAdmin ? 'grid grid-cols-3 sm:flex' : 'flex'} items-center gap-1 p-1 rounded-xl border w-full sm:w-auto ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200/80'}`}>
+          <div className={`${isAdmin ? 'grid grid-cols-2 sm:flex' : 'flex'} items-center gap-1 p-1 rounded-xl border w-full sm:w-auto ${isDarkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200/80'}`}>
             <button
               type="button"
               onClick={() => setViewMode('chat')}
@@ -824,13 +885,44 @@ export default function WhatsAppPage() {
                 </span>
               )}
             </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('campaigns')}
+              className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                viewMode === 'campaigns'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : isDarkMode
+                  ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+              }`}
+              title="Disparo em massa de novidades, promoções e acompanhamento de respostas"
+            >
+              <Megaphone size={14} className="shrink-0" />
+              <span>Campanhas & Promoções</span>
+              {campaignRepliesCount > 0 && (
+                <span
+                  className={`ml-0.5 text-[10px] font-mono tabular-nums font-bold px-1.5 py-0.2 rounded-md ${
+                    viewMode === 'campaigns'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-purple-500/20 text-purple-400'
+                  }`}
+                >
+                  {campaignRepliesCount}
+                </span>
+              )}
+            </button>
+
             {isAdmin && (
               <>
                 <button
                   type="button"
-                  onClick={() => setViewMode('automations')}
+                  onClick={() => {
+                    setAutomationsSubView('rules');
+                    setViewMode('automations');
+                  }}
                   className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
-                    viewMode === 'automations'
+                    viewMode === 'automations' && automationsSubView !== 'antiban'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : isDarkMode
                       ? 'text-slate-300 hover:text-white hover:bg-slate-800/70'
@@ -839,6 +931,24 @@ export default function WhatsAppPage() {
                 >
                   <Zap size={14} className="shrink-0" />
                   <span>Automações & Regras</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAutomationsSubView('antiban');
+                    setViewMode('automations');
+                  }}
+                  className={`flex items-center justify-center gap-1.5 py-2 px-3.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                    viewMode === 'automations' && automationsSubView === 'antiban'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : isDarkMode
+                      ? 'text-emerald-400 hover:text-white hover:bg-slate-800/70'
+                      : 'text-emerald-700 hover:text-slate-900 hover:bg-white/70'
+                  }`}
+                  title="Regras automáticas anti-banimento do número"
+                >
+                  <ShieldCheck size={14} className="shrink-0" />
+                  <span>Anti-Ban ({antiBanEnabled ? `${antiBanScore}%` : 'Off'})</span>
                 </button>
                 <button
                   type="button"
@@ -877,9 +987,23 @@ export default function WhatsAppPage() {
       </header>
 
       {/* Main Content Split View */}
-      {isAdmin && viewMode === 'automations' ? (
+      {viewMode === 'campaigns' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          <WhatsAppAutomations />
+          <WhatsAppCampaigns
+            onOpenChatByPhone={handleOpenChatByPhone}
+            onOpenAntiBanSettings={
+              isAdmin
+                ? () => {
+                    setAutomationsSubView('antiban');
+                    setViewMode('automations');
+                  }
+                : undefined
+            }
+          />
+        </div>
+      ) : isAdmin && viewMode === 'automations' ? (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          <WhatsAppAutomations initialSubView={automationsSubView} />
         </div>
       ) : isAdmin && viewMode === 'analytics' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">

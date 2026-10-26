@@ -59,7 +59,16 @@ import {
   recordWhatsAppTrafficEvent,
   syncCollaboratorPhonesFromProfiles,
   getCachedProfilePhones,
-  CollaboratorProfilePhone
+  CollaboratorProfilePhone,
+  WhatsAppAntiBanConfig,
+  WhatsAppAntiBanProfile,
+  WhatsAppAntiBanStats,
+  ANTIBAN_PROFILE_PRESETS,
+  DEFAULT_ANTIBAN_CONFIG,
+  getAntiBanConfig,
+  saveAntiBanConfig,
+  getAntiBanLiveStats,
+  humanizeWhatsAppMessage
 } from '@/lib/whatsappAutomation';
 
 const EXTRA_SUGGESTION_TEMPLATES: Omit<WhatsAppAutomationRule, 'id' | 'totalSentCount'>[] = [
@@ -118,7 +127,11 @@ const RECIPIENT_LABELS: Record<RecipientTarget, string> = {
   custom_number: 'Número fixo ou Grupo do WhatsApp'
 };
 
-export default function WhatsAppAutomations() {
+export default function WhatsAppAutomations({
+  initialSubView
+}: {
+  initialSubView?: 'rules' | 'antiban' | 'suggestions' | 'logs' | 'directory';
+} = {}) {
   const { isDarkMode } = useTheme();
   const { showToast } = useUI();
   const { isAdmin } = useRole();
@@ -127,7 +140,30 @@ export default function WhatsAppAutomations() {
   const [logs, setLogs] = useState<WhatsAppAutomationLog[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<AutomationCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeSubView, setActiveSubView] = useState<'rules' | 'suggestions' | 'logs' | 'directory'>('rules');
+  const [activeSubView, setActiveSubView] = useState<
+    'rules' | 'antiban' | 'suggestions' | 'logs' | 'directory'
+  >(initialSubView || 'rules');
+
+  useEffect(() => {
+    if (initialSubView) {
+      setActiveSubView(initialSubView);
+    }
+  }, [initialSubView]);
+
+  // Anti-Ban State
+  const [antiBanConfig, setAntiBanConfig] = useState<WhatsAppAntiBanConfig>(DEFAULT_ANTIBAN_CONFIG);
+  const [antiBanStats, setAntiBanStats] = useState<WhatsAppAntiBanStats>({
+    sentLastMinute: 0,
+    sentLastHour: 0,
+    sentToday: 0,
+    queuedCount: 0,
+    blockedDuplicatesCount: 0,
+    blockedRateLimitCount: 0,
+    humanizedMessagesCount: 0,
+    lastDelayAppliedSeconds: 0,
+    consecutiveBurstCount: 0,
+    healthScore: 100
+  });
 
   // Rule Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -175,6 +211,8 @@ export default function WhatsAppAutomations() {
     setLogs(getAutomationLogs());
     setDirectory(getDirectoryConfig());
     setProfilePhones(getCachedProfilePhones());
+    setAntiBanConfig(getAntiBanConfig());
+    setAntiBanStats(getAntiBanLiveStats());
     if (typeof window !== 'undefined') {
       const pc = getProviderConfig();
       setWapiInstanceId(pc.altInstance || '');
@@ -190,11 +228,48 @@ export default function WhatsAppAutomations() {
     const handleUpdate = () => loadData();
     window.addEventListener('whatsapp-automation-updated', handleUpdate);
     window.addEventListener('whatsapp-cloud-synced', handleUpdate);
+    window.addEventListener('whatsapp-antiban-updated', handleUpdate);
+    window.addEventListener('whatsapp-traffic-updated', handleUpdate);
     return () => {
       window.removeEventListener('whatsapp-automation-updated', handleUpdate);
       window.removeEventListener('whatsapp-cloud-synced', handleUpdate);
+      window.removeEventListener('whatsapp-antiban-updated', handleUpdate);
+      window.removeEventListener('whatsapp-traffic-updated', handleUpdate);
     };
   }, []);
+
+  const handleUpdateAntiBan = (patch: Partial<WhatsAppAntiBanConfig>, toastMsg?: string) => {
+    const nextConfig: WhatsAppAntiBanConfig = {
+      ...antiBanConfig,
+      ...patch,
+      profile: patch.profile || 'custom'
+    };
+    const saved = saveAntiBanConfig(nextConfig, true);
+    setAntiBanConfig(saved);
+    setAntiBanStats(getAntiBanLiveStats());
+    if (toastMsg) {
+      showToast(toastMsg, 'success');
+    }
+  };
+
+  const handleSelectAntiBanProfile = (profile: Exclude<WhatsAppAntiBanProfile, 'custom'>) => {
+    const preset = ANTIBAN_PROFILE_PRESETS[profile];
+    const nextConfig: WhatsAppAntiBanConfig = {
+      ...antiBanConfig,
+      ...preset,
+      enabled: true,
+      profile
+    };
+    const saved = saveAntiBanConfig(nextConfig, true);
+    setAntiBanConfig(saved);
+    setAntiBanStats(getAntiBanLiveStats());
+    const labels = {
+      conservative: 'Conservador (Aquecimento de Chip)',
+      balanced: 'Equilibrado (Operação Segura Recomendada)',
+      intensive: 'Intensivo (Chip Maturado)'
+    };
+    showToast(`Perfil Anti-Ban "${labels[profile]}" ativado e sincronizado!`, 'success');
+  };
 
   const filteredRules = useMemo(() => {
     return rules.filter(rule => {
@@ -708,6 +783,25 @@ export default function WhatsAppAutomations() {
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
               type="button"
+              onClick={() => setActiveSubView('antiban')}
+              className={`px-3.5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 border transition-colors whitespace-nowrap ${
+                antiBanConfig.enabled
+                  ? isDarkMode
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                  : isDarkMode
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                  : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+              }`}
+            >
+              <ShieldCheck size={15} className="text-emerald-500" />
+              <span>
+                Blindagem Anti-Ban ({antiBanConfig.enabled ? `${antiBanStats.healthScore}% Seguro` : 'Pausada'})
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveSubView('directory')}
               className={`px-3.5 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 border transition-colors whitespace-nowrap ${
                 isDarkMode
@@ -942,14 +1036,26 @@ export default function WhatsAppAutomations() {
           </div>
         )}
 
-        {/* Main Section Switcher Tabs (Well-framed 4-tab bar) */}
+        {/* Main Section Switcher Tabs (5-tab bar with Blindagem Anti-Ban) */}
         <div
-          className={`grid grid-cols-2 lg:grid-cols-4 gap-2 p-1.5 rounded-2xl border ${
+          className={`grid grid-cols-2 lg:grid-cols-5 gap-2 p-1.5 rounded-2xl border ${
             isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-slate-200/70 border-slate-200'
           }`}
         >
           {[
             { id: 'rules', label: 'Regras Configuradas', icon: Zap, count: rules.length },
+            {
+              id: 'antiban',
+              label: 'Blindagem Anti-Ban',
+              icon: ShieldCheck,
+              count: [
+                antiBanConfig.randomDelayEnabled,
+                antiBanConfig.rateLimitEnabled,
+                antiBanConfig.deduplicationEnabled,
+                antiBanConfig.dynamicVariationEnabled,
+                antiBanConfig.safeHoursEnabled
+              ].filter(Boolean).length
+            },
             {
               id: 'suggestions',
               label: 'Sugestões de Automação',
@@ -1865,6 +1971,734 @@ export default function WhatsAppAutomations() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* SUBVIEW 5: BLINDAGEM ANTI-BANIMENTO (AUTOMATIC PROTECTION RULES) */}
+        {activeSubView === 'antiban' && (
+          <div className="space-y-6">
+            {/* Top Master Banner & Health Score */}
+            <div
+              className={`p-5 sm:p-6 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-5 ${
+                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}
+            >
+              <div className="flex items-start gap-4">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
+                    antiBanConfig.enabled
+                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-500'
+                      : 'bg-amber-500/15 border-amber-500/30 text-amber-500'
+                  }`}
+                >
+                  <ShieldCheck size={26} />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 className="text-base sm:text-lg font-bold">
+                      Blindagem Automática Anti-Banimento do Chip
+                    </h3>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border ${
+                        antiBanConfig.enabled
+                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-500'
+                          : 'bg-amber-500/15 border-amber-500/30 text-amber-500'
+                      }`}
+                    >
+                      {antiBanConfig.enabled
+                        ? `Proteção Ativa • Saúde ${antiBanStats.healthScore}%`
+                        : 'Blindagem Pausada'}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-3xl leading-relaxed">
+                    Estas regras protegem automaticamente seu número contra bloqueios e restrições do WhatsApp: enfileiram disparos simultâneos com atraso humano aleatório, simulam digitação, evitam textos idênticos (hash único) e controlam o volume por minuto, hora e dia.
+                  </p>
+                  {antiBanStats.lastProtectedAction && (
+                    <p className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 pt-1">
+                      🛡️ Última ação de proteção: {antiBanStats.lastProtectedAction}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleUpdateAntiBan(
+                      { enabled: !antiBanConfig.enabled },
+                      antiBanConfig.enabled
+                        ? 'Blindagem Anti-Ban pausada.'
+                        : 'Blindagem Anti-Ban ativada com sucesso!'
+                    )
+                  }
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold border flex items-center gap-2 transition-all cursor-pointer ${
+                    antiBanConfig.enabled
+                      ? isDarkMode
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                      : 'bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700'
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      antiBanConfig.enabled ? 'bg-emerald-500 animate-pulse' : 'bg-white'
+                    }`}
+                  />
+                  <span>
+                    {antiBanConfig.enabled ? 'Blindagem Geral Ativa' : 'Ativar Blindagem Geral'}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Live Anti-Ban Telemetry & Counters */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div
+                className={`p-4 rounded-2xl border space-y-2 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>Cadência no Último Minuto</span>
+                  <Clock size={15} className="text-emerald-500" />
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-bold font-mono tabular-nums">
+                    {antiBanStats.sentLastMinute}{' '}
+                    <span className="text-xs font-normal text-slate-400">
+                      / {antiBanConfig.maxMessagesPerMinute} máx
+                    </span>
+                  </span>
+                  <span className="text-[11px] font-mono text-emerald-500">
+                    Fila: {antiBanStats.queuedCount}
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 transition-all"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (antiBanStats.sentLastMinute / Math.max(1, antiBanConfig.maxMessagesPerMinute)) * 100
+                      )}%`
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                className={`p-4 rounded-2xl border space-y-2 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>Volume na Última Hora</span>
+                  <Zap size={15} className="text-blue-500" />
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-bold font-mono tabular-nums">
+                    {antiBanStats.sentLastHour}{' '}
+                    <span className="text-xs font-normal text-slate-400">
+                      / {antiBanConfig.maxMessagesPerHour} máx
+                    </span>
+                  </span>
+                  <span className="text-[11px] font-mono text-blue-500">
+                    {Math.round(
+                      (antiBanStats.sentLastHour / Math.max(1, antiBanConfig.maxMessagesPerHour)) * 100
+                    )}
+                    %
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (antiBanStats.sentLastHour / Math.max(1, antiBanConfig.maxMessagesPerHour)) * 100
+                      )}%`
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                className={`p-4 rounded-2xl border space-y-2 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>Volume Acumulado Hoje</span>
+                  <BarChart3 size={15} className="text-indigo-500" />
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-bold font-mono tabular-nums">
+                    {antiBanStats.sentToday}{' '}
+                    <span className="text-xs font-normal text-slate-400">
+                      / {antiBanConfig.maxMessagesPerDay} dia
+                    </span>
+                  </span>
+                  <span className="text-[11px] font-mono text-indigo-500">
+                    {Math.round(
+                      (antiBanStats.sentToday / Math.max(1, antiBanConfig.maxMessagesPerDay)) * 100
+                    )}
+                    %
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 transition-all"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (antiBanStats.sentToday / Math.max(1, antiBanConfig.maxMessagesPerDay)) * 100
+                      )}%`
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                className={`p-4 rounded-2xl border space-y-2 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
+                  <span>Ações de Blindagem</span>
+                  <ShieldCheck size={15} className="text-emerald-500" />
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-2xl font-bold font-mono tabular-nums">
+                    {antiBanStats.humanizedMessagesCount}
+                  </span>
+                  <span className="text-[11px] font-mono text-amber-500">
+                    {antiBanStats.blockedDuplicatesCount} duplicadas barradas
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Mensagens com variação dinâmica de texto/hash
+                </p>
+              </div>
+            </div>
+
+            {/* 3 Pre-configured Protection Profiles */}
+            <div
+              className={`p-5 rounded-2xl border space-y-4 ${
+                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}
+            >
+              <div>
+                <h4 className="text-sm font-bold">
+                  1. Nível de Maturação do Chip (Perfis Automáticos de Aquecimento)
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Escolha o perfil adequado para o tempo de uso do seu número no WhatsApp ou personalize qualquer regra abaixo:
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                {[
+                  {
+                    id: 'conservative' as const,
+                    title: 'Conservador (Chip Novo / Aquecimento)',
+                    badge: 'Máxima Segurança',
+                    desc: 'Ideal para números recém-conectados no QR Code. Intervalo de 8s a 18s entre envios, máx. 3/min e 120/dia.'
+                  },
+                  {
+                    id: 'balanced' as const,
+                    title: 'Equilibrado (Operação Recomendada)',
+                    badge: 'Padrão Ideal',
+                    desc: 'Equilíbrio perfeito para avisos de tarefas e entregas do dia a dia. Intervalo de 4s a 11s, máx. 6/min e 250/dia.'
+                  },
+                  {
+                    id: 'intensive' as const,
+                    title: 'Intensivo (Chip Antigo / Maturado)',
+                    badge: 'Alta Vazão',
+                    desc: 'Para números antigos que já conversam diariamente com a equipe e clientes. Intervalo de 2s a 6s, máx. 12/min e 500/dia.'
+                  }
+                ].map(prof => {
+                  const isSelected = antiBanConfig.profile === prof.id;
+                  return (
+                    <button
+                      key={prof.id}
+                      type="button"
+                      onClick={() => handleSelectAntiBanProfile(prof.id)}
+                      className={`p-4 rounded-2xl border text-left transition-all flex flex-col justify-between gap-3 cursor-pointer ${
+                        isSelected
+                          ? isDarkMode
+                            ? 'bg-emerald-950/30 border-emerald-500 ring-1 ring-emerald-500/40'
+                            : 'bg-emerald-50/80 border-emerald-600 ring-1 ring-emerald-500/30'
+                          : isDarkMode
+                          ? 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold">{prof.title}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white'
+                                : isDarkMode
+                                ? 'bg-slate-800 text-slate-400'
+                                : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {isSelected ? 'Ativo' : prof.badge}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {prof.desc}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 5 Detailed Automatic Anti-Ban Rule Cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* RULE 1: CADÊNCIA HUMANA & FILA ANTI-RAJADA */}
+              <div
+                className={`p-5 rounded-2xl border space-y-4 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-500">
+                      Regra Anti-Ban #1 • Fila Sequencial
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold mt-0.5">
+                      Cadência Humana & Atraso Aleatório (Anti-Rajada)
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Quando várias tarefas ou entregas são criadas ao mesmo tempo, o sistema nunca dispara tudo no mesmo segundo: ele cria uma fila e aguarda um tempo aleatório entre cada mensagem.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleUpdateAntiBan(
+                        { randomDelayEnabled: !antiBanConfig.randomDelayEnabled },
+                        'Configuração de cadência aleatória atualizada!'
+                      )
+                    }
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border shrink-0 cursor-pointer ${
+                      antiBanConfig.randomDelayEnabled
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
+                        : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                    }`}
+                  >
+                    {antiBanConfig.randomDelayEnabled ? 'Ativa' : 'Pausada'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">
+                      Intervalo Mínimo (segundos)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={antiBanConfig.minDelaySeconds}
+                      onChange={e =>
+                        handleUpdateAntiBan({ minDelaySeconds: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">
+                      Intervalo Máximo (segundos)
+                    </label>
+                    <input
+                      type="number"
+                      min={2}
+                      max={120}
+                      value={antiBanConfig.maxDelaySeconds}
+                      onChange={e =>
+                        handleUpdateAntiBan({ maxDelaySeconds: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2.5 pt-1 text-xs font-semibold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={antiBanConfig.simulateTyping}
+                    onChange={e =>
+                      handleUpdateAntiBan(
+                        { simulateTyping: e.target.checked },
+                        'Simulação de digitação na W-API atualizada!'
+                      )
+                    }
+                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                  />
+                  <span>
+                    Simular presença humana (&quot;Digitando...&quot; proporcional ao tamanho do texto na W-API)
+                  </span>
+                </label>
+              </div>
+
+              {/* RULE 2: LIMITE DE VOLUME E PAUSA DE RESPIRO */}
+              <div
+                className={`p-5 rounded-2xl border space-y-4 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-500">
+                      Regra Anti-Ban #2 • Controle de Vazão
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold mt-0.5">
+                      Limites por Minuto, Hora e Dia + Pausa de Respiro
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Impede picos anormais de tráfego que acionam os algoritmos anti-spam da Meta e faz uma pausa automática de respiro a cada lote de envios.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleUpdateAntiBan(
+                        { rateLimitEnabled: !antiBanConfig.rateLimitEnabled },
+                        'Limites de volume atualizados!'
+                      )
+                    }
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border shrink-0 cursor-pointer ${
+                      antiBanConfig.rateLimitEnabled
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
+                        : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                    }`}
+                  >
+                    {antiBanConfig.rateLimitEnabled ? 'Ativa' : 'Pausada'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">Máx / Minuto</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={antiBanConfig.maxMessagesPerMinute}
+                      onChange={e =>
+                        handleUpdateAntiBan({ maxMessagesPerMinute: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">Máx / Hora</label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={300}
+                      value={antiBanConfig.maxMessagesPerHour}
+                      onChange={e =>
+                        handleUpdateAntiBan({ maxMessagesPerHour: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">Máx / Dia</label>
+                    <input
+                      type="number"
+                      min={10}
+                      max={2000}
+                      value={antiBanConfig.maxMessagesPerDay}
+                      onChange={e =>
+                        handleUpdateAntiBan({ maxMessagesPerDay: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">
+                      Lote antes do Respiro (msgs)
+                    </label>
+                    <input
+                      type="number"
+                      min={3}
+                      max={50}
+                      value={antiBanConfig.burstThreshold}
+                      onChange={e =>
+                        handleUpdateAntiBan({ burstThreshold: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">
+                      Pausa de Respiro (segundos)
+                    </label>
+                    <input
+                      type="number"
+                      min={5}
+                      max={120}
+                      value={antiBanConfig.pauseSecondsOnBurst}
+                      onChange={e =>
+                        handleUpdateAntiBan({ pauseSecondsOnBurst: Number(e.target.value) })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* RULE 3: FILTRO ANTI-DUPLICIDADE E COOLDOWN POR CONTATO */}
+              <div
+                className={`p-5 rounded-2xl border space-y-4 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                      Regra Anti-Ban #3 • Proteção por Destinatário
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold mt-0.5">
+                      Bloqueio de Duplicidade & Cooldown por Contato
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Evita que cliques duplos ou edições seguidas na mesma tarefa/entrega disparem mensagens repetidas para o mesmo número em curto espaço de tempo.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleUpdateAntiBan(
+                        { deduplicationEnabled: !antiBanConfig.deduplicationEnabled },
+                        'Filtro anti-duplicidade atualizado!'
+                      )
+                    }
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border shrink-0 cursor-pointer ${
+                      antiBanConfig.deduplicationEnabled
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
+                        : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                    }`}
+                  >
+                    {antiBanConfig.deduplicationEnabled ? 'Ativa' : 'Pausada'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">
+                      Bloquear texto idêntico por (min)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={180}
+                      value={antiBanConfig.blockDuplicateWindowMinutes}
+                      onChange={e =>
+                        handleUpdateAntiBan({
+                          blockDuplicateWindowMinutes: Number(e.target.value)
+                        })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold mb-1">
+                      Intervalo mín. mesmo contato (seg)
+                    </label>
+                    <input
+                      type="number"
+                      min={2}
+                      max={120}
+                      value={antiBanConfig.recipientCooldownSeconds}
+                      onChange={e =>
+                        handleUpdateAntiBan({
+                          recipientCooldownSeconds: Number(e.target.value)
+                        })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* RULE 4: POLIMORFISMO DE MENSAGEM (VARIAÇÃO DINÂMICA + HASH ÚNICO) */}
+              <div
+                className={`p-5 rounded-2xl border space-y-4 ${
+                  isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-500">
+                      Regra Anti-Ban #4 • Polimorfismo Anti-Filtro
+                    </span>
+                    <h4 className="text-sm sm:text-base font-bold mt-0.5">
+                      Variação Dinâmica de Saudação & Protocolo Único
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Altera sutilmente a saudação de abertura conforme o horário do dia e adiciona um protocolo único no rodapé para que cada mensagem tenha assinatura digital exclusiva.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleUpdateAntiBan(
+                        { dynamicVariationEnabled: !antiBanConfig.dynamicVariationEnabled },
+                        'Polimorfismo de mensagem atualizado!'
+                      )
+                    }
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border shrink-0 cursor-pointer ${
+                      antiBanConfig.dynamicVariationEnabled
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
+                        : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                    }`}
+                  >
+                    {antiBanConfig.dynamicVariationEnabled ? 'Ativa' : 'Pausada'}
+                  </button>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <label className="flex items-center gap-2.5 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={antiBanConfig.varyGreetings}
+                      onChange={e =>
+                        handleUpdateAntiBan({ varyGreetings: e.target.checked })
+                      }
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    />
+                    <span>
+                      Alternar saudações automaticamente (Bom dia / Boa tarde / Olá, tudo bem?)
+                    </span>
+                  </label>
+
+                  <label className="flex items-center gap-2.5 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={antiBanConfig.appendUniqueProtocol}
+                      onChange={e =>
+                        handleUpdateAntiBan({ appendUniqueProtocol: e.target.checked })
+                      }
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    />
+                    <span>
+                      Inserir protocolo micro-hash único no rodapé (_🔒 Ref: #A8F2 • 14:30_)
+                    </span>
+                  </label>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl border font-mono text-[11px] whitespace-pre-wrap ${
+                    isDarkMode
+                      ? 'bg-slate-950 border-slate-800 text-slate-300'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <span className="block text-[10px] font-bold uppercase text-emerald-500 mb-1">
+                    Exemplo Real de Mensagem Humanizada:
+                  </span>
+                  {humanizeWhatsAppMessage(
+                    'Olá *Carlos*, você recebeu uma nova tarefa: *Conferência de Estoque*.',
+                    antiBanConfig
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* RULE 5: JANELA DE HORÁRIO COMERCIAL SEGURO */}
+            <div
+              className={`p-5 rounded-2xl border space-y-4 ${
+                isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-2xs'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500">
+                    Regra Anti-Ban #5 • Janela de Horário Comercial
+                  </span>
+                  <h4 className="text-sm sm:text-base font-bold mt-0.5">
+                    Restrição de Horário Seguro (Prevenção de Denúncias Noturnas)
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Quando ativada, impede que lembretes automáticos sejam disparados de madrugada ou fora do expediente comercial.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleUpdateAntiBan(
+                      { safeHoursEnabled: !antiBanConfig.safeHoursEnabled },
+                      antiBanConfig.safeHoursEnabled
+                        ? 'Restrição de horário desativada (envio 24h liberado).'
+                        : 'Janela de horário seguro ativada!'
+                    )
+                  }
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border shrink-0 cursor-pointer ${
+                    antiBanConfig.safeHoursEnabled
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-500'
+                      : 'bg-slate-500/10 border-slate-500/30 text-slate-400'
+                  }`}
+                >
+                  {antiBanConfig.safeHoursEnabled
+                    ? `Restrito (${antiBanConfig.safeHoursStart} às ${antiBanConfig.safeHoursEnd})`
+                    : 'Liberado 24h (Opcional)'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center pt-1">
+                <div>
+                  <label className="block text-[11px] font-bold mb-1">
+                    Início do Horário Seguro
+                  </label>
+                  <input
+                    type="time"
+                    value={antiBanConfig.safeHoursStart}
+                    onChange={e => handleUpdateAntiBan({ safeHoursStart: e.target.value })}
+                    className={`${inputBaseClass} font-mono`}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold mb-1">
+                    Fim do Horário Seguro
+                  </label>
+                  <input
+                    type="time"
+                    value={antiBanConfig.safeHoursEnd}
+                    onChange={e => handleUpdateAntiBan({ safeHoursEnd: e.target.value })}
+                    className={`${inputBaseClass} font-mono`}
+                  />
+                </div>
+                <div className="pt-4">
+                  <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={antiBanConfig.allowHighPriorityOutsideSafeHours}
+                      onChange={e =>
+                        handleUpdateAntiBan({
+                          allowHighPriorityOutsideSafeHours: e.target.checked
+                        })
+                      }
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 h-4 w-4"
+                    />
+                    <span>Permitir tarefas de Prioridade Alta/Urgente fora do horário</span>
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

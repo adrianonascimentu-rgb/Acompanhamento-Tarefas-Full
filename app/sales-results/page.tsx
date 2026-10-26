@@ -34,7 +34,9 @@ import {
   saveSalesCycleRange,
   saveSalesCycleToSupabase,
   formatDateBR,
-  getCycleDaysProgress
+  getCycleDaysProgress,
+  getTodayLocalYYYYMMDD,
+  isSalesResultFromCurrentCycle,
 } from '@/lib/salesCycle';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
@@ -87,7 +89,9 @@ export default function SalesResultsPage() {
       cycleRange.endDay || 25,
       cycleRange.scope || (isManagerial ? 'company' : 'user')
     );
-    const saved = saveSalesCycleRange(stdCycle.startDate, stdCycle.endDate, stdCycle.scope);
+    const todayStr = getTodayLocalYYYYMMDD();
+    const isHistorical = stdCycle.endDate < todayStr;
+    const saved = saveSalesCycleRange(stdCycle.startDate, stdCycle.endDate, stdCycle.scope, !isHistorical);
     setCycleRange(saved);
 
     await saveSalesCycleToSupabase({
@@ -98,6 +102,7 @@ export default function SalesResultsPage() {
       scope: isManagerial ? 'company' : 'user',
       userId: user?.id,
       userName: user?.name,
+      autoRollover: !isHistorical,
     });
   };
 
@@ -105,9 +110,6 @@ export default function SalesResultsPage() {
     try {
       setLoading(true);
       
-      const currentRole = role?.toLowerCase();
-      const isManagerial = isAdmin || currentRole === 'gerente' || currentRole === 'supervisor';
-
       // Fetch all collaborators who should be in the sales list so that the global faturamento real
       // is always calculated completely and identically for all users.
       const { data: profiles, error: profilesError } = await supabase
@@ -120,7 +122,6 @@ export default function SalesResultsPage() {
 
       // 1. Fetch daily sales in the selected [startDate, endDate] range
       let dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
-      let hasDailyEntriesInRange = false;
       try {
         const dailyRes = await fetch(
           `/api/sales/daily?startDate=${cycleRange.startDate}&endDate=${cycleRange.endDate}`
@@ -128,16 +129,13 @@ export default function SalesResultsPage() {
         if (dailyRes.ok) {
           const dailyJson = await dailyRes.json();
           dailyBySeller = dailyJson.by_seller || {};
-          hasDailyEntriesInRange = (dailyJson.entries?.length || 0) > 0;
         }
       } catch (e) {
         console.warn('Falha ao buscar vendas diárias por período:', e);
       }
 
-      // 2. Fetch existing sales entries — the values already informed for sellers in sales_results
-      // already correspond to the 26-to-25 sales cycle.
+      // 2. Fetch existing sales entries strictly for the active cycle's reference month/year
       const [startY, startM] = cycleRange.startDate.split('-').map(Number);
-      const [endY, endM] = cycleRange.endDate.split('-').map(Number);
 
       const { data: sales, error: salesError } = await supabase
         .from('sales_results')
@@ -147,13 +145,14 @@ export default function SalesResultsPage() {
 
       if (salesError) throw salesError;
 
-      let activeSalesRows = sales || [];
-      const hasInformedValues = activeSalesRows.some(
-        r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0
+      let activeSalesRows: any[] = sales || [];
+      const hasTargetsInRef = activeSalesRows.some(
+        r => (Number(r.target_2026) || 0) > 0
       );
 
-      // If the selected end-month has no informed values yet, check the start-month of the 26-to-25 cycle
-      if (!hasInformedValues && startM && startY && (startM !== selectedMonth || startY !== selectedYear)) {
+      // If the new cycle's month has no configured targets yet, inherit ONLY target_2026 (Meta)
+      // from the previous cycle — NEVER inherit result_2026 (realized revenue from past cycle).
+      if (!hasTargetsInRef && startM && startY && (startM !== selectedMonth || startY !== selectedYear)) {
         const { data: startSales } = await supabase
           .from('sales_results')
           .select('*')
@@ -162,15 +161,18 @@ export default function SalesResultsPage() {
 
         if (
           startSales &&
-          startSales.some(r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
+          startSales.some(r => (Number(r.target_2026) || 0) > 0)
         ) {
-          activeSalesRows = startSales;
+          activeSalesRows = startSales.map(r => ({
+            ...r,
+            result_2026: 0,
+          }));
         }
       }
 
-      // If still empty, fallback to most recent recorded period in sales_results that has informed values
+      // If still without targets, fallback to most recent recorded period ONLY for target_2026 (Meta)
       if (
-        !activeSalesRows.some(r => (Number(r.result_2026) || 0) > 0 || (Number(r.target_2026) || 0) > 0)
+        !activeSalesRows.some(r => (Number(r.target_2026) || 0) > 0)
       ) {
         const { data: fallbackSales } = await supabase
           .from('sales_results')
@@ -182,11 +184,21 @@ export default function SalesResultsPage() {
         if (fallbackSales && fallbackSales.length > 0) {
           const nonZero =
             fallbackSales.find(
-              d => (Number(d.result_2026) || 0) > 0 || (Number(d.target_2026) || 0) > 0
+              d => (Number(d.target_2026) || 0) > 0
             ) || fallbackSales[0];
-          activeSalesRows = fallbackSales.filter(
-            d => d.month === nonZero.month && d.year === nonZero.year
-          );
+          activeSalesRows = fallbackSales
+            .filter(d => d.month === nonZero.month && d.year === nonZero.year)
+            .map(r => ({
+              ...r,
+              result_2026: isSalesResultFromCurrentCycle(r, {
+                startDate: cycleRange.startDate,
+                endDate: cycleRange.endDate,
+                refMonth: selectedMonth,
+                refYear: selectedYear,
+              })
+                ? r.result_2026
+                : 0,
+            }));
         }
       }
 
@@ -210,11 +222,17 @@ export default function SalesResultsPage() {
             : 0;
           
           const res2025 = Number(entry?.result_2025 || 0);
-          const consolidatedRes2026 = Number(entry?.result_2026 || 0);
+          const isCurrentCycleRow = isSalesResultFromCurrentCycle(entry, {
+            startDate: cycleRange.startDate,
+            endDate: cycleRange.endDate,
+            refMonth: selectedMonth,
+            refYear: selectedYear,
+          });
+          const consolidatedRes2026 = isCurrentCycleRow ? Number(entry?.result_2026 || 0) : 0;
           const dailySellerAmount = Number(dailyBySeller[profile.id]?.sales_amount || 0);
 
           // For each seller, the realized revenue is the max between the informed consolidated result
-          // and their recorded daily sales in the cycle, ensuring zero loss of updated daily sales.
+          // for THIS cycle and their recorded daily sales in [startDate, endDate].
           const res2026 = Math.max(consolidatedRes2026, dailySellerAmount);
 
           const yoyGrowth = res2025 > 0 
@@ -242,11 +260,11 @@ export default function SalesResultsPage() {
     } finally {
       setLoading(false);
     }
-  }, [role, isAdmin, user?.id, selectedMonth, selectedYear, cycleRange.startDate, cycleRange.endDate]);
+  }, [selectedMonth, selectedYear, cycleRange.startDate, cycleRange.endDate]);
 
   const fetchTodaySales = useCallback(async () => {
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = getTodayLocalYYYYMMDD();
       const res = await fetch(`/api/sales/daily?date=${todayStr}`);
       if (res.ok) {
         const json = await res.json();

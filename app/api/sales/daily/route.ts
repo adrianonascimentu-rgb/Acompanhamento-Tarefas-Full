@@ -143,16 +143,38 @@ async function syncMonthlySalesResults(dateString: string, sellerIds: string[]) 
           })
           .eq('id', existing.id);
       } else {
+        // Inherit the seller's previous cycle target_2026 if available
+        let prevTarget = 50000;
+        let prevSuggestion = 50000;
+        let prevRes2025 = 0;
+        try {
+          const { data: prevRow } = await supabase
+            .from('sales_results')
+            .select('target_2026, target_suggestion, result_2025')
+            .eq('collaborator_id', sellerId)
+            .order('year', { ascending: false })
+            .order('month', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (prevRow && Number(prevRow.target_2026) > 0) {
+            prevTarget = Number(prevRow.target_2026);
+            prevSuggestion = Number(prevRow.target_suggestion) || prevTarget;
+            prevRes2025 = Number(prevRow.result_2025) || 0;
+          }
+        } catch {}
+
         await supabase
           .from('sales_results')
           .insert({
             collaborator_id: sellerId,
             month: refMonth,
             year: refYear,
-            result_2025: 0,
-            target_suggestion: 50000,
-            target_2026: 50000,
-            result_2026: totalCycleSales
+            result_2025: prevRes2025,
+            target_suggestion: prevSuggestion,
+            target_2026: prevTarget,
+            result_2026: totalCycleSales,
+            updated_at: new Date().toISOString()
           });
       }
     }
