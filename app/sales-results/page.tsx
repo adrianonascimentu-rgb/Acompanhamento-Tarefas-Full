@@ -122,7 +122,7 @@ export default function SalesResultsPage() {
       if (profilesError) throw profilesError;
 
       // 1. Fetch daily sales and direct sales strictly within the commercial cycle interval [startDate, endDate]
-      let dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
+      const dailyBySeller: Record<string, { sales_amount: number; orders_count: number }> = {};
       let hasDailyRegistryInSystem = false;
       try {
         const dailyRes = await fetch(
