@@ -7,8 +7,15 @@ import { SystemSettingsModal } from '@/components/SystemSettingsModal';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
+export interface ToastInputObject {
+  title?: string;
+  message: string;
+  type?: ToastType;
+}
+
 interface Toast {
   id: string;
+  title?: string;
   message: string;
   type: ToastType;
 }
@@ -24,7 +31,7 @@ interface ModalOptions {
 }
 
 interface UIContextType {
-  showToast: (message: string, type?: ToastType) => void;
+  showToast: (messageOrOptions: string | ToastInputObject, type?: ToastType) => void;
   showConfirm: (options: ModalOptions) => void;
   showSettingsModal: () => void;
   isSidebarCollapsed: boolean;
@@ -58,9 +65,29 @@ export function UIProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const showToast = (message: string, type: ToastType = 'info') => {
+  const showToast = (messageOrOptions: string | ToastInputObject, type: ToastType = 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prev) => [...prev, { id, message, type }]);
+    let resolvedTitle: string | undefined;
+    let resolvedMessage: string;
+    let resolvedType: ToastType = type;
+
+    if (typeof messageOrOptions === 'object' && messageOrOptions !== null) {
+      resolvedTitle = typeof messageOrOptions.title === 'string' ? messageOrOptions.title : undefined;
+      resolvedMessage =
+        typeof messageOrOptions.message === 'string'
+          ? messageOrOptions.message
+          : JSON.stringify(messageOrOptions);
+      if (messageOrOptions.type) {
+        resolvedType = messageOrOptions.type;
+      }
+    } else {
+      resolvedMessage = String(messageOrOptions ?? '');
+    }
+
+    setToasts((prev) => [
+      ...prev,
+      { id, title: resolvedTitle, message: resolvedMessage, type: resolvedType },
+    ]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 5000);
@@ -111,12 +138,21 @@ export function UIProvider({ children }: { children: ReactNode }) {
                 'bg-blue-50 border-blue-100 text-blue-800'
               }`}
             >
-              {toast.type === 'success' && <CheckCircle2 size={20} />}
-              {toast.type === 'error' && <AlertCircle size={20} />}
-              {toast.type === 'warning' && <AlertTriangle size={20} />}
-              {toast.type === 'info' && <Info size={20} />}
-              <p className="text-sm font-medium flex-1">{toast.message}</p>
-              <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} className="opacity-50 hover:opacity-100">
+              {toast.type === 'success' && <CheckCircle2 size={20} className="shrink-0" />}
+              {toast.type === 'error' && <AlertCircle size={20} className="shrink-0" />}
+              {toast.type === 'warning' && <AlertTriangle size={20} className="shrink-0" />}
+              {toast.type === 'info' && <Info size={20} className="shrink-0" />}
+              <div className="flex-1 min-w-0">
+                {typeof toast.title === 'string' && toast.title && (
+                  <p className="text-sm font-bold leading-snug">{toast.title}</p>
+                )}
+                <p className="text-sm font-medium leading-snug">
+                  {typeof toast.message === 'string'
+                    ? toast.message
+                    : String((toast.message as any)?.message || '')}
+                </p>
+              </div>
+              <button onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))} className="opacity-50 hover:opacity-100 shrink-0">
                 <X size={16} />
               </button>
             </motion.div>
