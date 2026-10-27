@@ -35,11 +35,37 @@ export interface LoyaltyStats {
   totalBonusBRL: number;
   clientsWithExpiringPoints: number;
   totalPointsConverted: number;
+  totalConvertedBRL: number;
   totalPointsExpired: number;
 }
 
+/**
+ * Regras oficiais das Configurações de Fidelidade do ERP:
+ * - Valor em produtos para adquirir 1 ponto (R$): 10,00
+ * - Valor em serviços para adquirir 1 ponto (R$): 0,00
+ * - Pontos necessários para obter R$ 1,00 em créditos: 4,00 (1 ponto = R$ 0,25)
+ * - Tempo para creditar os pontos (em dias): 2
+ * - Tempo de validade dos pontos (em meses): 12
+ */
+export const LOYALTY_CONFIG = {
+  valorProdutoPorPonto: 10.0,
+  valorServicoPorPonto: 0.0,
+  pontosParaUmReal: 4.0,
+  valorPorPontoBRL: 0.25,
+  diasParaCreditar: 2,
+  validadeMeses: 12,
+} as const;
+
 const STORAGE_KEY = 'agentex_loyalty_clients_v1';
-const POINT_TO_BRL_RATIO = 1.0; // 1 ponto = R$ 1,00 de desconto / bônus em compras
+
+/**
+ * Converte quantidade de pontos para valor em créditos (R$)
+ * Regra oficial: 4,00 pontos = R$ 1,00 em créditos (cada ponto vale R$ 0,25)
+ */
+export function pointsToBRL(points: number): number {
+  if (!points || points <= 0) return 0;
+  return points / LOYALTY_CONFIG.pontosParaUmReal;
+}
 
 export function getInitialLoyaltyClients(): LoyaltyClient[] {
   return initialClientsData as LoyaltyClient[];
@@ -96,9 +122,10 @@ export function calculateLoyaltyStats(clients: LoyaltyClient[]): LoyaltyStats {
     totalClients: clients.length,
     clientsWithBalance,
     totalPointsActive,
-    totalBonusBRL: totalPointsActive * POINT_TO_BRL_RATIO,
+    totalBonusBRL: pointsToBRL(totalPointsActive),
     clientsWithExpiringPoints,
     totalPointsConverted,
+    totalConvertedBRL: pointsToBRL(totalPointsConverted),
     totalPointsExpired,
   };
 }
@@ -115,17 +142,18 @@ export function formatBRL(value: number): string {
  */
 export function generateWhatsAppBonusMessage(client: LoyaltyClient): string {
   const pontos = client.saldoPontos;
-  const bonusReais = formatBRL(pontos * POINT_TO_BRL_RATIO);
+  const bonusReais = formatBRL(pointsToBRL(pontos));
   const firstName = client.nome.split(' ')[0] || 'Cliente';
 
   let text = `Olá, *${firstName}*! Tudo bem?\n\n`;
-  text += `Aqui é da equipe comercial da loja. Verifiquei no nosso programa de fidelidade que você possui um saldo acumulado de *${pontos} pontos*, equivalente a *${bonusReais} de bônus* para utilizar como desconto nas suas próximas compras de peças e ar condicionado!\n\n`;
+  text += `Aqui é da equipe comercial da loja. Verifiquei no nosso programa de fidelidade que você possui um saldo acumulado de *${pontos} pontos*, equivalente a *${bonusReais} em créditos* para utilizar como desconto nas suas próximas compras de peças e ar condicionado!\n\n`;
 
   if (client.proximoVencimento && client.pontosAVencerProximo > 0) {
-    text += `⚠️ *Atenção:* Você possui *${client.pontosAVencerProximo} pontos* com validade até *${client.proximoVencimento}*. Não deixe expirar!\n\n`;
+    const valorVencer = formatBRL(pointsToBRL(client.pontosAVencerProximo));
+    text += `⚠️ *Atenção:* Você possui *${client.pontosAVencerProximo} pontos (${valorVencer})* com validade até *${client.proximoVencimento}*. Não deixe expirar!\n\n`;
   }
 
-  text += `Está precisando de algum equipamento, split, peças para instalação ou ferramentas esta semana? Posso aplicar esse seu desconto agora mesmo no seu pedido!\n\nFico no aguardo para te atender!`;
+  text += `Está precisando de algum equipamento, split, peças para instalação ou ferramentas esta semana? Posso aplicar esse seu crédito agora mesmo no seu pedido!\n\nFico no aguardo para te atender!`;
 
   return text;
 }

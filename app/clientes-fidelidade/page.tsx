@@ -28,6 +28,8 @@ import {
   DollarSign,
   ArrowUpDown,
   ShoppingBag,
+  Info,
+  Settings2,
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
@@ -35,9 +37,11 @@ import { useUI } from '@/hooks/useUI';
 import {
   LoyaltyClient,
   LoyaltyTransaction,
+  LOYALTY_CONFIG,
   getStoredLoyaltyClients,
   saveLoyaltyClients,
   calculateLoyaltyStats,
+  pointsToBRL,
   formatBRL,
   generateWhatsAppBonusMessage,
 } from '@/lib/loyaltyData';
@@ -60,6 +64,9 @@ export default function ClientesFidelidadePage() {
   // Selected client for Extrato Modal
   const [selectedClient, setSelectedClient] = useState<LoyaltyClient | null>(null);
   const [copiedClientId, setCopiedClientId] = useState<string | null>(null);
+
+  // Rules Modal state
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
 
   // Import Modal state
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -129,19 +136,12 @@ export default function ClientesFidelidadePage() {
     setCopiedClientId(client.id);
     showToast({
       title: 'Mensagem Copiada!',
-      message: `Texto de bônus e pontos copiado para envio no WhatsApp a ${client.nome.split(' ')[0]}.`,
+      message: `Texto de bônus (${formatBRL(pointsToBRL(client.saldoPontos))}) copiado para envio no WhatsApp a ${client.nome.split(' ')[0]}.`,
       type: 'success',
     });
     setTimeout(() => {
       setCopiedClientId((prev) => (prev === client.id ? null : prev));
     }, 2500);
-  };
-
-  // Open direct WhatsApp web link
-  const handleOpenWhatsApp = (client: LoyaltyClient) => {
-    const message = encodeURIComponent(generateWhatsAppBonusMessage(client));
-    const url = `https://api.whatsapp.com/send?text=${message}`;
-    window.open(url, '_blank');
   };
 
   // File upload handler
@@ -224,8 +224,22 @@ export default function ClientesFidelidadePage() {
             </div>
           </div>
 
-          {/* Action Buttons: Import / Download Original PDF */}
+          {/* Action Buttons: Rules / Import / Download Original PDF */}
           <div className="flex items-center flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setIsRulesModalOpen(true)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-amber-400 hover:bg-slate-700'
+                  : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
+              }`}
+              title="Ver regras oficiais de cálculo de pontos e créditos"
+            >
+              <Settings2 size={14} className="shrink-0 text-amber-500" />
+              <span>Regras de Pontos (4 pts = R$ 1,00)</span>
+            </button>
+
             <a
               href="/assets/aistudio/PDF_Exportacao_381f1e5e.pdf"
               download="PDF_Exportacao_Fidelidade.pdf"
@@ -253,6 +267,78 @@ export default function ClientesFidelidadePage() {
       </header>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-5 space-y-5">
+        {/* Official Loyalty Rules Summary Bar */}
+        <section
+          className={`p-3.5 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${
+            isDarkMode
+              ? 'bg-slate-900/90 border-amber-500/20'
+              : 'bg-amber-50/60 border-amber-200/80'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Info size={16} />
+            </div>
+            <div>
+              <p className="text-xs font-black text-slate-900 dark:text-white">
+                Configurações Oficiais de Fidelidade (Cálculo de Créditos)
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Cada <strong className="text-emerald-600 dark:text-emerald-400">4,00 pontos</strong> equivalem a{' '}
+                <strong className="text-emerald-600 dark:text-emerald-400">R$ 1,00 em créditos</strong> para compras (1 ponto = R$ 0,25).
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2 text-[11px] font-bold">
+            <span
+              className={`px-2.5 py-1 rounded-lg border tabular-nums ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-200'
+                  : 'bg-white border-slate-200 text-slate-700'
+              }`}
+            >
+              Produtos: <strong className="text-amber-600 dark:text-amber-400">R$ 10,00 = 1 pt</strong>
+            </span>
+            <span
+              className={`px-2.5 py-1 rounded-lg border tabular-nums ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-200'
+                  : 'bg-white border-slate-200 text-slate-700'
+              }`}
+            >
+              Serviços: <strong className="text-slate-500">R$ 0,00 (Não pontua)</strong>
+            </span>
+            <span
+              className={`px-2.5 py-1 rounded-lg border tabular-nums ${
+                isDarkMode
+                  ? 'bg-emerald-950/40 border-emerald-800/50 text-emerald-300'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              }`}
+            >
+              Resgate: <strong>4,00 pts = R$ 1,00</strong>
+            </span>
+            <span
+              className={`px-2.5 py-1 rounded-lg border tabular-nums ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-200'
+                  : 'bg-white border-slate-200 text-slate-700'
+              }`}
+            >
+              Liberação: <strong>{LOYALTY_CONFIG.diasParaCreditar} dias</strong>
+            </span>
+            <span
+              className={`px-2.5 py-1 rounded-lg border tabular-nums ${
+                isDarkMode
+                  ? 'bg-slate-800 border-slate-700 text-slate-200'
+                  : 'bg-white border-slate-200 text-slate-700'
+              }`}
+            >
+              Validade: <strong>{LOYALTY_CONFIG.validadeMeses} meses</strong>
+            </span>
+          </div>
+        </section>
+
         {/* Metric Cards Row */}
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Card 1: Total de Clientes */}
@@ -309,7 +395,7 @@ export default function ClientesFidelidadePage() {
               {stats.totalPointsActive.toLocaleString('pt-BR')} pts
             </p>
             <p className="text-[10px] font-semibold text-amber-600/90 dark:text-amber-400/90 mt-0.5">
-              {formatBRL(stats.totalBonusBRL)} em compras
+              {formatBRL(stats.totalBonusBRL)} em créditos (4 pts = R$ 1,00)
             </p>
           </div>
 
@@ -349,7 +435,7 @@ export default function ClientesFidelidadePage() {
               {stats.totalPointsConverted.toLocaleString('pt-BR')} pts
             </p>
             <p className="text-[10px] text-blue-600/80 dark:text-blue-400/80 mt-0.5">
-              Convertidos em compras anteriores
+              {formatBRL(stats.totalConvertedBRL)} convertidos em compras
             </p>
           </div>
         </section>
@@ -488,10 +574,10 @@ export default function ClientesFidelidadePage() {
                   }`}
                 >
                   <option value="all">Todos os Saldos</option>
-                  <option value="10">A partir de 10 pts</option>
-                  <option value="25">A partir de 25 pts</option>
-                  <option value="50">A partir de 50 pts</option>
-                  <option value="100">A partir de 100 pts</option>
+                  <option value="10">A partir de 10 pts (R$ 2,50)</option>
+                  <option value="25">A partir de 25 pts (R$ 6,25)</option>
+                  <option value="50">A partir de 50 pts (R$ 12,50)</option>
+                  <option value="100">A partir de 100 pts (R$ 25,00)</option>
                 </select>
               </div>
 
@@ -566,6 +652,9 @@ export default function ClientesFidelidadePage() {
                     </th>
                     <th className="py-3 px-3 text-right font-black uppercase tracking-wider">
                       Bônus Compras (R$)
+                      <span className="block text-[9px] font-semibold text-slate-400 normal-case">
+                        4 pts = R$ 1,00
+                      </span>
                     </th>
                     <th className="py-3 px-3 text-center font-black uppercase tracking-wider">
                       Próxima Validade
@@ -581,8 +670,11 @@ export default function ClientesFidelidadePage() {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {filteredClients.map((client, idx) => {
                     const isPositive = client.saldoPontos > 0;
-                    const bonusReais = formatBRL(client.saldoPontos);
+                    const bonusReais = formatBRL(pointsToBRL(client.saldoPontos));
                     const isCopied = copiedClientId === client.id;
+                    const whatsappHref = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+                      generateWhatsAppBonusMessage(client)
+                    )}`;
                     const zebraBg =
                       idx % 2 === 0
                         ? isDarkMode
@@ -646,9 +738,18 @@ export default function ClientesFidelidadePage() {
 
                         {/* Total Já Resgatado */}
                         <td className="py-2.5 px-3 text-right tabular-nums text-slate-500 dark:text-slate-400 font-medium">
-                          {client.pontosConvertidosTotal > 0
-                            ? `${client.pontosConvertidosTotal} pts`
-                            : '—'}
+                          {client.pontosConvertidosTotal > 0 ? (
+                            <div>
+                              <span className="font-bold text-slate-700 dark:text-slate-300">
+                                {client.pontosConvertidosTotal} pts
+                              </span>
+                              <span className="block text-[10px] text-slate-400">
+                                ({formatBRL(pointsToBRL(client.pontosConvertidosTotal))})
+                              </span>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
                         </td>
 
                         {/* Ações Comerciais do Vendedor */}
@@ -687,14 +788,15 @@ export default function ClientesFidelidadePage() {
                             </button>
 
                             {/* Disparar WhatsApp Web */}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenWhatsApp(client)}
-                              className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors cursor-pointer"
+                            <a
+                              href={whatsappHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors cursor-pointer inline-flex items-center justify-center"
                               title="Abrir no WhatsApp"
                             >
                               <MessageSquare size={14} />
-                            </button>
+                            </a>
                           </div>
                         </td>
                       </tr>
@@ -764,10 +866,10 @@ export default function ClientesFidelidadePage() {
 
                 <div>
                   <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                    Bônus para Compras (R$)
+                    Bônus para Compras (4 pts = R$ 1,00)
                   </span>
                   <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                    {formatBRL(selectedClient.saldoPontos)}
+                    {formatBRL(pointsToBRL(selectedClient.saldoPontos))}
                   </span>
                 </div>
 
@@ -811,6 +913,7 @@ export default function ClientesFidelidadePage() {
                       <th className="py-2.5 px-3 text-right font-bold">Débito</th>
                       <th className="py-2.5 px-3 text-right font-bold">Crédito</th>
                       <th className="py-2.5 px-3 text-right font-bold">Saldo Final</th>
+                      <th className="py-2.5 px-3 text-right font-bold">Equivalente (R$)</th>
                       <th className="py-2.5 px-3 text-center font-bold">Validade</th>
                     </tr>
                   </thead>
@@ -838,7 +941,10 @@ export default function ClientesFidelidadePage() {
                           {tx.credito > 0 ? `+${tx.credito}` : '0'}
                         </td>
                         <td className="py-2 px-3 text-right tabular-nums font-black text-slate-900 dark:text-white">
-                          {tx.saldoFinal}
+                          {tx.saldoFinal} pts
+                        </td>
+                        <td className="py-2 px-3 text-right tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
+                          {tx.saldoFinal > 0 ? formatBRL(pointsToBRL(tx.saldoFinal)) : 'R$ 0,00'}
                         </td>
                         <td className="py-2 px-3 text-center tabular-nums font-bold text-slate-600 dark:text-slate-300">
                           {tx.validade ? (
@@ -859,7 +965,115 @@ export default function ClientesFidelidadePage() {
         </div>
       )}
 
-      {/* Modal 2: Import / Update Loyalty File (PDF, Excel, CSV) */}
+      {/* Modal 2: Regras Oficiais de Fidelidade */}
+      {isRulesModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={() => setIsRulesModalOpen(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`w-full max-w-xl rounded-3xl border shadow-2xl overflow-hidden ${
+              isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+            }`}
+          >
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <Settings2 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black">Configurações de Fidelidade (ERP)</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Parâmetros oficiais para cálculo de pontos e conversão em créditos
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRulesModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="space-y-2.5 text-xs">
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <span className="font-semibold">Valor em produtos para adquirir 1 ponto (R$)</span>
+                  <span className="font-black text-sm tabular-nums text-amber-600 dark:text-amber-400">
+                    R$ 10,00
+                  </span>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <span className="font-semibold">Valor em serviços para adquirir 1 ponto (R$)</span>
+                  <span className="font-black text-sm tabular-nums text-slate-500">
+                    R$ 0,00
+                  </span>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isDarkMode
+                      ? 'bg-emerald-950/30 border-emerald-800/60'
+                      : 'bg-emerald-50 border-emerald-200'
+                  }`}
+                >
+                  <div>
+                    <span className="font-bold block text-emerald-700 dark:text-emerald-300">
+                      Pontos necessários para obter R$ 1,00 em créditos
+                    </span>
+                    <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80">
+                      Equivale a R$ 0,25 de desconto por cada 1 ponto acumulado
+                    </span>
+                  </div>
+                  <span className="font-black text-base tabular-nums text-emerald-600 dark:text-emerald-400">
+                    4,00 pts
+                  </span>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <span className="font-semibold">Tempo para creditar os pontos (em dias)</span>
+                  <span className="font-black text-sm tabular-nums">2 dias</span>
+                </div>
+
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <span className="font-semibold">Tempo de validade dos pontos (em meses)</span>
+                  <span className="font-black text-sm tabular-nums">12 meses</span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+                <img
+                  src="/assets/aistudio/image_911b2ed0.png"
+                  alt="Configurações de Fidelidade no ERP"
+                  className="w-full h-auto object-contain"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Import / Update Loyalty File (PDF, Excel, CSV) */}
       {isImportModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
@@ -947,7 +1161,7 @@ export default function ClientesFidelidadePage() {
                   <span>Como funciona a atualização:</span>
                 </p>
                 <p>
-                  Ao enviar o relatório exportado do sistema, os saldos finais, novos créditos de compras, pontos expirados e validades futuras são recalculados e salvos para todos os vendedores.
+                  Ao enviar o relatório exportado do sistema, os saldos finais, novos créditos de compras, pontos expirados e validades futuras são recalculados automaticamente usando a regra oficial (4 pontos = R$ 1,00 em créditos).
                 </p>
               </div>
             </div>
