@@ -32,7 +32,8 @@ import {
   PanelLeftOpen,
   ChevronLeft,
   ChevronRight,
-  Wind
+  Wind,
+  Award
 } from 'lucide-react';
 import { useRole } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
@@ -95,6 +96,7 @@ export function Sidebar() {
         { href: '/', icon: Home, label: 'Início', active: pathname === '/' },
         { href: '/products', icon: Package, label: 'Catálogo de Peças', active: pathname?.startsWith('/products') },
         { href: '/tabela-split', icon: Wind, label: 'Tabela de Split', active: pathname?.startsWith('/tabela-split') },
+        { href: '/clientes-fidelidade', icon: Award, label: 'Clientes Fidelidade', active: pathname?.startsWith('/clientes-fidelidade') || pathname?.startsWith('/fidelidade') },
         { href: '/tasks', icon: ClipboardList, label: 'Tarefas', active: pathname?.startsWith('/tasks') },
         { href: '/demands', icon: ListTodo, label: 'Demandas', active: pathname?.startsWith('/demands') },
         { href: '/routes', icon: Truck, label: 'Rotas & GPS', active: pathname?.startsWith('/routes') },

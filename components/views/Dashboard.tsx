@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X, PanelLeftClose, PanelLeftOpen, Wind } from 'lucide-react';
+import { Pin, LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, Settings, Home, ClipboardList, ShieldCheck, Edit2, Trash2, Columns as KanbanIcon, Phone, Search, Repeat, Wrench, AlertCircle, Clock, CheckCircle2, Plus, ListTodo, MessageSquare, TrendingUp, Share2, Sun, Moon, LogOut, Tag, Calendar, Package, ChevronRight, DollarSign, Radio, X, PanelLeftClose, PanelLeftOpen, Wind, Award } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -1199,6 +1199,26 @@ export default function Dashboard() {
                   </div>
                 </Link>
               )}
+
+              {/* Clientes Fidelidade & Bônus */}
+              <Link
+                href="/clientes-fidelidade"
+                className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                  isDarkMode
+                    ? 'bg-amber-950/30 border-amber-800/60 hover:border-amber-500'
+                    : 'bg-amber-50/80 border-amber-200 hover:border-amber-400'
+                }`}
+              >
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                  <Award size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 truncate">
+                    Fidelidade & Bônus
+                  </p>
+                  <span className="hidden sm:block text-[10px] text-amber-600 dark:text-amber-400 truncate">Pontos a Vencer</span>
+                </div>
+              </Link>
             </div>
           </section>
         )}

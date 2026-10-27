@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Copy, AlertTriangle, ExternalLink, Home, ClipboardList, ListTodo, ArrowRightLeft, Wrench, Tag, TrendingUp, Radio, DollarSign, Settings, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, Camera, User, Mail, Phone, Briefcase, MapPin, Send, Check, X, ShieldCheck, Users, CheckSquare, Square, Target, Package, Truck, MessageCircle, BarChart3, Copy, AlertTriangle, ExternalLink, Home, ClipboardList, ListTodo, ArrowRightLeft, Wrench, Tag, TrendingUp, Radio, DollarSign, Settings, ShoppingBag, Wind, Award, Gift, Download, FileSpreadsheet, Sparkles } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
 import { SkillSelector } from '@/components/SkillSelector';
@@ -153,6 +153,17 @@ export default function NewCollaboratorPage() {
   const [submodules, setSubmodules] = useState<Record<string, boolean>>({
     home: true,
     products: true,
+    split_table: true,
+    split_table_agratto: true,
+    split_table_gree: true,
+    split_table_elgin: true,
+    split_table_download: true,
+    loyalty: true,
+    loyalty_view_bonus: true,
+    loyalty_view_expiring: true,
+    loyalty_statements: true,
+    loyalty_whatsapp: true,
+    loyalty_import: false,
     tasks: true,
     demands: true,
     routes: true,
@@ -195,19 +206,257 @@ export default function NewCollaboratorPage() {
     });
     let defaults: Record<string, boolean> = {};
     if (role === 'admin') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: true, commissions: true, settings: true, adriano_commissions: true, permanent_tasks: true };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: true,
+        split_table_agratto: true,
+        split_table_gree: true,
+        split_table_elgin: true,
+        split_table_download: true,
+        loyalty: true,
+        loyalty_view_bonus: true,
+        loyalty_view_expiring: true,
+        loyalty_statements: true,
+        loyalty_whatsapp: true,
+        loyalty_import: true,
+        tasks: true,
+        demands: true,
+        routes: true,
+        whatsapp: true,
+        leads: true,
+        social_media: true,
+        deliveries: true,
+        truck_history: true,
+        transfers: true,
+        warranties: true,
+        assistances: true,
+        price_research: true,
+        sales: true,
+        reports: true,
+        live_panel: true,
+        collaborators: true,
+        commissions: true,
+        settings: true,
+        adriano_commissions: true,
+        permanent_tasks: true
+      };
     } else if (role === 'gerente' || role === 'supervisor') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: true, whatsapp: true, leads: true, social_media: true, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: true, reports: true, live_panel: true, collaborators: false, commissions: role === 'gerente', settings: false, adriano_commissions: false, permanent_tasks: true };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: true,
+        split_table_agratto: true,
+        split_table_gree: true,
+        split_table_elgin: true,
+        split_table_download: true,
+        loyalty: true,
+        loyalty_view_bonus: true,
+        loyalty_view_expiring: true,
+        loyalty_statements: true,
+        loyalty_whatsapp: true,
+        loyalty_import: true,
+        tasks: true,
+        demands: true,
+        routes: true,
+        whatsapp: true,
+        leads: true,
+        social_media: true,
+        deliveries: true,
+        truck_history: true,
+        transfers: true,
+        warranties: true,
+        assistances: true,
+        price_research: true,
+        sales: true,
+        reports: true,
+        live_panel: true,
+        collaborators: false,
+        commissions: role === 'gerente',
+        settings: false,
+        adriano_commissions: false,
+        permanent_tasks: true
+      };
     } else if (role === 'vendedor') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: true, leads: true, social_media: false, deliveries: true, truck_history: false, transfers: false, warranties: true, assistances: true, price_research: true, sales: true, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: true,
+        split_table_agratto: true,
+        split_table_gree: true,
+        split_table_elgin: true,
+        split_table_download: true,
+        loyalty: true,
+        loyalty_view_bonus: true,
+        loyalty_view_expiring: true,
+        loyalty_statements: true,
+        loyalty_whatsapp: true,
+        loyalty_import: false,
+        tasks: true,
+        demands: true,
+        routes: false,
+        whatsapp: true,
+        leads: true,
+        social_media: false,
+        deliveries: true,
+        truck_history: false,
+        transfers: false,
+        warranties: true,
+        assistances: true,
+        price_research: true,
+        sales: true,
+        reports: false,
+        live_panel: false,
+        collaborators: false,
+        commissions: false,
+        settings: false,
+        adriano_commissions: false,
+        permanent_tasks: false
+      };
     } else if (role === 'entregador') {
-      defaults = { home: true, products: true, tasks: false, demands: false, routes: true, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: false,
+        split_table_agratto: false,
+        split_table_gree: false,
+        split_table_elgin: false,
+        split_table_download: false,
+        loyalty: false,
+        loyalty_view_bonus: false,
+        loyalty_view_expiring: false,
+        loyalty_statements: false,
+        loyalty_whatsapp: false,
+        loyalty_import: false,
+        tasks: false,
+        demands: false,
+        routes: true,
+        whatsapp: false,
+        leads: false,
+        social_media: false,
+        deliveries: true,
+        truck_history: true,
+        transfers: false,
+        warranties: false,
+        assistances: false,
+        price_research: false,
+        sales: false,
+        reports: false,
+        live_panel: false,
+        collaborators: false,
+        commissions: false,
+        settings: false,
+        adriano_commissions: false,
+        permanent_tasks: false
+      };
     } else if (role === 'estoque') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: true, transfers: true, warranties: true, assistances: true, price_research: true, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: false,
+        split_table_agratto: false,
+        split_table_gree: false,
+        split_table_elgin: false,
+        split_table_download: false,
+        loyalty: false,
+        loyalty_view_bonus: false,
+        loyalty_view_expiring: false,
+        loyalty_statements: false,
+        loyalty_whatsapp: false,
+        loyalty_import: false,
+        tasks: true,
+        demands: true,
+        routes: false,
+        whatsapp: false,
+        leads: false,
+        social_media: false,
+        deliveries: true,
+        truck_history: true,
+        transfers: true,
+        warranties: true,
+        assistances: true,
+        price_research: true,
+        sales: false,
+        reports: false,
+        live_panel: false,
+        collaborators: false,
+        commissions: false,
+        settings: false,
+        adriano_commissions: false,
+        permanent_tasks: false
+      };
     } else if (role === 'caixa') {
-      defaults = { home: true, products: true, tasks: true, demands: true, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: true, truck_history: false, transfers: true, warranties: true, assistances: false, price_research: false, sales: true, reports: true, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: true,
+        split_table_agratto: true,
+        split_table_gree: true,
+        split_table_elgin: true,
+        split_table_download: false,
+        loyalty: true,
+        loyalty_view_bonus: true,
+        loyalty_view_expiring: true,
+        loyalty_statements: true,
+        loyalty_whatsapp: false,
+        loyalty_import: false,
+        tasks: true,
+        demands: true,
+        routes: false,
+        whatsapp: false,
+        leads: false,
+        social_media: false,
+        deliveries: true,
+        truck_history: false,
+        transfers: true,
+        warranties: true,
+        assistances: false,
+        price_research: false,
+        sales: true,
+        reports: true,
+        live_panel: false,
+        collaborators: false,
+        commissions: false,
+        settings: false,
+        adriano_commissions: false,
+        permanent_tasks: false
+      };
     } else {
-      defaults = { home: true, products: true, tasks: true, demands: false, routes: false, whatsapp: false, leads: false, social_media: false, deliveries: false, truck_history: false, transfers: false, warranties: false, assistances: false, price_research: false, sales: false, reports: false, live_panel: false, collaborators: false, commissions: false, settings: false, adriano_commissions: false, permanent_tasks: false };
+      defaults = {
+        home: true,
+        products: true,
+        split_table: false,
+        split_table_agratto: false,
+        split_table_gree: false,
+        split_table_elgin: false,
+        split_table_download: false,
+        loyalty: false,
+        loyalty_view_bonus: false,
+        loyalty_view_expiring: false,
+        loyalty_statements: false,
+        loyalty_whatsapp: false,
+        loyalty_import: false,
+        tasks: true,
+        demands: false,
+        routes: false,
+        whatsapp: false,
+        leads: false,
+        social_media: false,
+        deliveries: false,
+        truck_history: false,
+        transfers: false,
+        warranties: false,
+        assistances: false,
+        price_research: false,
+        sales: false,
+        reports: false,
+        live_panel: false,
+        collaborators: false,
+        commissions: false,
+        settings: false,
+        adriano_commissions: false,
+        permanent_tasks: false
+      };
     }
     setSubmodules(defaults);
     setCanAccessLeads(defaults.leads);
@@ -400,6 +649,8 @@ export default function NewCollaboratorPage() {
           skills: selectedSkills,
           can_access_home: userRole === 'admin' ? true : !!submodules.home,
           can_access_products: userRole === 'admin' ? true : !!submodules.products,
+          can_access_split_table: userRole === 'admin' ? true : !!submodules.split_table,
+          can_access_loyalty: userRole === 'admin' ? true : !!submodules.loyalty,
           can_access_tasks: userRole === 'admin' ? true : !!submodules.tasks,
           can_access_demands: userRole === 'admin' ? true : !!submodules.demands,
           can_access_routes: userRole === 'admin' ? true : !!submodules.routes,
@@ -420,6 +671,22 @@ export default function NewCollaboratorPage() {
           can_access_settings: userRole === 'admin' ? true : !!submodules.settings,
           can_access_adriano_commissions: userRole === 'admin' ? true : !!submodules.adriano_commissions,
           can_access_permanent_tasks: userRole === 'admin' ? true : !!submodules.permanent_tasks,
+          submodules: {
+            ...submodules,
+            home: userRole === 'admin' ? true : !!submodules.home,
+            products: userRole === 'admin' ? true : !!submodules.products,
+            split_table: userRole === 'admin' ? true : !!submodules.split_table,
+            split_table_agratto: userRole === 'admin' ? true : !!submodules.split_table_agratto,
+            split_table_gree: userRole === 'admin' ? true : !!submodules.split_table_gree,
+            split_table_elgin: userRole === 'admin' ? true : !!submodules.split_table_elgin,
+            split_table_download: userRole === 'admin' ? true : !!submodules.split_table_download,
+            loyalty: userRole === 'admin' ? true : !!submodules.loyalty,
+            loyalty_view_bonus: userRole === 'admin' ? true : !!submodules.loyalty_view_bonus,
+            loyalty_view_expiring: userRole === 'admin' ? true : !!submodules.loyalty_view_expiring,
+            loyalty_statements: userRole === 'admin' ? true : !!submodules.loyalty_statements,
+            loyalty_whatsapp: userRole === 'admin' ? true : !!submodules.loyalty_whatsapp,
+            loyalty_import: userRole === 'admin' ? true : !!submodules.loyalty_import,
+          },
           receives_leads: receivesLeads
         })
       });
@@ -885,6 +1152,31 @@ export default function NewCollaboratorPage() {
                     items: [
                       { id: 'home', label: 'Início', desc: 'Página inicial e painel principal', icon: Home },
                       { id: 'products', label: 'Catálogo de Peças', desc: 'Gestão e consulta de peças', icon: Package },
+                      {
+                        id: 'split_table',
+                        label: 'Tabela de Split',
+                        desc: 'Tabela oficial de preços de ar condicionado',
+                        icon: Wind,
+                        submodules: [
+                          { id: 'split_table_agratto', label: 'Tabela Agratto', desc: 'Consulta preços Hi-Wall On-Off e Inverter', icon: Wind },
+                          { id: 'split_table_gree', label: 'Tabela Gree', desc: 'G-Auto, Classic, Piso Teto e Cassete', icon: Wind },
+                          { id: 'split_table_elgin', label: 'Tabela Elgin', desc: 'Piso Teto, Cassete e Inverter Frio', icon: Wind },
+                          { id: 'split_table_download', label: 'Download de PDFs', desc: 'Baixar e visualizar tabelas originais', icon: Download },
+                        ]
+                      },
+                      {
+                        id: 'loyalty',
+                        label: 'Clientes Fidelidade',
+                        desc: 'Consulta de saldos de bônus e pontos a vencer',
+                        icon: Award,
+                        submodules: [
+                          { id: 'loyalty_view_bonus', label: 'Saldos & Bônus R$', desc: 'Consultar saldo e valor do bônus em R$', icon: Gift },
+                          { id: 'loyalty_view_expiring', label: 'Pontos a Vencer', desc: 'Avisos de pontos expirando no período', icon: Sparkles },
+                          { id: 'loyalty_statements', label: 'Extrato Detalhado', desc: 'Histórico de notas, entradas e saídas', icon: FileSpreadsheet },
+                          { id: 'loyalty_whatsapp', label: 'Disparo via WhatsApp', desc: 'Enviar notificação pronta com saldo ao cliente', icon: MessageCircle },
+                          { id: 'loyalty_import', label: 'Importação de Dados', desc: 'Importar novos relatórios PDF/Excel de bônus', icon: Download },
+                        ]
+                      },
                       { id: 'tasks', label: 'Tarefas', desc: 'Gerenciamento de tarefas da equipe', icon: ClipboardList },
                       { id: 'demands', label: 'Demandas', desc: 'Gestão de chamados e solicitações', icon: ListTodo },
                       { id: 'routes', label: 'Rotas & GPS', desc: 'Roteirização e rastreamento', icon: Truck },
@@ -935,45 +1227,128 @@ export default function NewCollaboratorPage() {
                     <div className="space-y-2">
                       {group.items.map(module => {
                         const isActive = userRole === 'admin' || !!submodules[module.id];
+                        const hasSub = Array.isArray((module as any).submodules) && (module as any).submodules.length > 0;
+                        const subList = ((module as any).submodules || []) as Array<{ id: string; label: string; desc: string; icon: any }>;
+
                         return (
-                          <button
-                            key={module.id}
-                            type="button"
-                            onClick={() => {
-                              if (userRole === 'admin') return;
-                              setSubmodules(prev => ({ ...prev, [module.id]: !prev[module.id] }));
-                            }}
-                            disabled={userRole === 'admin'}
-                            className={`w-full flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${
-                              isActive
-                                ? (isDarkMode ? 'bg-blue-600/10 border-blue-600/50' : 'bg-blue-50 border-blue-200')
-                                : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100')
-                            } ${userRole === 'admin' ? 'opacity-85 cursor-not-allowed' : 'hover:border-blue-400'}`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className={`size-9 rounded-xl flex items-center justify-center ${
+                          <div key={module.id} className="space-y-1.5">
+                            <button
+                              key={module.id}
+                              type="button"
+                              onClick={() => {
+                                if (userRole === 'admin') return;
+                                const nextState = !submodules[module.id];
+                                setSubmodules(prev => {
+                                  const updated = { ...prev, [module.id]: nextState };
+                                  if (!nextState && hasSub) {
+                                    subList.forEach(s => {
+                                      updated[s.id] = false;
+                                    });
+                                  } else if (nextState && hasSub) {
+                                    subList.forEach(s => {
+                                      if (updated[s.id] === undefined) {
+                                        updated[s.id] = true;
+                                      }
+                                    });
+                                  }
+                                  return updated;
+                                });
+                              }}
+                              disabled={userRole === 'admin'}
+                              className={`w-full flex items-center justify-between p-3 rounded-2xl border-2 transition-all ${
                                 isActive
-                                  ? (isDarkMode ? 'bg-blue-600/30 text-blue-400' : 'bg-blue-600 text-white')
-                                  : (isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400')
+                                  ? (isDarkMode ? 'bg-blue-600/10 border-blue-600/50' : 'bg-blue-50 border-blue-200')
+                                  : (isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100')
+                              } ${userRole === 'admin' ? 'opacity-85 cursor-not-allowed' : 'hover:border-blue-400'}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className={`size-9 rounded-xl flex items-center justify-center ${
+                                  isActive
+                                    ? (isDarkMode ? 'bg-blue-600/30 text-blue-400' : 'bg-blue-600 text-white')
+                                    : (isDarkMode ? 'bg-slate-800 text-slate-500' : 'bg-slate-100 text-slate-400')
+                                }`}>
+                                  <module.icon size={18} />
+                                </div>
+                                <div className="text-left">
+                                  <span className={`text-xs font-bold block ${isActive ? (isDarkMode ? 'text-blue-400' : 'text-blue-700') : (isDarkMode ? 'text-slate-400' : 'text-slate-700')}`}>
+                                    {module.label}
+                                  </span>
+                                  <span className="text-[9px] text-slate-500 uppercase font-medium">{module.desc}</span>
+                                </div>
+                              </div>
+                              
+                              <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${
+                                isActive ? 'bg-blue-600' : (isDarkMode ? 'bg-slate-800' : 'bg-slate-200')
                               }`}>
-                                <module.icon size={18} />
+                                <div className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition-all duration-300 ${
+                                  isActive ? 'left-5.5' : 'left-0.5'
+                                }`} />
                               </div>
-                              <div className="text-left">
-                                <span className={`text-xs font-bold block ${isActive ? (isDarkMode ? 'text-blue-400' : 'text-blue-700') : (isDarkMode ? 'text-slate-400' : 'text-slate-700')}`}>
-                                  {module.label}
-                                </span>
-                                <span className="text-[9px] text-slate-500 uppercase font-medium">{module.desc}</span>
+                            </button>
+
+                            {/* Submódulos Aninhados */}
+                            {hasSub && isActive && (
+                              <div className={`ml-4 pl-3 py-2 space-y-1.5 border-l-2 ${
+                                isDarkMode ? 'border-blue-500/30 bg-slate-900/40' : 'border-blue-200 bg-blue-50/30'
+                              } rounded-r-2xl pr-2`}>
+                                <div className="flex items-center justify-between pb-1 px-1">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    Submódulos de {module.label}:
+                                  </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                  {subList.map(subItem => {
+                                    const isSubActive = userRole === 'admin' || !!submodules[subItem.id];
+                                    const SubIcon = subItem.icon;
+                                    return (
+                                      <button
+                                        key={subItem.id}
+                                        type="button"
+                                        onClick={() => {
+                                          if (userRole === 'admin') return;
+                                          setSubmodules(prev => ({
+                                            ...prev,
+                                            [subItem.id]: !prev[subItem.id]
+                                          }));
+                                        }}
+                                        disabled={userRole === 'admin'}
+                                        className={`flex items-center justify-between p-2 rounded-xl border transition-all text-left ${
+                                          isSubActive
+                                            ? (isDarkMode ? 'bg-blue-950/40 border-blue-500/40 text-blue-300' : 'bg-white border-blue-200 text-blue-900 shadow-xs')
+                                            : (isDarkMode ? 'bg-slate-900/60 border-slate-800 text-slate-500 opacity-60' : 'bg-slate-50 border-slate-200 text-slate-400')
+                                        } ${userRole === 'admin' ? 'cursor-not-allowed' : 'hover:border-blue-400'}`}
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0 pr-1">
+                                          <div className={`size-6 rounded-lg flex items-center justify-center shrink-0 ${
+                                            isSubActive ? 'bg-blue-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                                          }`}>
+                                            <SubIcon size={12} />
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className="text-[11px] font-bold leading-tight truncate">
+                                              {subItem.label}
+                                            </p>
+                                            <p className="text-[9px] text-slate-400 dark:text-slate-500 truncate">
+                                              {subItem.desc}
+                                            </p>
+                                          </div>
+                                        </div>
+
+                                        <div className={`w-7 h-4 rounded-full relative shrink-0 transition-colors ${
+                                          isSubActive ? 'bg-blue-600' : (isDarkMode ? 'bg-slate-800' : 'bg-slate-300')
+                                        }`}>
+                                          <div className={`absolute top-0.5 size-3 rounded-full bg-white transition-all ${
+                                            isSubActive ? 'left-3.5' : 'left-0.5'
+                                          }`} />
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                            
-                            <div className={`w-10 h-5 rounded-full relative transition-all duration-300 ${
-                              isActive ? 'bg-blue-600' : (isDarkMode ? 'bg-slate-800' : 'bg-slate-200')
-                            }`}>
-                              <div className={`absolute top-0.5 size-4 rounded-full bg-white shadow-sm transition-all duration-300 ${
-                                isActive ? 'left-5.5' : 'left-0.5'
-                              }`} />
-                            </div>
-                          </button>
+                            )}
+                          </div>
                         );
                       })}
                     </div>

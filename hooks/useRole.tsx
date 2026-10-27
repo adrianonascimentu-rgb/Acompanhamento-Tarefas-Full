@@ -59,6 +59,18 @@ export const HOME_PAGE_CARDS: HomeCardDefinition[] = [
     category: 'Topo & Atalhos',
   },
   {
+    id: 'card_tabela_split',
+    label: 'Tabela de Split (Ar Condicionado)',
+    desc: 'Consulta de preços oficiais de Split 1x a 10x (Agratto, Gree, Elgin)',
+    category: 'Topo & Atalhos',
+  },
+  {
+    id: 'card_clientes_fidelidade',
+    label: 'Clientes Fidelidade & Bônus',
+    desc: 'Acesso rápido ao programa de fidelidade, bônus e pontos a vencer',
+    category: 'Indicadores & Operação',
+  },
+  {
     id: 'card_tarefas_permanentes',
     label: 'Tarefas Permanentes & Notas',
     desc: 'Acesso aos blocos de anotações e rotinas fixas diárias',
@@ -133,6 +145,8 @@ export function getDefaultHomeCardsForRole(roleInput: string | null | undefined)
       card_truck_banner: true,
       card_central_modulos: true,
       card_catalogo_pecas: true,
+      card_tabela_split: true,
+      card_clientes_fidelidade: true,
       card_tarefas_permanentes: true,
       card_acesso_rapido: true,
       card_painel_gestor_stats: true,
@@ -151,6 +165,8 @@ export function getDefaultHomeCardsForRole(roleInput: string | null | undefined)
       card_truck_banner: true,
       card_central_modulos: true,
       card_catalogo_pecas: true,
+      card_tabela_split: true,
+      card_clientes_fidelidade: true,
       card_tarefas_permanentes: false,
       card_acesso_rapido: true,
       card_painel_gestor_stats: true,
@@ -240,6 +256,9 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   // Principal
   home: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'],
   products: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'],
+  split_table: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'],
+  loyalty: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor'],
+  loyalty_import: ['admin', 'gerente', 'supervisor'],
   tasks: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'user'],
   demands: ['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque'],
   routes: ['admin', 'gerente', 'supervisor', 'entregador'],
@@ -303,6 +322,10 @@ interface RoleContextType {
   canAccessSales: boolean;
   canAccessDemands: boolean;
   canAccessPermanentTasks: boolean;
+  canAccessSplitTable: boolean;
+  canAccessLoyalty: boolean;
+  canImportLoyalty: boolean;
+  hasSubmoduleAccess: (submoduleKey: string) => boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (roleOrUserData: any, userData?: any) => void;
@@ -746,6 +769,27 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     canViewHomeCard('card_tarefas_permanentes')
   );
 
+  const canAccessSplitTable = hasPermission('split_table');
+  const canAccessLoyalty = hasPermission('loyalty');
+  const canImportLoyalty = Boolean(isAdmin || isGerente || isSupervisor || hasPermission('loyalty_import'));
+
+  const hasSubmoduleAccess = (submoduleKey: string): boolean => {
+    if (isAdmin) return true;
+    if (!user) return false;
+    const effectiveSubmodules = liveAccessEntry?.submodules || user.submodules;
+    if (effectiveSubmodules && typeof effectiveSubmodules[submoduleKey] === 'boolean') {
+      return effectiveSubmodules[submoduleKey];
+    }
+    if (submoduleKey.startsWith('split_table_')) {
+      return canAccessSplitTable;
+    }
+    if (submoduleKey.startsWith('loyalty_')) {
+      if (submoduleKey === 'loyalty_import') return canImportLoyalty;
+      return canAccessLoyalty;
+    }
+    return hasPermission(submoduleKey);
+  };
+
   const value = {
     role: normalizedRole,
     user,
@@ -771,6 +815,10 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     canAccessSales: hasPermission('sales'),
     canAccessDemands: hasPermission('demands'),
     canAccessPermanentTasks,
+    canAccessSplitTable,
+    canAccessLoyalty,
+    canImportLoyalty,
+    hasSubmoduleAccess,
     isAuthenticated: !!user,
     isLoading,
     login,

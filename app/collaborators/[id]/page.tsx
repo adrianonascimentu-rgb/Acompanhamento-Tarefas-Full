@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { ArrowLeft, MoreVertical, MapPin, Mail, Phone, Star, Calendar, Palette, Wand2, CheckSquare, Users, Folder, User as UserIcon, ChevronRight, ShieldCheck, Edit2, Trash2, CheckCircle2, Target, Plus, X, Camera, ChevronDown, Clock, Activity, ArrowUp, Check, Share2, TrendingUp, Award, Zap, Briefcase, ClipboardList, UserX, UserCheck, AlertOctagon, LogOut } from 'lucide-react';
+import { ArrowLeft, MoreVertical, MapPin, Mail, Phone, Star, Calendar, Palette, Wand2, CheckSquare, Users, Folder, User as UserIcon, ChevronRight, ShieldCheck, Edit2, Trash2, CheckCircle2, Target, Plus, X, Camera, ChevronDown, Clock, Activity, ArrowUp, Check, Share2, TrendingUp, Award, Zap, Briefcase, ClipboardList, UserX, UserCheck, AlertOctagon, LogOut, Wind } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'motion/react';
@@ -1345,26 +1345,34 @@ export default function ProfilePage() {
               <div>
                 <h4 className={`text-sm font-bold mb-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>Acesso a Módulos</h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                  {['leads', 'deliveries', 'transfers', 'warranties', 'reports', 'whatsapp', 'sales'].map(module => (
-                    <button 
-                      key={module}
-                      onClick={() => handleToggleModuleAccess(module)}
-                      className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all hover:scale-[1.02] active:scale-95 ${
-                        user[`can_access_${module}`]
-                          ? (isDarkMode ? 'bg-blue-900/30 border-blue-700 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm')
-                          : (isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-400')
-                      }`}
-                    >
-                      <div className={`size-10 rounded-2xl flex items-center justify-center mb-3 transition-colors ${
-                        user[`can_access_${module}`]
-                          ? (isDarkMode ? 'bg-blue-800' : 'bg-blue-100')
-                          : (isDarkMode ? 'bg-slate-700' : 'bg-slate-200')
-                      }`}>
-                        {user[`can_access_${module}`] ? <ShieldCheck size={20} /> : <X size={20} />}
-                      </div>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-center">{module === 'whatsapp' ? 'WhatsApp' : module === 'sales' ? 'Vendas' : module}</span>
-                    </button>
-                  ))}
+                  {['split_table', 'loyalty', 'leads', 'deliveries', 'transfers', 'warranties', 'reports', 'whatsapp', 'sales'].map(module => {
+                    const isSplit = module === 'split_table';
+                    const isLoyalty = module === 'loyalty';
+                    const labelName = isSplit ? 'Tabela Split' : isLoyalty ? 'Fidelidade' : module === 'whatsapp' ? 'WhatsApp' : module === 'sales' ? 'Vendas' : module;
+                    const fieldKey = isSplit ? 'can_access_split_table' : isLoyalty ? 'can_access_loyalty' : `can_access_${module}`;
+                    const hasAccess = user[fieldKey] !== false;
+
+                    return (
+                      <button 
+                        key={module}
+                        onClick={() => handleToggleModuleAccess(module)}
+                        className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all hover:scale-[1.02] active:scale-95 ${
+                          hasAccess
+                            ? (isDarkMode ? 'bg-blue-900/30 border-blue-700 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm')
+                            : (isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-400')
+                        }`}
+                      >
+                        <div className={`size-10 rounded-2xl flex items-center justify-center mb-3 transition-colors ${
+                          hasAccess
+                            ? (isDarkMode ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-700')
+                            : (isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500')
+                        }`}>
+                          {isSplit ? <Wind size={20} /> : isLoyalty ? <Award size={20} /> : hasAccess ? <ShieldCheck size={20} /> : <X size={20} />}
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-center">{labelName}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

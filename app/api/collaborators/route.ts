@@ -480,6 +480,17 @@ export async function POST(req: Request) {
       {
         home: isTargetAdmin ? true : can_access_home ?? true,
         products: isTargetAdmin ? true : can_access_products ?? true,
+        split_table: isTargetAdmin ? true : body.can_access_split_table ?? body.submodules?.split_table ?? true,
+        split_table_agratto: isTargetAdmin ? true : body.submodules?.split_table_agratto ?? true,
+        split_table_gree: isTargetAdmin ? true : body.submodules?.split_table_gree ?? true,
+        split_table_elgin: isTargetAdmin ? true : body.submodules?.split_table_elgin ?? true,
+        split_table_download: isTargetAdmin ? true : body.submodules?.split_table_download ?? true,
+        loyalty: isTargetAdmin ? true : body.can_access_loyalty ?? body.submodules?.loyalty ?? true,
+        loyalty_view_bonus: isTargetAdmin ? true : body.submodules?.loyalty_view_bonus ?? true,
+        loyalty_view_expiring: isTargetAdmin ? true : body.submodules?.loyalty_view_expiring ?? true,
+        loyalty_statements: isTargetAdmin ? true : body.submodules?.loyalty_statements ?? true,
+        loyalty_whatsapp: isTargetAdmin ? true : body.submodules?.loyalty_whatsapp ?? true,
+        loyalty_import: isTargetAdmin ? true : body.submodules?.loyalty_import ?? false,
         tasks: isTargetAdmin ? true : can_access_tasks ?? true,
         demands: isTargetAdmin ? true : !!can_access_demands,
         routes: isTargetAdmin ? true : !!can_access_routes,
@@ -500,6 +511,7 @@ export async function POST(req: Request) {
         settings: isTargetAdmin ? true : !!can_access_settings,
         adriano_commissions: isTargetAdmin ? true : !!can_access_adriano_commissions,
         permanent_tasks: isTargetAdmin ? true : !!can_access_permanent_tasks,
+        ...(body.submodules && typeof body.submodules === 'object' ? body.submodules : {}),
       },
       body.homeCards && typeof body.homeCards === 'object' ? body.homeCards : undefined
     );
@@ -797,6 +809,17 @@ export async function PUT(req: Request) {
         {
           home: isTargetAdmin ? true : can_access_home ?? true,
           products: isTargetAdmin ? true : can_access_products ?? true,
+          split_table: isTargetAdmin ? true : body.can_access_split_table ?? body.submodules?.split_table ?? true,
+          split_table_agratto: isTargetAdmin ? true : body.submodules?.split_table_agratto ?? true,
+          split_table_gree: isTargetAdmin ? true : body.submodules?.split_table_gree ?? true,
+          split_table_elgin: isTargetAdmin ? true : body.submodules?.split_table_elgin ?? true,
+          split_table_download: isTargetAdmin ? true : body.submodules?.split_table_download ?? true,
+          loyalty: isTargetAdmin ? true : body.can_access_loyalty ?? body.submodules?.loyalty ?? true,
+          loyalty_view_bonus: isTargetAdmin ? true : body.submodules?.loyalty_view_bonus ?? true,
+          loyalty_view_expiring: isTargetAdmin ? true : body.submodules?.loyalty_view_expiring ?? true,
+          loyalty_statements: isTargetAdmin ? true : body.submodules?.loyalty_statements ?? true,
+          loyalty_whatsapp: isTargetAdmin ? true : body.submodules?.loyalty_whatsapp ?? true,
+          loyalty_import: isTargetAdmin ? true : body.submodules?.loyalty_import ?? false,
           tasks: isTargetAdmin ? true : can_access_tasks ?? true,
           demands: isTargetAdmin ? true : !!can_access_demands,
           routes: isTargetAdmin ? true : !!can_access_routes,
@@ -817,6 +840,7 @@ export async function PUT(req: Request) {
           settings: isTargetAdmin ? true : !!can_access_settings,
           adriano_commissions: isTargetAdmin ? true : !!can_access_adriano_commissions,
           permanent_tasks: isTargetAdmin ? true : !!can_access_permanent_tasks,
+          ...(submodules && typeof submodules === 'object' ? submodules : {}),
         },
         homeCards && typeof homeCards === 'object' ? homeCards : undefined
       );
