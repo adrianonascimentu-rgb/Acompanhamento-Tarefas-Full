@@ -739,15 +739,22 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     user?.can_access_deliveries !== false ||
     hasPermission('deliveries');
 
-  // Regra de Negócio: O usuário que tem a função de caixa também pode mudar o status das entregas
+  // Regra de Negócio: O usuário que tem a função de caixa, entrega ou estoque também pode mudar o status das entregas
   const canUpdateDeliveryStatus = Boolean(
     isAdmin || 
     isCaixa || 
     isEntregador || 
+    isEstoque ||
     isGerente || 
     isSupervisor ||
     (normalizedRole as string) === 'caixa' ||
+    (normalizedRole as string) === 'estoque' ||
     rawRole.includes('caixa') ||
+    rawRole.includes('estoque') ||
+    rawRole.includes('almoxarife') ||
+    rawRole.includes('separador') ||
+    rawRole.includes('expedi') ||
+    rawRole.includes('logistica') ||
     rawRole.includes('financeiro') ||
     rawRole.includes('secretaria')
   );
