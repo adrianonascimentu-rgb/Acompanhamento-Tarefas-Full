@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LoyaltyClient } from '@/lib/loyaltyData';
+import {
+  LoyaltyClient,
+  LoyaltyPurchaseRecord,
+  getInitialLoyaltyClients,
+} from '@/lib/loyaltyData';
 import PDFParser from 'pdf2json';
 import * as XLSX from 'xlsx';
 
@@ -9,13 +13,32 @@ export const config = {
   },
 };
 
+function parseDateBR(dStr?: string | null): number {
+  if (!dStr) return 0;
+  const [d, m, y] = dStr.split('/').map(Number);
+  return new Date(y, m - 1, d).getTime();
+}
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
+    const currentClientsRaw = formData.get('currentClients') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
+    }
+
+    let baseClients: LoyaltyClient[] = getInitialLoyaltyClients();
+    if (currentClientsRaw) {
+      try {
+        const parsed = JSON.parse(currentClientsRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          baseClients = parsed;
+        }
+      } catch {
+        // fallback to getInitialLoyaltyClients
+      }
     }
 
     const fileName = file.name.toLowerCase();
@@ -24,10 +47,8 @@ export async function POST(req: NextRequest) {
     let parsedClients: LoyaltyClient[] = [];
 
     if (fileName.endsWith('.pdf')) {
-      // Parse PDF using pdf2json
-      parsedClients = await parsePdfBuffer(buffer);
+      parsedClients = await parsePdfBuffer(buffer, baseClients);
     } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls') || fileName.endsWith('.csv')) {
-      // Parse Excel or CSV using xlsx
       parsedClients = parseExcelBuffer(buffer);
     } else {
       return NextResponse.json(
@@ -47,7 +68,7 @@ export async function POST(req: NextRequest) {
       success: true,
       count: parsedClients.length,
       clients: parsedClients,
-      message: `${parsedClients.length} clientes fidelidade importados com sucesso!`,
+      message: `${parsedClients.length} clientes fidelidade processados e cruzados com sucesso!`,
     });
   } catch (error: any) {
     console.error('Error importing loyalty file:', error);
@@ -58,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function parsePdfBuffer(buffer: Buffer): Promise<LoyaltyClient[]> {
+function parsePdfBuffer(buffer: Buffer, baseClients: LoyaltyClient[]): Promise<LoyaltyClient[]> {
   return new Promise((resolve, reject) => {
     const pdfParser = new (PDFParser as any)();
 
@@ -68,6 +89,177 @@ function parsePdfBuffer(buffer: Buffer): Promise<LoyaltyClient[]> {
 
     pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
       try {
+        // First detect if this PDF is a "Vendas Agrupada por Vendedor" report
+        let isSalesBySellerReport = false;
+        for (let p = 0; p < Math.min(3, pdfData.Pages.length); p++) {
+          const page = pdfData.Pages[p];
+          if (!page.Texts) continue;
+          for (const t of page.Texts) {
+            const txt = decodeURIComponent(t.R[0].T).trim();
+            if (txt === 'Vendedor' || txt.includes('Total do Vendedor:')) {
+              isSalesBySellerReport = true;
+              break;
+            }
+          }
+          if (isSalesBySellerReport) break;
+        }
+
+        if (isSalesBySellerReport) {
+          let currentVendedorCodigo = '';
+          let currentVendedorNome = '';
+          const salesByClient = new Map<string, LoyaltyPurchaseRecord[]>();
+          const salesBySeq = new Map<string, LoyaltyPurchaseRecord>();
+
+          for (let pageIdx = 0; pageIdx < pdfData.Pages.length; pageIdx++) {
+            const page = pdfData.Pages[pageIdx];
+            if (!page.Texts || page.Texts.length === 0) continue;
+
+            const sortedTexts = [...page.Texts].sort(
+              (a: any, b: any) => a.y - b.y || a.x - b.x
+            );
+            const lines: { y: number; items: { x: number; text: string }[] }[] = [];
+
+            for (const t of sortedTexts) {
+              const decoded = decodeURIComponent(t.R[0].T).trim();
+              if (!decoded) continue;
+              const lastLine = lines[lines.length - 1];
+              if (lastLine && Math.abs(lastLine.y - t.y) < 0.35) {
+                lastLine.items.push({ x: t.x, text: decoded });
+              } else {
+                lines.push({ y: t.y, items: [{ x: t.x, text: decoded }] });
+              }
+            }
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i];
+              if (line.items[0]?.text === 'Vendedor' && line.items[1]) {
+                const vendStr = line.items.slice(1).map((it) => it.text).join(' ');
+                const m = vendStr.match(/^(\d+)\s*-\s*(.+)$/);
+                if (m) {
+                  currentVendedorCodigo = m[1].trim();
+                  currentVendedorNome = m[2].trim();
+                }
+                continue;
+              }
+
+              const first = line.items[0];
+              if (first && /^\d{2}\/\d{2}\/\d{4}$/.test(first.text)) {
+                const data = first.text;
+                let seq = '';
+                let doc = '';
+                let operacao = '';
+                let clienteRaw = '';
+                let valorRaw = '';
+
+                for (let j = 1; j < line.items.length; j++) {
+                  const it = line.items[j];
+                  if (it.x >= 5.0 && it.x < 8.5) seq = it.text;
+                  else if (it.x >= 8.5 && it.x < 13.5) doc = it.text;
+                  else if (it.x >= 17.5 && it.x < 19.0) operacao = it.text;
+                  else if (it.x >= 19.0 && it.x < 30.0) {
+                    clienteRaw += (clienteRaw ? ' ' : '') + it.text;
+                  } else if (it.x >= 30.0) {
+                    valorRaw = it.text;
+                  }
+                }
+
+                if (i + 1 < lines.length) {
+                  const nextLine = lines[i + 1];
+                  if (
+                    nextLine.items.length === 1 &&
+                    nextLine.items[0].x >= 19.0 &&
+                    nextLine.items[0].x < 30.0
+                  ) {
+                    clienteRaw += ' ' + nextLine.items[0].text;
+                  }
+                }
+
+                const cliMatch = clienteRaw.match(/^(\d+)\s*-\s*(.+)$/);
+                if (cliMatch && valorRaw) {
+                  const codigo = cliMatch[1].trim();
+                  const valor =
+                    parseFloat(valorRaw.replace(/\./g, '').replace(',', '.')) || 0;
+                  const record: LoyaltyPurchaseRecord = {
+                    data,
+                    seq,
+                    documento: doc,
+                    operacao,
+                    valor,
+                    vendedorCodigo: currentVendedorCodigo,
+                    vendedorNome: currentVendedorNome,
+                  };
+                  salesBySeq.set(seq, record);
+                  if (!salesByClient.has(codigo)) salesByClient.set(codigo, []);
+                  salesByClient.get(codigo)!.push(record);
+                }
+              }
+            }
+          }
+
+          // Cross-reference with baseClients
+          const updatedClients = baseClients.map((c) => {
+            const cleanCode = String(c.codigo).replace(/\D/g, '');
+            const purchases = salesByClient.get(cleanCode) || [];
+            const transacoes = (c.transacoes || []).map((tx) => {
+              const m = tx.descricao.match(/(?:Saída|Entrada)\s+(\d+)/i);
+              if (m && salesBySeq.has(m[1])) {
+                const s = salesBySeq.get(m[1])!;
+                return {
+                  ...tx,
+                  vendedorCodigo: s.vendedorCodigo,
+                  vendedorNome: s.vendedorNome,
+                  valorNota: s.valor,
+                  documento: s.documento,
+                };
+              }
+              return tx;
+            });
+
+            if (purchases.length > 0) {
+              const sorted = [...purchases].sort((a, b) => {
+                const dDiff = parseDateBR(b.data) - parseDateBR(a.data);
+                if (dDiff !== 0) return dDiff;
+                return (parseInt(b.seq, 10) || 0) - (parseInt(a.seq, 10) || 0);
+              });
+              const positiveSales = sorted.filter(
+                (p) => p.valor > 0 && p.operacao !== '49'
+              );
+              const lastSale =
+                positiveSales.length > 0 ? positiveSales[0] : sorted[0];
+              const totalCompradoBruto = positiveSales.reduce(
+                (acc, p) => acc + p.valor,
+                0
+              );
+              const totalLiquido = sorted.reduce((acc, p) => acc + p.valor, 0);
+
+              return {
+                ...c,
+                transacoes,
+                ultimoVendedor: lastSale.vendedorNome,
+                ultimoVendedorCodigo: lastSale.vendedorCodigo,
+                dataUltimaCompra: lastSale.data,
+                valorUltimaCompra: Number(lastSale.valor.toFixed(2)),
+                seqUltimaCompra: lastSale.seq,
+                documentoUltimaCompra: lastSale.documento,
+                totalComprado: Number(totalCompradoBruto.toFixed(2)),
+                totalCompradoLiquido: Number(totalLiquido.toFixed(2)),
+                quantidadeCompras: positiveSales.length,
+                historicoCompras: sorted,
+              };
+            }
+            return { ...c, transacoes };
+          });
+
+          resolve(updatedClients);
+          return;
+        }
+
+        // Standard Loyalty Statement PDF parsing
+        const existingMap = new Map<string, LoyaltyClient>();
+        for (const bc of baseClients) {
+          existingMap.set(String(bc.codigo).replace(/\D/g, ''), bc);
+        }
+
         const clientsMap = new Map<string, LoyaltyClient>();
 
         for (let pageIdx = 0; pageIdx < pdfData.Pages.length; pageIdx++) {
@@ -112,10 +304,11 @@ function parsePdfBuffer(buffer: Buffer): Promise<LoyaltyClient[]> {
           if (!clientCode) continue;
 
           if (!clientsMap.has(clientCode)) {
+            const prev = existingMap.get(clientCode.replace(/\D/g, ''));
             clientsMap.set(clientCode, {
               id: clientCode,
               codigo: clientCode,
-              nome: clientName || '',
+              nome: clientName || prev?.nome || '',
               saldoPontos: 0,
               pontosExpiradosTotal: 0,
               pontosConvertidosTotal: 0,
@@ -126,6 +319,16 @@ function parsePdfBuffer(buffer: Buffer): Promise<LoyaltyClient[]> {
               proximoVencimento: null,
               pontosAVencerProximo: 0,
               transacoes: [],
+              ultimoVendedor: prev?.ultimoVendedor ?? null,
+              ultimoVendedorCodigo: prev?.ultimoVendedorCodigo ?? null,
+              dataUltimaCompra: prev?.dataUltimaCompra ?? null,
+              valorUltimaCompra: prev?.valorUltimaCompra ?? 0,
+              seqUltimaCompra: prev?.seqUltimaCompra ?? null,
+              documentoUltimaCompra: prev?.documentoUltimaCompra ?? null,
+              totalComprado: prev?.totalComprado ?? 0,
+              totalCompradoLiquido: prev?.totalCompradoLiquido ?? 0,
+              quantidadeCompras: prev?.quantidadeCompras ?? 0,
+              historicoCompras: prev?.historicoCompras ?? [],
             });
           }
 
@@ -233,6 +436,7 @@ function parsePdfBuffer(buffer: Buffer): Promise<LoyaltyClient[]> {
     pdfParser.parseBuffer(buffer);
   });
 }
+
 
 function parseExcelBuffer(buffer: Buffer): LoyaltyClient[] {
   const workbook = XLSX.read(buffer, { type: 'buffer' });

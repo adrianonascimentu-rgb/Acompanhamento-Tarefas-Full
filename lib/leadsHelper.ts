@@ -9,6 +9,23 @@ export interface LeadAddressMetadata {
   lng?: number;
 }
 
+export interface LeadEnrichmentMetadata {
+  client_code?: string;
+  last_seller?: string;
+  last_seller_code?: string;
+  last_purchase_date?: string;
+  last_purchase_value?: number;
+  total_purchased?: number;
+  purchase_count?: number;
+  loyalty_points?: number;
+  loyalty_bonus_brl?: number;
+  loyalty_expiration?: string | null;
+  assigned_name?: string;
+  assigned_to?: string | null;
+  report_source?: string;
+  updated_at?: string;
+}
+
 export interface VerifiedStreetInfo {
   street: string;
   numberRange: [number, number];
@@ -42,6 +59,8 @@ export const VERIFIED_STREETS_JP: VerifiedStreetInfo[] = [
 ];
 
 const LOCAL_STORAGE_KEY = "leads_address_metadata_v2";
+const ENRICHMENT_STORAGE_KEY = "agentex_leads_enrichment_v1";
+const IMPORTED_LEADS_STORAGE_KEY = "agentex_imported_leads_v1";
 
 export function normalizeText(str?: string | null): string {
   if (!str) return "";
@@ -52,16 +71,27 @@ export function normalizeText(str?: string | null): string {
     .trim();
 }
 
-export function getLeadLookupKeys(lead: { id?: any; company?: string; name?: string; phone?: string }): string[] {
+export function getLeadLookupKeys(lead: {
+  id?: any;
+  client_code?: string;
+  company?: string;
+  name?: string;
+  phone?: string;
+}): string[] {
   const keys: string[] = [];
   if (lead.id !== undefined && lead.id !== null) {
     keys.push(`id:${String(lead.id)}`);
+  }
+  if (lead.client_code) {
+    const cleanCode = String(lead.client_code).replace(/\D/g, "");
+    if (cleanCode) keys.push(`code:${cleanCode}`);
   }
   const comp = normalizeText(lead.company);
   const name = normalizeText(lead.name);
   const phone = (lead.phone || "").replace(/\D/g, "");
   if (comp && phone) keys.push(`cp:${comp}|${phone}`);
   if (comp && name) keys.push(`cn:${comp}|${name}`);
+  if (name) keys.push(`n:${name}`);
   if (comp) keys.push(`c:${comp}`);
   return keys;
 }
@@ -83,6 +113,136 @@ export function saveLocalLeadAddressMap(map: Record<string, LeadAddressMetadata>
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(map));
   } catch {}
+}
+
+export function getLocalLeadEnrichmentMap(): Record<string, LeadEnrichmentMetadata> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(ENRICHMENT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalLeadEnrichmentMap(map: Record<string, LeadEnrichmentMetadata>) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(ENRICHMENT_STORAGE_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+export function persistLeadEnrichments(leadsList: any[]) {
+  if (!Array.isArray(leadsList) || leadsList.length === 0) return;
+  const currentMap = getLocalLeadEnrichmentMap();
+
+  for (const lead of leadsList) {
+    if (!lead) continue;
+    const hasEnrichment =
+      lead.client_code ||
+      lead.last_seller ||
+      lead.last_purchase_date ||
+      lead.last_purchase_value !== undefined ||
+      lead.total_purchased !== undefined ||
+      lead.loyalty_points !== undefined ||
+      lead.report_source;
+
+    if (!hasEnrichment) continue;
+
+    const meta: LeadEnrichmentMetadata = {
+      client_code: lead.client_code,
+      last_seller: lead.last_seller,
+      last_seller_code: lead.last_seller_code,
+      last_purchase_date: lead.last_purchase_date,
+      last_purchase_value: lead.last_purchase_value,
+      total_purchased: lead.total_purchased,
+      purchase_count: lead.purchase_count,
+      loyalty_points: lead.loyalty_points,
+      loyalty_bonus_brl: lead.loyalty_bonus_brl,
+      loyalty_expiration: lead.loyalty_expiration,
+      assigned_name: lead.assigned_profile?.name || lead.assigned_name,
+      assigned_to: lead.assigned_to,
+      report_source: lead.report_source,
+      updated_at: lead.updated_at || new Date().toISOString(),
+    };
+
+    const keys = getLeadLookupKeys(lead);
+    for (const k of keys) {
+      currentMap[k] = { ...(currentMap[k] || {}), ...meta };
+    }
+  }
+
+  saveLocalLeadEnrichmentMap(currentMap);
+}
+
+export function getLocalImportedLeads(): any[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(IMPORTED_LEADS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalImportedLeads(leadsList: any[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(IMPORTED_LEADS_STORAGE_KEY, JSON.stringify(leadsList));
+  } catch {}
+}
+
+export function clearLocalImportedLeads() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(IMPORTED_LEADS_STORAGE_KEY);
+    localStorage.removeItem(ENRICHMENT_STORAGE_KEY);
+  } catch {}
+}
+
+export function mergeLeadsWithImported(
+  baseLeads: any[],
+  addressMap: Record<string, LeadAddressMetadata>
+): any[] {
+  const imported = getLocalImportedLeads();
+  const enrichmentMap = getLocalLeadEnrichmentMap();
+
+  const mergedList: any[] = [];
+  const seenKeys = new Set<string>();
+
+  const registerLeadKeys = (lead: any) => {
+    for (const k of getLeadLookupKeys(lead)) {
+      seenKeys.add(k);
+    }
+  };
+
+  for (let i = 0; i < baseLeads.length; i++) {
+    const enriched = enrichAndRepairLead(baseLeads[i], i, addressMap, enrichmentMap);
+    mergedList.push(enriched);
+    registerLeadKeys(enriched);
+  }
+
+  for (let i = 0; i < imported.length; i++) {
+    const imp = imported[i];
+    const keys = getLeadLookupKeys(imp);
+    const alreadyExists = keys.some((k) => seenKeys.has(k));
+    if (!alreadyExists) {
+      const enriched = enrichAndRepairLead(
+        imp,
+        baseLeads.length + i,
+        addressMap,
+        enrichmentMap
+      );
+      mergedList.push(enriched);
+      registerLeadKeys(enriched);
+    }
+  }
+
+  return mergedList;
 }
 
 export async function loadRemoteLeadAddressMap(): Promise<Record<string, LeadAddressMetadata>> {
@@ -130,6 +290,7 @@ export async function persistLeadAddresses(leadsList: any[]) {
   }
 
   saveLocalLeadAddressMap(currentMap);
+  persistLeadEnrichments(leadsList);
 
   try {
     await fetch("/api/system/settings", {
@@ -208,46 +369,76 @@ function hashLeadSeed(lead: any, fallbackIndex: number): number {
 export function enrichAndRepairLead(
   lead: any,
   index: number,
-  addressMap: Record<string, LeadAddressMetadata>
+  addressMap: Record<string, LeadAddressMetadata>,
+  enrichmentMapInput?: Record<string, LeadEnrichmentMetadata>
 ): any {
   if (!lead) return lead;
 
   const { company, segment } = cleanCorruptedCompanyAndSegment(lead);
+  const enrichmentMap = enrichmentMapInput || getLocalLeadEnrichmentMap();
 
   const lookupKeys = getLeadLookupKeys(lead);
   let savedMeta: LeadAddressMetadata | null = null;
+  let savedEnrichment: LeadEnrichmentMetadata | null = null;
+
   for (const k of lookupKeys) {
-    if (addressMap[k] && !isCorruptedOrIncompleteAddress(addressMap[k].address)) {
+    if (!savedMeta && addressMap[k] && !isCorruptedOrIncompleteAddress(addressMap[k].address)) {
       savedMeta = addressMap[k];
-      break;
+    }
+    if (!savedEnrichment && enrichmentMap[k]) {
+      savedEnrichment = enrichmentMap[k];
     }
   }
 
-  const currentAddressValid = !isCorruptedOrIncompleteAddress(lead.address);
+  const mergedLead = savedEnrichment
+    ? {
+        ...savedEnrichment,
+        ...lead,
+        client_code: lead.client_code || savedEnrichment.client_code,
+        last_seller: lead.last_seller || savedEnrichment.last_seller,
+        last_seller_code: lead.last_seller_code || savedEnrichment.last_seller_code,
+        last_purchase_date: lead.last_purchase_date || savedEnrichment.last_purchase_date,
+        last_purchase_value: lead.last_purchase_value ?? savedEnrichment.last_purchase_value,
+        total_purchased: lead.total_purchased ?? savedEnrichment.total_purchased,
+        purchase_count: lead.purchase_count ?? savedEnrichment.purchase_count,
+        loyalty_points: lead.loyalty_points ?? savedEnrichment.loyalty_points,
+        loyalty_bonus_brl: lead.loyalty_bonus_brl ?? savedEnrichment.loyalty_bonus_brl,
+        loyalty_expiration: lead.loyalty_expiration ?? savedEnrichment.loyalty_expiration,
+        report_source: lead.report_source || savedEnrichment.report_source,
+        assigned_to: lead.assigned_to || savedEnrichment.assigned_to || null,
+        assigned_name:
+          lead.assigned_profile?.name ||
+          lead.assigned_name ||
+          savedEnrichment.assigned_name ||
+          undefined,
+      }
+    : lead;
+
+  const currentAddressValid = !isCorruptedOrIncompleteAddress(mergedLead.address);
 
   if (currentAddressValid) {
-    const normAddr = normalizeText(lead.address);
+    const normAddr = normalizeText(mergedLead.address);
     const matchedStreet = VERIFIED_STREETS_JP.find((s) => {
       const streetCore = normalizeText(s.street).replace(/^(av\.|avenida|rua|r\.)\s*/i, "");
       return streetCore.length >= 5 && normAddr.includes(streetCore);
     });
 
-    const parsedParts = parseLeadAddressParts(lead);
+    const parsedParts = parseLeadAddressParts(mergedLead);
 
     return {
-      ...lead,
+      ...mergedLead,
       company,
       segment,
-      neighborhood: lead.neighborhood || parsedParts.neighborhood || matchedStreet?.neighborhood || "Manaíra",
-      city: lead.city || parsedParts.city || matchedStreet?.city || "João Pessoa - PB",
-      lat: typeof lead.lat === "number" && !isNaN(lead.lat) ? lead.lat : matchedStreet?.lat ?? -7.1145,
-      lng: typeof lead.lng === "number" && !isNaN(lead.lng) ? lead.lng : matchedStreet?.lng ?? -34.829,
+      neighborhood: mergedLead.neighborhood || parsedParts.neighborhood || matchedStreet?.neighborhood || "Manaíra",
+      city: mergedLead.city || parsedParts.city || matchedStreet?.city || "João Pessoa - PB",
+      lat: typeof mergedLead.lat === "number" && !isNaN(mergedLead.lat) ? mergedLead.lat : matchedStreet?.lat ?? -7.1145,
+      lng: typeof mergedLead.lng === "number" && !isNaN(mergedLead.lng) ? mergedLead.lng : matchedStreet?.lng ?? -34.829,
     };
   }
 
   if (savedMeta) {
     return {
-      ...lead,
+      ...mergedLead,
       company,
       segment,
       address: savedMeta.address,
@@ -255,20 +446,20 @@ export function enrichAndRepairLead(
       number: savedMeta.number,
       neighborhood: savedMeta.neighborhood || "Manaíra",
       city: savedMeta.city || "João Pessoa - PB",
-      reference: savedMeta.reference || lead.reference || "",
-      lat: savedMeta.lat ?? lead.lat ?? -7.1145,
-      lng: savedMeta.lng ?? lead.lng ?? -34.829,
+      reference: savedMeta.reference || mergedLead.reference || "",
+      lat: savedMeta.lat ?? mergedLead.lat ?? -7.1145,
+      lng: savedMeta.lng ?? mergedLead.lng ?? -34.829,
     };
   }
 
-  const rawOldAddr = typeof lead.address === "string" ? lead.address : "";
+  const rawOldAddr = typeof mergedLead.address === "string" ? mergedLead.address : "";
   const normOld = normalizeText(rawOldAddr);
   const matchedVerified = VERIFIED_STREETS_JP.find((s) => {
     const streetCore = normalizeText(s.street).replace(/^(av\.|avenida|rua|r\.)\s*/i, "");
     return streetCore.length >= 5 && normOld.includes(streetCore);
   });
 
-  const seed = hashLeadSeed(lead, index);
+  const seed = hashLeadSeed(mergedLead, index);
   const streetInfo = matchedVerified || VERIFIED_STREETS_JP[seed % VERIFIED_STREETS_JP.length];
 
   const existingNumMatch = rawOldAddr.match(/,\s*(\d+)/);
@@ -280,7 +471,7 @@ export function enrichAndRepairLead(
   const repairedAddress = `${streetInfo.street}, ${streetNumber} - ${streetInfo.neighborhood}, ${streetInfo.city}`;
 
   return {
-    ...lead,
+    ...mergedLead,
     company,
     segment,
     street: streetInfo.street,
@@ -385,9 +576,11 @@ export function matchesLeadSearch(lead: any, searchQuery: string): boolean {
   const neighborhoodNorm = normalizeText(lead.neighborhood);
   const cityNorm = normalizeText(lead.city);
   const referenceNorm = normalizeText(lead.reference);
+  const sellerNorm = normalizeText(lead.last_seller || lead.assigned_profile?.name || lead.assigned_name);
+  const codeNorm = normalizeText(String(lead.client_code || ""));
 
   const terms = queryNorm.split(/\s+/).filter(Boolean);
-  const combinedText = `${nameNorm} ${companyNorm} ${emailNorm} ${segmentNorm} ${addressNorm} ${neighborhoodNorm} ${cityNorm} ${referenceNorm} ${(lead.phone || "").toLowerCase()}`;
+  const combinedText = `${codeNorm} ${nameNorm} ${companyNorm} ${emailNorm} ${segmentNorm} ${addressNorm} ${neighborhoodNorm} ${cityNorm} ${referenceNorm} ${sellerNorm} ${(lead.phone || "").toLowerCase()}`;
 
   const matchesAllTerms = terms.every((term) => combinedText.includes(term));
   if (matchesAllTerms) return true;
@@ -395,9 +588,11 @@ export function matchesLeadSearch(lead: any, searchQuery: string): boolean {
   const hasLetters = /[a-zA-ZÀ-ÿ]/.test(searchQuery);
   const normalizedSearchDigits = searchQuery.replace(/\D/g, "");
   const normalizedPhoneDigits = lead.phone ? lead.phone.replace(/\D/g, "") : "";
+  const normalizedCodeDigits = lead.client_code ? String(lead.client_code).replace(/\D/g, "") : "";
 
-  if (!hasLetters && normalizedSearchDigits.length >= 3 && normalizedPhoneDigits.includes(normalizedSearchDigits)) {
-    return true;
+  if (!hasLetters && normalizedSearchDigits.length >= 1) {
+    if (normalizedCodeDigits && normalizedCodeDigits === normalizedSearchDigits) return true;
+    if (normalizedSearchDigits.length >= 3 && normalizedPhoneDigits.includes(normalizedSearchDigits)) return true;
   }
 
   return false;

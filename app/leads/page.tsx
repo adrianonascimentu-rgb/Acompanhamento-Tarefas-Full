@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2 } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,14 +17,24 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { authFetch } from '@/lib/authFetch';
 import { applyStatusToProfiles, getInactiveCollaboratorIds } from '@/lib/collaboratorStatus';
 import {
+  getStoredLoyaltyClients,
+  saveLoyaltyClients,
+  formatBRL,
+} from '@/lib/loyaltyData';
+import {
   VERIFIED_STREETS_JP,
+  clearLocalImportedLeads,
   enrichAndRepairLead,
   formatFullLeadAddress,
+  getLocalImportedLeads,
   getLocalLeadAddressMap,
   loadRemoteLeadAddressMap,
   matchesLeadSearch,
+  mergeLeadsWithImported,
   parseLeadAddressParts,
   persistLeadAddresses,
+  persistLeadEnrichments,
+  saveLocalImportedLeads,
 } from '@/lib/leadsHelper';
 
 import dynamic from 'next/dynamic';
@@ -88,6 +98,25 @@ export default function LeadsPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('Todos');
   const [userReceivesLeads, setUserReceivesLeads] = useState<boolean>(true);
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
+
+  // Import Report Modal & Auto-Recognition State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [isImportingReport, setIsImportingReport] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResultSummary, setImportResultSummary] = useState<{
+    reportType: string;
+    reportTitle: string;
+    updatedFields: string[];
+    stats: {
+      totalReportRecords: number;
+      updatedLeads: number;
+      newLeadsCreated: number;
+      totalLeadsAfterImport: number;
+      sellersMatched: number;
+      loyaltyMatched: number;
+    };
+  } | null>(null);
+  const reportFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -440,8 +469,8 @@ export default function LeadsPage() {
       const addressMap = await loadRemoteLeadAddressMap();
 
       if (!isConfigured) {
-        const enrichedMocks = MOCK_LEADS.map((l, i) => enrichAndRepairLead(l, i, addressMap));
-        setLeads(enrichedMocks);
+        const mergedMocks = mergeLeadsWithImported(MOCK_LEADS, addressMap);
+        setLeads(mergedMocks);
         setLoading(false);
         return;
       }
@@ -459,22 +488,127 @@ export default function LeadsPage() {
         if (isTableMissing) {
           setTableMissing(true);
         }
-        const enrichedMocks = MOCK_LEADS.map((l, i) => enrichAndRepairLead(l, i, addressMap));
-        setLeads(enrichedMocks);
+        const mergedMocks = mergeLeadsWithImported(MOCK_LEADS, addressMap);
+        setLeads(mergedMocks);
       } else {
-        const rawList = data || [];
-        const enrichedList = rawList.map((lead: any, idx: number) =>
-          enrichAndRepairLead(lead, idx, addressMap)
-        );
-        setLeads(enrichedList);
+        const rawList = data && data.length > 0 ? data : MOCK_LEADS;
+        const mergedList = mergeLeadsWithImported(rawList, addressMap);
+        setLeads(mergedList);
         // Persiste os endereços reparados/validados para manter consistência entre sessões
-        persistLeadAddresses(enrichedList);
+        persistLeadAddresses(mergedList);
       }
     } catch (err: any) {
       const localMap = getLocalLeadAddressMap();
-      setLeads(MOCK_LEADS.map((l, i) => enrichAndRepairLead(l, i, localMap)));
+      setLeads(mergeLeadsWithImported(MOCK_LEADS, localMap));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const applyImportedLeadsResult = async (json: any) => {
+    const importedLeads: any[] = Array.isArray(json.leads) ? json.leads : [];
+    const addressMap = getLocalLeadAddressMap();
+    const enrichedList = importedLeads.map((l, idx) =>
+      enrichAndRepairLead(l, idx, addressMap)
+    );
+
+    setLeads(enrichedList);
+    saveLocalImportedLeads(enrichedList);
+    persistLeadEnrichments(enrichedList);
+    await persistLeadAddresses(enrichedList);
+
+    if (Array.isArray(json.loyaltyClients) && json.loyaltyClients.length > 0) {
+      saveLoyaltyClients(json.loyaltyClients);
+    }
+
+    setImportResultSummary({
+      reportType: json.reportType || 'clientes_erp',
+      reportTitle: json.reportTitle || 'Relatório Comercial',
+      updatedFields: json.updatedFields || [],
+      stats: json.stats || {
+        totalReportRecords: enrichedList.length,
+        updatedLeads: 0,
+        newLeadsCreated: enrichedList.length,
+        totalLeadsAfterImport: enrichedList.length,
+        sellersMatched: 0,
+        loyaltyMatched: 0,
+      },
+    });
+
+    showToast(
+      json.message ||
+        `Relatório "${json.reportTitle}" reconhecido e informações atualizadas!`,
+      'success'
+    );
+  };
+
+  const handleImportReportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingReport(true);
+    setImportError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('currentLeads', JSON.stringify(leads));
+      formData.append('vendedores', JSON.stringify(vendedores));
+      formData.append('currentLoyalty', JSON.stringify(getStoredLoyaltyClients()));
+
+      const res = await fetch('/api/leads/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Não foi possível reconhecer ou processar o relatório.');
+      }
+
+      await applyImportedLeadsResult(json);
+    } catch (err: any) {
+      console.error('Error importing report in Leads:', err);
+      setImportError(err.message || 'Falha ao importar o relatório.');
+      showToast(err.message || 'Erro ao processar relatório.', 'error');
+    } finally {
+      setIsImportingReport(false);
+      if (reportFileInputRef.current) {
+        reportFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleQuickPresetImport = async (
+    preset: 'vendas_vendedor' | 'fidelidade' | 'cruzado_completo'
+  ) => {
+    setIsImportingReport(true);
+    setImportError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('presetReport', preset);
+      formData.append('currentLeads', JSON.stringify(leads));
+      formData.append('vendedores', JSON.stringify(vendedores));
+      formData.append('currentLoyalty', JSON.stringify(getStoredLoyaltyClients()));
+
+      const res = await fetch('/api/leads/import', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Erro ao sincronizar relatório.');
+      }
+
+      await applyImportedLeadsResult(json);
+    } catch (err: any) {
+      console.error('Error in quick preset import:', err);
+      setImportError(err.message || 'Erro ao sincronizar relatório.');
+      showToast(err.message || 'Erro ao sincronizar relatório.', 'error');
+    } finally {
+      setIsImportingReport(false);
     }
   };
 
@@ -921,6 +1055,8 @@ export default function LeadsPage() {
             if (error) throw error;
           }
 
+          clearLocalImportedLeads();
+          setImportResultSummary(null);
           setLeads([]);
           showToast('Todos os leads foram apagados.', 'success');
         } catch (err) {
@@ -986,14 +1122,23 @@ export default function LeadsPage() {
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
       <header className={`sticky top-0 z-10 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
-        <div className="flex items-center p-4 justify-between w-full">
+        <div className="flex items-center p-4 justify-between w-full gap-2">
           <Link href="/" className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
             <ArrowLeft size={20} />
           </Link>
           <h2 className="text-lg font-bold leading-tight tracking-tight flex-1 text-center">Gestão de Leads</h2>
-          <div className={`flex size-10 items-center justify-end rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
-            <Search size={20} />
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setImportError(null);
+              setShowImportModal(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-sm transition-all active:scale-95 cursor-pointer"
+            title="Importar relatório (reconhecimento automático de Vendas por Vendedor, Fidelidade ou Planilha de Clientes)"
+          >
+            <Upload size={15} className="stroke-[2.5]" />
+            <span>Importar</span>
+          </button>
         </div>
       </header>
 
@@ -1325,7 +1470,7 @@ export default function LeadsPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             {(isAdmin || role === 'gerente') && (
               <button 
                 onClick={() => {
@@ -1343,10 +1488,25 @@ export default function LeadsPage() {
                   setSelectedLeadForAssignment(null);
                   setShowAddModal(true);
                 }}
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white h-12 rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95"
+                className="flex-1 min-w-[140px] flex items-center justify-center gap-2 bg-blue-600 text-white h-12 rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all active:scale-95 cursor-pointer"
               >
                 <Plus size={20} />
                 <span>Novo Lead</span>
+              </button>
+            )}
+
+            {canAccessLeads && (
+              <button
+                id="leads-import-btn"
+                type="button"
+                onClick={() => {
+                  setImportError(null);
+                  setShowImportModal(true);
+                }}
+                className="flex-1 min-w-[170px] flex items-center justify-center gap-2 h-12 px-4 rounded-xl font-black text-slate-950 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer"
+              >
+                <Upload size={18} className="stroke-[2.5]" />
+                <span>Importar Relatório</span>
               </button>
             )}
             
@@ -1354,7 +1514,7 @@ export default function LeadsPage() {
               <button 
                 onClick={handleSync}
                 disabled={isDistributing}
-                className={`flex size-12 items-center justify-center rounded-xl border transition-all ${
+                className={`flex size-12 items-center justify-center rounded-xl border transition-all cursor-pointer ${
                   isDarkMode ? 'bg-slate-900 border-slate-800 hover:bg-slate-800' : 'bg-white border-slate-200 hover:bg-slate-50'
                 } ${isDistributing ? 'animate-pulse opacity-50' : ''}`}
                 title="Sincronizar Vendedores e Leads"
@@ -1372,7 +1532,7 @@ export default function LeadsPage() {
                   setShowDistributeModal(true);
                 }}
                 disabled={isDistributing}
-                className={`flex-1 flex items-center justify-center gap-2 h-12 rounded-xl font-bold transition-all active:scale-95 border-2 ${
+                className={`flex-1 min-w-[150px] flex items-center justify-center gap-2 h-12 rounded-xl font-bold transition-all active:scale-95 border-2 cursor-pointer ${
                   isDarkMode 
                     ? 'bg-slate-900 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10' 
                     : 'bg-white border-indigo-100 text-indigo-600 hover:bg-indigo-50 shadow-sm'
@@ -1386,13 +1546,52 @@ export default function LeadsPage() {
             {isAdmin && (
               <button 
                 onClick={handleDeleteAllLeads}
-                className={`flex size-12 items-center justify-center rounded-xl border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 transition-all active:scale-95`}
+                className={`flex size-12 items-center justify-center rounded-xl border border-rose-500/30 text-rose-500 hover:bg-rose-500/10 transition-all active:scale-95 cursor-pointer`}
                 title="Apagar Todos os Leads"
               >
                 <Trash2 size={20} />
               </button>
             )}
           </div>
+
+          {/* Banner de Reconhecimento Automático do Último Relatório Importado */}
+          {importResultSummary && (
+            <div
+              className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                isDarkMode
+                  ? 'bg-emerald-950/20 border-emerald-800/50 text-emerald-200'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5">
+                  <CheckCircle2 size={20} />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500 text-white">
+                      Relatório Reconhecido Automaticamente
+                    </span>
+                    <h4 className="text-sm font-black">{importResultSummary.reportTitle}</h4>
+                  </div>
+                  <p className="text-xs opacity-90">
+                    <strong>{importResultSummary.stats.updatedLeads}</strong> leads existentes atualizados •{' '}
+                    <strong>{importResultSummary.stats.newLeadsCreated}</strong> novos leads importados •{' '}
+                    <strong>{importResultSummary.stats.sellersMatched}</strong> com vendedor identificado •{' '}
+                    <strong>{importResultSummary.stats.loyaltyMatched}</strong> com saldo de fidelidade
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setImportResultSummary(null)}
+                className="self-end sm:self-center p-1.5 rounded-lg opacity-70 hover:opacity-100"
+                title="Fechar resumo"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {/* Leads Map */}
           <div className="space-y-4">
@@ -1565,7 +1764,14 @@ export default function LeadsPage() {
                         <User size={20} />
                       </div>
                       <div>
-                        <h3 className="font-bold text-base leading-tight">{lead.name}</h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-bold text-base leading-tight">{lead.name}</h3>
+                          {lead.client_code && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 tabular-nums">
+                              Cód. #{lead.client_code}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <Briefcase size={12} className="text-slate-400" />
                           <p className="text-xs font-medium text-slate-500">{lead.company}</p>
@@ -1629,6 +1835,77 @@ export default function LeadsPage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Informações Atualizadas via Importação de Relatório (Último Vendedor, Compras e Bônus Fidelidade) */}
+                  {(lead.last_seller ||
+                    (lead.last_purchase_value && lead.last_purchase_value > 0) ||
+                    (lead.loyalty_points && lead.loyalty_points > 0)) && (
+                    <div
+                      className={`mt-3 p-3 rounded-xl border grid grid-cols-1 sm:grid-cols-3 gap-2.5 ${
+                        isDarkMode
+                          ? 'bg-slate-950/60 border-slate-800'
+                          : 'bg-slate-50/90 border-slate-200/70'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 shrink-0">
+                          <UserCheck size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Último Vendedor
+                          </p>
+                          <p className="text-xs font-black text-sky-600 dark:text-sky-400 truncate">
+                            {lead.last_seller || 'Não identificado'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+                          <Receipt size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Última Compra {lead.last_purchase_date ? `(${lead.last_purchase_date})` : ''}
+                          </p>
+                          <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                            {lead.last_purchase_value && lead.last_purchase_value > 0
+                              ? formatBRL(lead.last_purchase_value)
+                              : '—'}
+                            {lead.total_purchased && lead.total_purchased > (lead.last_purchase_value || 0) ? (
+                              <span className="ml-1.5 text-[10px] font-semibold text-slate-500">
+                                (Total: {formatBRL(lead.total_purchased)})
+                              </span>
+                            ) : null}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
+                          <Award size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Saldo Fidelidade (4 pts = R$ 1)
+                          </p>
+                          <p className="text-xs font-black text-amber-600 dark:text-amber-400 tabular-nums">
+                            {lead.loyalty_points && lead.loyalty_points > 0 ? (
+                              <>
+                                {lead.loyalty_points} pts{' '}
+                                <span className="text-emerald-600 dark:text-emerald-400">
+                                  ({formatBRL(lead.loyalty_bonus_brl || lead.loyalty_points / 4)})
+                                </span>
+                              </>
+                            ) : (
+                              '0 pts'
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Salesperson Interaction Fields */}
                   {lead.assigned_to === user?.id && lead.status !== 'Concluído' && (
@@ -2296,6 +2573,260 @@ export default function LeadsPage() {
                     <span>Confirmar Distribuição</span>
                   )}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showImportModal && (
+          <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isImportingReport && setShowImportModal(false)}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              className={`relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-t-[32px] sm:rounded-[32px] p-6 shadow-2xl transition-colors ${
+                isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-white text-slate-900'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="size-11 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <Upload size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black leading-tight">
+                      Importar Relatório com Reconhecimento Automático
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Envie qualquer relatório (PDF, Excel ou CSV) para atualizar os leads automaticamente
+                    </p>
+                  </div>
+                </div>
+                {!isImportingReport && (
+                  <button
+                    type="button"
+                    onClick={() => setShowImportModal(false)}
+                    className={`p-2 rounded-full transition-colors cursor-pointer ${
+                      isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {/* Upload Dropzone */}
+                <div
+                  onClick={() => !isImportingReport && reportFileInputRef.current?.click()}
+                  className={`p-7 rounded-2xl border-2 border-dashed text-center transition-all cursor-pointer ${
+                    isDarkMode
+                      ? 'border-slate-700 hover:border-amber-500 bg-slate-800/40 hover:bg-slate-800/70'
+                      : 'border-slate-300 hover:border-amber-500 bg-slate-50 hover:bg-amber-50/40'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    ref={reportFileInputRef}
+                    onChange={handleImportReportFile}
+                    accept=".pdf,.xlsx,.xls,.csv"
+                    className="hidden"
+                  />
+                  <div className="size-12 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center mx-auto mb-3">
+                    {isImportingReport ? (
+                      <RefreshCw size={24} className="animate-spin" />
+                    ) : (
+                      <FileSpreadsheet size={24} />
+                    )}
+                  </div>
+                  <p className="text-sm font-black">
+                    {isImportingReport
+                      ? 'Identificando o tipo de relatório e atualizando leads...'
+                      : 'Clique para enviar seu relatório (.PDF, .XLSX, .XLS ou .CSV)'}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    O sistema analisa a estrutura do arquivo, reconhece qual relatório foi enviado e atualiza os dados necessários.
+                  </p>
+                </div>
+
+                {/* Quick Sync Buttons for Built-in ERP Reports */}
+                <div
+                  className={`p-4 rounded-2xl border space-y-2.5 ${
+                    isDarkMode ? 'bg-slate-950/60 border-slate-800' : 'bg-slate-50 border-slate-200/80'
+                  }`}
+                >
+                  <p className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-amber-500" />
+                    Sincronização Rápida com Relatórios do ERP no Sistema
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={isImportingReport}
+                      onClick={() => handleQuickPresetImport('vendas_vendedor')}
+                      className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                        isDarkMode
+                          ? 'bg-slate-900 border-slate-800 hover:border-sky-500/50 text-slate-200'
+                          : 'bg-white border-slate-200 hover:border-sky-500 text-slate-800 shadow-2xs'
+                      } disabled:opacity-50`}
+                    >
+                      <div className="p-2 rounded-lg bg-sky-500/15 text-sky-500 shrink-0">
+                        <Receipt size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black truncate">Vendas por Vendedor</p>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          Atualiza último vendedor e compras
+                        </p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isImportingReport}
+                      onClick={() => handleQuickPresetImport('fidelidade')}
+                      className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                        isDarkMode
+                          ? 'bg-slate-900 border-slate-800 hover:border-amber-500/50 text-slate-200'
+                          : 'bg-white border-slate-200 hover:border-amber-500 text-slate-800 shadow-2xs'
+                      } disabled:opacity-50`}
+                    >
+                      <div className="p-2 rounded-lg bg-amber-500/15 text-amber-500 shrink-0">
+                        <Award size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-black truncate">Extrato Clientes Fidelidade</p>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          Atualiza pontos e bônus (4 pts = R$ 1)
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Error Feedback */}
+                {importError && (
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+                    <AlertCircle size={16} className="shrink-0" />
+                    <span>{importError}</span>
+                  </div>
+                )}
+
+                {/* Detailed Recognition Result inside Modal */}
+                {importResultSummary && (
+                  <div
+                    className={`p-4 rounded-2xl border space-y-3 ${
+                      isDarkMode
+                        ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-100'
+                        : 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                          Relatório Identificado e Aplicado
+                        </span>
+                        <h4 className="text-sm font-black">{importResultSummary.reportTitle}</h4>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                      <div className={`p-2 rounded-xl border ${isDarkMode ? 'bg-slate-900/70 border-slate-800' : 'bg-white border-emerald-200/60'}`}>
+                        <p className="text-base font-black text-blue-600 dark:text-blue-400">
+                          {importResultSummary.stats.updatedLeads}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-500">Atualizados</p>
+                      </div>
+                      <div className={`p-2 rounded-xl border ${isDarkMode ? 'bg-slate-900/70 border-slate-800' : 'bg-white border-emerald-200/60'}`}>
+                        <p className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                          {importResultSummary.stats.newLeadsCreated}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-500">Novos Leads</p>
+                      </div>
+                      <div className={`p-2 rounded-xl border ${isDarkMode ? 'bg-slate-900/70 border-slate-800' : 'bg-white border-emerald-200/60'}`}>
+                        <p className="text-base font-black text-sky-600 dark:text-sky-400">
+                          {importResultSummary.stats.sellersMatched}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-500">Com Vendedor</p>
+                      </div>
+                      <div className={`p-2 rounded-xl border ${isDarkMode ? 'bg-slate-900/70 border-slate-800' : 'bg-white border-emerald-200/60'}`}>
+                        <p className="text-base font-black text-amber-600 dark:text-amber-400">
+                          {importResultSummary.stats.loyaltyMatched}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-500">Com Bônus</p>
+                      </div>
+                    </div>
+
+                    {importResultSummary.updatedFields.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wider mb-1.5 opacity-80">
+                          Informações Atualizadas nos Leads:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {importResultSummary.updatedFields.map((field) => (
+                            <span
+                              key={field}
+                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                                isDarkMode
+                                  ? 'bg-slate-900 border-emerald-800/50 text-emerald-300'
+                                  : 'bg-white border-emerald-200 text-emerald-800'
+                              }`}
+                            >
+                              ✓ {field}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Supported Report Types Info */}
+                <div
+                  className={`p-3.5 rounded-2xl border text-[11px] space-y-1.5 ${
+                    isDarkMode
+                      ? 'bg-slate-800/50 border-slate-800 text-slate-300'
+                      : 'bg-slate-100/80 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <p className="font-black text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                    <FileText size={14} />
+                    <span>Relatórios Reconhecidos Automaticamente:</span>
+                  </p>
+                  <ul className="space-y-1 list-disc list-inside text-slate-500 dark:text-slate-400">
+                    <li>
+                      <strong className="text-slate-800 dark:text-slate-200">Vendas Agrupadas por Vendedor (PDF/Excel):</strong> cruza código do cliente, identifica último vendedor, valor e data da última compra.
+                    </li>
+                    <li>
+                      <strong className="text-slate-800 dark:text-slate-200">Extrato de Clientes Fidelidade (PDF/Excel):</strong> atualiza saldo de pontos, bônus em R$ (4,00 pts = R$ 1,00) e vencimentos.
+                    </li>
+                    <li>
+                      <strong className="text-slate-800 dark:text-slate-200">Planilhas de Leads e Clientes (XLSX/CSV):</strong> atualiza nome, empresa, telefone, endereço verificado, segmento e status.
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowImportModal(false)}
+                    className={`w-full py-3.5 rounded-2xl font-bold transition-colors cursor-pointer ${
+                      isDarkMode
+                        ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                        : 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+                    }`}
+                  >
+                    Fechar
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

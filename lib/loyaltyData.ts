@@ -8,6 +8,20 @@ export interface LoyaltyTransaction {
   credito: number;
   saldoFinal: number;
   validade?: string;
+  vendedorCodigo?: string;
+  vendedorNome?: string;
+  valorNota?: number;
+  documento?: string;
+}
+
+export interface LoyaltyPurchaseRecord {
+  data: string;
+  seq: string;
+  documento: string;
+  operacao: string;
+  valor: number;
+  vendedorCodigo: string;
+  vendedorNome: string;
 }
 
 export interface LoyaltyClient {
@@ -24,6 +38,16 @@ export interface LoyaltyClient {
   proximoVencimento: string | null;
   pontosAVencerProximo: number;
   transacoes: LoyaltyTransaction[];
+  ultimoVendedor?: string | null;
+  ultimoVendedorCodigo?: string | null;
+  dataUltimaCompra?: string | null;
+  valorUltimaCompra?: number;
+  seqUltimaCompra?: string | null;
+  documentoUltimaCompra?: string | null;
+  totalComprado?: number;
+  totalCompradoLiquido?: number;
+  quantidadeCompras?: number;
+  historicoCompras?: LoyaltyPurchaseRecord[];
   phone?: string;
   notes?: string;
 }
@@ -37,6 +61,9 @@ export interface LoyaltyStats {
   totalPointsConverted: number;
   totalConvertedBRL: number;
   totalPointsExpired: number;
+  clientsWithSellerMatch: number;
+  totalPurchasedBRL: number;
+  totalLastPurchaseBRL: number;
 }
 
 /**
@@ -56,7 +83,7 @@ export const LOYALTY_CONFIG = {
   validadeMeses: 12,
 } as const;
 
-const STORAGE_KEY = 'agentex_loyalty_clients_v1';
+const STORAGE_KEY = 'agentex_loyalty_clients_v2';
 
 /**
  * Converte quantidade de pontos para valor em créditos (R$)
@@ -105,6 +132,9 @@ export function calculateLoyaltyStats(clients: LoyaltyClient[]): LoyaltyStats {
   let clientsWithExpiringPoints = 0;
   let totalPointsConverted = 0;
   let totalPointsExpired = 0;
+  let clientsWithSellerMatch = 0;
+  let totalPurchasedBRL = 0;
+  let totalLastPurchaseBRL = 0;
 
   for (const c of clients) {
     if (c.saldoPontos > 0) {
@@ -114,6 +144,11 @@ export function calculateLoyaltyStats(clients: LoyaltyClient[]): LoyaltyStats {
         clientsWithExpiringPoints++;
       }
     }
+    if (c.ultimoVendedor) {
+      clientsWithSellerMatch++;
+    }
+    totalPurchasedBRL += c.totalComprado || 0;
+    totalLastPurchaseBRL += c.valorUltimaCompra || 0;
     totalPointsConverted += c.pontosConvertidosTotal || 0;
     totalPointsExpired += c.pontosExpiradosTotal || 0;
   }
@@ -127,11 +162,14 @@ export function calculateLoyaltyStats(clients: LoyaltyClient[]): LoyaltyStats {
     totalPointsConverted,
     totalConvertedBRL: pointsToBRL(totalPointsConverted),
     totalPointsExpired,
+    clientsWithSellerMatch,
+    totalPurchasedBRL,
+    totalLastPurchaseBRL,
   };
 }
 
 export function formatBRL(value: number): string {
-  return value.toLocaleString('pt-BR', {
+  return (value || 0).toLocaleString('pt-BR', {
     style: 'currency',
     currency: 'BRL',
   });
@@ -144,9 +182,12 @@ export function generateWhatsAppBonusMessage(client: LoyaltyClient): string {
   const pontos = client.saldoPontos;
   const bonusReais = formatBRL(pointsToBRL(pontos));
   const firstName = client.nome.split(' ')[0] || 'Cliente';
+  const sellerIntro = client.ultimoVendedor
+    ? `Aqui é *${client.ultimoVendedor.split(' ')[0]}*, da equipe comercial da loja.`
+    : `Aqui é da equipe comercial da loja.`;
 
   let text = `Olá, *${firstName}*! Tudo bem?\n\n`;
-  text += `Aqui é da equipe comercial da loja. Verifiquei no nosso programa de fidelidade que você possui um saldo acumulado de *${pontos} pontos*, equivalente a *${bonusReais} em créditos* para utilizar como desconto nas suas próximas compras de peças e ar condicionado!\n\n`;
+  text += `${sellerIntro} Verifiquei no nosso programa de fidelidade que você possui um saldo acumulado de *${pontos} pontos*, equivalente a *${bonusReais} em créditos* para utilizar como desconto nas suas próximas compras de peças e ar condicionado!\n\n`;
 
   if (client.proximoVencimento && client.pontosAVencerProximo > 0) {
     const valorVencer = formatBRL(pointsToBRL(client.pontosAVencerProximo));
@@ -157,3 +198,4 @@ export function generateWhatsAppBonusMessage(client: LoyaltyClient): string {
 
   return text;
 }
+
