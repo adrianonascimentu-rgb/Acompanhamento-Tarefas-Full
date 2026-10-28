@@ -67,14 +67,29 @@ export function Sidebar() {
     isAdmin, 
     isAdriano,
     user, 
+    canAccessHome,
+    canAccessProducts,
+    canAccessSplitTable,
+    canAccessLoyalty,
+    canAccessTasks,
+    canAccessDemands,
+    canAccessRoutes,
     canAccessLeads, 
     canAccessDeliveries, 
+    canAccessTruckHistory,
     canAccessTransfers, 
     canAccessWarranties, 
+    canAccessAssistances,
+    canAccessPriceResearch,
     canAccessReports, 
     canAccessWhatsapp, 
     canAccessSales, 
     canAccessSocialMedia, 
+    canAccessLivePanel,
+    canAccessCollaborators,
+    canAccessCommissions,
+    canAccessSettings,
+    canAccessAdrianoCommissions,
     logout 
   } = useRole();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
@@ -88,18 +103,18 @@ export function Sidebar() {
 
   if (!user) return null;
 
-  // Grouped Navigation structure for modern scannability
+  // Grouped Navigation structure for modern scannability — every item respects module permissions
   const sections = [
     {
       title: 'Principal',
       items: [
-        { href: '/', icon: Home, label: 'Início', active: pathname === '/' },
-        { href: '/products', icon: Package, label: 'Catálogo de Peças', active: pathname?.startsWith('/products') },
-        { href: '/tabela-split', icon: Wind, label: 'Tabela de Split', active: pathname?.startsWith('/tabela-split') },
-        { href: '/clientes-fidelidade', icon: Award, label: 'Clientes Fidelidade', active: pathname?.startsWith('/clientes-fidelidade') || pathname?.startsWith('/fidelidade') },
-        { href: '/tasks', icon: ClipboardList, label: 'Tarefas', active: pathname?.startsWith('/tasks') },
-        { href: '/demands', icon: ListTodo, label: 'Demandas', active: pathname?.startsWith('/demands') },
-        { href: '/routes', icon: Truck, label: 'Rotas & GPS', active: pathname?.startsWith('/routes') },
+        ...(canAccessHome ? [{ href: '/', icon: Home, label: 'Início', active: pathname === '/' }] : []),
+        ...(canAccessProducts ? [{ href: '/products', icon: Package, label: 'Catálogo de Peças', active: pathname?.startsWith('/products') }] : []),
+        ...(canAccessSplitTable ? [{ href: '/tabela-split', icon: Wind, label: 'Tabela de Split', active: pathname?.startsWith('/tabela-split') }] : []),
+        ...(canAccessLoyalty ? [{ href: '/clientes-fidelidade', icon: Award, label: 'Clientes Fidelidade', active: pathname?.startsWith('/clientes-fidelidade') || pathname?.startsWith('/fidelidade') }] : []),
+        ...(canAccessTasks ? [{ href: '/tasks', icon: ClipboardList, label: 'Tarefas', active: pathname?.startsWith('/tasks') }] : []),
+        ...(canAccessDemands ? [{ href: '/demands', icon: ListTodo, label: 'Demandas', active: pathname?.startsWith('/demands') }] : []),
+        ...(canAccessRoutes ? [{ href: '/routes', icon: Truck, label: 'Rotas & GPS', active: pathname?.startsWith('/routes') }] : []),
       ]
     },
     {
@@ -113,37 +128,47 @@ export function Sidebar() {
     {
       title: 'Operações',
       items: [
-        ...(canAccessDeliveries ? [{ href: '/deliveries', icon: Truck, label: 'Entregas', active: pathname?.startsWith('/deliveries') }] : []),
-        { href: '/shipping-calculator', icon: Calculator, label: 'Cálculo de Frete', active: pathname?.startsWith('/shipping-calculator') },
-        { href: '/reports/truck-history', icon: Truck, label: 'Caminhão Reposição', active: pathname?.startsWith('/reports/truck-history') },
+        ...(canAccessDeliveries ? [
+          { href: '/deliveries', icon: Truck, label: 'Entregas', active: pathname?.startsWith('/deliveries') },
+          { href: '/shipping-calculator', icon: Calculator, label: 'Cálculo de Frete', active: pathname?.startsWith('/shipping-calculator') },
+        ] : []),
+        ...(canAccessTruckHistory ? [{ href: '/reports/truck-history', icon: Truck, label: 'Caminhão Reposição', active: pathname?.startsWith('/reports/truck-history') }] : []),
         ...(canAccessTransfers ? [{ href: '/transfers', icon: ArrowRightLeft, label: 'Transferências', active: pathname?.startsWith('/transfers') }] : []),
         ...(canAccessWarranties ? [
           { href: '/warranties', icon: ShieldCheck, label: 'Garantias', active: pathname?.startsWith('/warranties') && !pathname?.startsWith('/warranties/assistances') },
+        ] : []),
+        ...(canAccessAssistances ? [
           { href: '/warranties/assistances', icon: Wrench, label: 'Assistência Técnica', active: pathname?.startsWith('/warranties/assistances') }
         ] : []),
-        { href: '/price-research', icon: Tag, label: 'Pesquisa Concorrentes', active: pathname?.startsWith('/price-research') },
-        { href: '/mercado-livre', icon: Store, label: 'Pesquisa Mercado Livre', active: pathname?.startsWith('/mercado-livre') },
+        ...(canAccessPriceResearch ? [
+          { href: '/price-research', icon: Tag, label: 'Pesquisa Concorrentes', active: pathname?.startsWith('/price-research') },
+          { href: '/mercado-livre', icon: Store, label: 'Pesquisa Mercado Livre', active: pathname?.startsWith('/mercado-livre') },
+        ] : []),
       ]
     },
     {
       title: 'Resultados',
       items: [
         ...(canAccessSales ? [{ href: '/sales-results', icon: TrendingUp, label: 'Vendas', active: pathname?.startsWith('/sales') }] : []),
-        ...(canAccessReports ? [{ href: '/reports', icon: BarChart3, label: 'Relatórios', active: pathname?.startsWith('/reports') }] : []),
+        ...(canAccessReports ? [{ href: '/reports', icon: BarChart3, label: 'Relatórios', active: pathname === '/reports' || (pathname?.startsWith('/reports') && !pathname?.startsWith('/reports/truck-history')) }] : []),
       ]
     },
     {
       title: 'Administração',
       items: [
-        ...(isAdmin || role === 'gerente' || role === 'supervisor' ? [
+        ...(canAccessLivePanel ? [
           { href: '/painel-ao-vivo', icon: Radio, label: 'Painel Ao Vivo (GPS)', active: pathname?.startsWith('/painel-ao-vivo') || pathname?.startsWith('/admin/dashboard') },
         ] : []),
-        ...(isAdmin ? [
+        ...(canAccessCollaborators ? [
           { href: '/collaborators', icon: Users, label: 'Equipe', active: pathname?.startsWith('/collaborators') },
+        ] : []),
+        ...(canAccessCommissions ? [
           { href: '/admin/commissions', icon: DollarSign, label: 'Comissionados', active: pathname?.startsWith('/admin/commissions') },
+        ] : []),
+        ...(canAccessSettings ? [
           { href: '/admin/settings', icon: Settings, label: 'Configurações', active: pathname?.startsWith('/admin/settings') },
         ] : []),
-        ...(isAdriano ? [
+        ...(canAccessAdrianoCommissions ? [
           { href: '/admin/comissoes-adriano', icon: TrendingUp, label: 'Comissões Adriano', active: pathname?.startsWith('/admin/comissoes-adriano') },
         ] : []),
       ]
@@ -292,13 +317,15 @@ export function Sidebar() {
                 {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
               </button>
 
-              <Link
-                href="/admin/settings"
-                title="Configurações do Sistema"
-                className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Settings size={15} />
-              </Link>
+              {canAccessSettings && (
+                <Link
+                  href="/admin/settings"
+                  title="Configurações do Sistema"
+                  className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <Settings size={15} />
+                </Link>
+              )}
 
               <button
                 onClick={handleLogout}
@@ -328,13 +355,15 @@ export function Sidebar() {
               {isDarkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
 
-            <Link
-              href="/admin/settings"
-              title="Configurações do Sistema"
-              className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-              <Settings size={15} />
-            </Link>
+            {canAccessSettings && (
+              <Link
+                href="/admin/settings"
+                title="Configurações do Sistema"
+                className="p-1.5 rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Settings size={15} />
+              </Link>
+            )}
 
             <button
               onClick={handleLogout}

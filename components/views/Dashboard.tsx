@@ -62,15 +62,26 @@ export default function Dashboard() {
     isGerente,
     isSupervisor,
     isAdriano, 
+    canAccessProducts,
+    canAccessSplitTable,
+    canAccessLoyalty,
+    canAccessTasks,
     canAccessLeads, 
     canAccessDeliveries, 
     canAccessTransfers, 
     canAccessWarranties, 
+    canAccessAssistances,
+    canAccessPriceResearch,
     canAccessSales, 
     canAccessSocialMedia, 
     canAccessWhatsapp,
     canAccessReports,
     canAccessDemands,
+    canAccessLivePanel,
+    canAccessCollaborators,
+    canAccessCommissions,
+    canAccessSettings,
+    canAccessAdrianoCommissions,
     canAccessPermanentTasks,
     canManageHomeCards,
     canViewHomeCard,
@@ -979,8 +990,8 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-2.5">
-              {/* Card Destaque: Comissões Adriano (Exclusivo para adrianonascimentu@gmail.com) */}
-              {isAdriano && (
+              {/* Card Destaque: Comissões Adriano */}
+              {canAccessAdrianoCommissions && (
                 <Link
                   href="/admin/comissoes-adriano"
                   className="col-span-2 sm:col-span-1 p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-xs hover:scale-[1.02] transition-all flex items-center gap-2.5 group cursor-pointer"
@@ -998,7 +1009,7 @@ export default function Dashboard() {
               )}
 
               {/* Comissionados Geral */}
-              {(isAdmin || isAdriano) && (
+              {canAccessCommissions && (
                 <Link
                   href="/admin/commissions"
                   className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
@@ -1017,8 +1028,8 @@ export default function Dashboard() {
                 </Link>
               )}
 
-              {/* Equipe / Colaboradores (Admin, Gerente, Supervisor) */}
-              {canManageHomeCards && (
+              {/* Equipe / Colaboradores */}
+              {canAccessCollaborators && (
                 <Link
                   href="/collaborators"
                   className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
@@ -1061,7 +1072,7 @@ export default function Dashboard() {
               )}
 
               {/* Painel Ao Vivo (GPS) */}
-              {(isAdmin || role === 'gerente' || role === 'supervisor') && (
+              {canAccessLivePanel && (
                 <Link
                   href="/painel-ao-vivo"
                   className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
@@ -1081,7 +1092,7 @@ export default function Dashboard() {
               )}
 
               {/* Configurações do Sistema */}
-              {isAdmin && (
+              {canAccessSettings && (
                 <Link
                   href="/admin/settings"
                   className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
@@ -1201,132 +1212,142 @@ export default function Dashboard() {
               )}
 
               {/* Clientes Fidelidade & Bônus */}
-              <Link
-                href="/clientes-fidelidade"
-                className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
-                  isDarkMode
-                    ? 'bg-amber-950/30 border-amber-800/60 hover:border-amber-500'
-                    : 'bg-amber-50/80 border-amber-200 hover:border-amber-400'
-                }`}
-              >
-                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
-                  <Award size={16} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 truncate">
-                    Fidelidade & Bônus
-                  </p>
-                  <span className="hidden sm:block text-[10px] text-amber-600 dark:text-amber-400 truncate">Pontos a Vencer</span>
-                </div>
-              </Link>
+              {canAccessLoyalty && canViewHomeCard('card_clientes_fidelidade') && (
+                <Link
+                  href="/clientes-fidelidade"
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all hover:scale-[1.02] flex items-center gap-2.5 group cursor-pointer ${
+                    isDarkMode
+                      ? 'bg-amber-950/30 border-amber-800/60 hover:border-amber-500'
+                      : 'bg-amber-50/80 border-amber-200 hover:border-amber-400'
+                  }`}
+                >
+                  <div className="p-2 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                    <Award size={16} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 truncate">
+                      Fidelidade & Bônus
+                    </p>
+                    <span className="hidden sm:block text-[10px] text-amber-600 dark:text-amber-400 truncate">Pontos a Vencer</span>
+                  </div>
+                </Link>
+              )}
             </div>
           </section>
         )}
 
-        {/* Catálogo de Peças & Botão de Tarefas Permanentes na Mesma Linha */}
-        {(canViewHomeCard('card_catalogo_pecas') || (canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes'))) && (
-          <div className={`grid grid-cols-1 ${canViewHomeCard('card_catalogo_pecas') && canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes') ? 'md:grid-cols-2' : ''} gap-2.5 sm:gap-4`}>
-            {/* 1. Catálogo de Peças - Na versão mobile ocupa apenas uma linha */}
-            {canViewHomeCard('card_catalogo_pecas') && (
+        {/* Catálogo de Peças, Tabela de Split & Botão de Tarefas Permanentes */}
+        {((canAccessProducts && canViewHomeCard('card_catalogo_pecas')) || (canAccessSplitTable && canViewHomeCard('card_tabela_split')) || (canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes'))) && (
+          <div className={`grid grid-cols-1 ${(canAccessProducts && canViewHomeCard('card_catalogo_pecas') && canAccessPermanentTasks && canViewHomeCard('card_tarefas_permanentes')) ? 'md:grid-cols-2' : ''} gap-2.5 sm:gap-4`}>
+            {/* 1. Catálogo de Peças & Tabela de Split */}
+            {((canAccessProducts && canViewHomeCard('card_catalogo_pecas')) || (canAccessSplitTable && canViewHomeCard('card_tabela_split'))) && (
               <>
-                {/* Mobile View: Botão em linha única */}
-                <Link
-                  href="/products"
-                  className="sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm bg-blue-600 hover:bg-blue-500 border-blue-500 text-white"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
-                      <Package size={17} />
-                    </div>
-                    <span className="font-bold text-xs truncate text-white">
-                      Catálogo de Peças & Preços
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white text-blue-700 text-xs font-black shadow-xs shrink-0 whitespace-nowrap">
-                    <Search size={13} className="shrink-0" />
-                    <span>Abrir</span>
-                    <ChevronRight size={13} className="shrink-0" />
-                  </div>
-                </Link>
+                {canAccessProducts && canViewHomeCard('card_catalogo_pecas') && (
+                  <>
+                    {/* Mobile View: Botão em linha única */}
+                    <Link
+                      href="/products"
+                      className="sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm bg-blue-600 hover:bg-blue-500 border-blue-500 text-white"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
+                          <Package size={17} />
+                        </div>
+                        <span className="font-bold text-xs truncate text-white">
+                          Catálogo de Peças & Preços
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white text-blue-700 text-xs font-black shadow-xs shrink-0 whitespace-nowrap">
+                        <Search size={13} className="shrink-0" />
+                        <span>Abrir</span>
+                        <ChevronRight size={13} className="shrink-0" />
+                      </div>
+                    </Link>
 
-                {/* Desktop View: Card com descrição e botão */}
-                <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
-                  isDarkMode
-                    ? 'bg-gradient-to-r from-blue-950/70 to-indigo-950/60 border-blue-900/60 shadow-lg'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
-                }`}>
-                  <div className="flex items-start gap-3.5 mb-4">
-                    <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                      <Package size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
-                        Catálogo de Peças & Preços
-                      </h3>
-                      <p className="text-[11px] text-blue-100 opacity-90 mt-0.5 leading-relaxed">
-                        Consulte produtos, preços em 10x e à vista, referências de fábrica e cotações.
-                      </p>
-                    </div>
-                  </div>
+                    {/* Desktop View: Card com descrição e botão */}
+                    <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
+                      isDarkMode
+                        ? 'bg-gradient-to-r from-blue-950/70 to-indigo-950/60 border-blue-900/60 shadow-lg'
+                        : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
+                    }`}>
+                      <div className="flex items-start gap-3.5 mb-4">
+                        <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
+                          <Package size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                            Catálogo de Peças & Preços
+                          </h3>
+                          <p className="text-[11px] text-blue-100 opacity-90 mt-0.5 leading-relaxed">
+                            Consulte produtos, preços em 10x e à vista, referências de fábrica e cotações.
+                          </p>
+                        </div>
+                      </div>
 
-                  <Link
-                    href="/products"
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-blue-700 hover:bg-blue-50 dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white dark:shadow-md dark:shadow-blue-600/30 text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer whitespace-nowrap"
-                  >
-                    <Search size={15} className="text-blue-600 dark:text-white shrink-0" />
-                    <span className="whitespace-nowrap">Abrir Catálogo de Peças</span>
-                    <ChevronRight size={15} className="dark:text-white shrink-0" />
-                  </Link>
-                </div>
-
-                {/* Tabela de Split - Logo abaixo do Catálogo de Peças */}
-                <Link
-                  href="/tabela-split"
-                  className="sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm bg-sky-600 hover:bg-sky-500 border-sky-500 text-white"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
-                      <Wind size={17} />
+                      <Link
+                        href="/products"
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-blue-700 hover:bg-blue-50 dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white dark:shadow-md dark:shadow-blue-600/30 text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer whitespace-nowrap"
+                      >
+                        <Search size={15} className="text-blue-600 dark:text-white shrink-0" />
+                        <span className="whitespace-nowrap">Abrir Catálogo de Peças</span>
+                        <ChevronRight size={15} className="dark:text-white shrink-0" />
+                      </Link>
                     </div>
-                    <span className="font-bold text-xs truncate text-white">
-                      Tabela de Split (Agratto, Gree e Elgin)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white text-sky-700 text-xs font-black shadow-xs shrink-0 whitespace-nowrap">
-                    <Search size={13} className="shrink-0" />
-                    <span>Preços</span>
-                    <ChevronRight size={13} className="shrink-0" />
-                  </div>
-                </Link>
+                  </>
+                )}
 
-                <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
-                  isDarkMode
-                    ? 'bg-gradient-to-r from-sky-950/70 to-cyan-950/60 border-sky-900/60 shadow-lg'
-                    : 'bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-sky-600/20'
-                }`}>
-                  <div className="flex items-start gap-3.5 mb-4">
-                    <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
-                      <Wind size={24} />
-                    </div>
-                    <div>
-                      <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
-                        Tabela de Split — Ar Condicionado
-                      </h3>
-                      <p className="text-[11px] text-sky-100 opacity-90 mt-0.5 leading-relaxed">
-                        Consulte preços de 1x a 10x (Total e Prestação) das tabelas Agratto, Gree e Elgin.
-                      </p>
-                    </div>
-                  </div>
+                {canAccessSplitTable && canViewHomeCard('card_tabela_split') && (
+                  <>
+                    {/* Tabela de Split - Logo abaixo do Catálogo de Peças */}
+                    <Link
+                      href="/tabela-split"
+                      className="sm:hidden flex items-center justify-between p-3 rounded-2xl border transition-all active:scale-[0.98] cursor-pointer shadow-sm bg-sky-600 hover:bg-sky-500 border-sky-500 text-white"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="p-1.5 rounded-xl bg-white/20 text-white shrink-0">
+                          <Wind size={17} />
+                        </div>
+                        <span className="font-bold text-xs truncate text-white">
+                          Tabela de Split (Agratto, Gree e Elgin)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white text-sky-700 text-xs font-black shadow-xs shrink-0 whitespace-nowrap">
+                        <Search size={13} className="shrink-0" />
+                        <span>Preços</span>
+                        <ChevronRight size={13} className="shrink-0" />
+                      </div>
+                    </Link>
 
-                  <Link
-                    href="/tabela-split"
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-sky-700 hover:bg-sky-50 dark:bg-sky-600 dark:hover:bg-sky-500 dark:text-white dark:shadow-md dark:shadow-sky-600/30 text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer whitespace-nowrap"
-                  >
-                    <Wind size={15} className="text-sky-600 dark:text-white shrink-0" />
-                    <span className="whitespace-nowrap">Abrir Tabela de Split</span>
-                    <ChevronRight size={15} className="dark:text-white shrink-0" />
-                  </Link>
-                </div>
+                    <div className={`hidden sm:flex p-4 sm:p-5 rounded-3xl border transition-all flex-col justify-between ${
+                      isDarkMode
+                        ? 'bg-gradient-to-r from-sky-950/70 to-cyan-950/60 border-sky-900/60 shadow-lg'
+                        : 'bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-lg shadow-sky-600/20'
+                    }`}>
+                      <div className="flex items-start gap-3.5 mb-4">
+                        <div className="p-3 rounded-2xl bg-white/20 backdrop-blur-xs text-white shrink-0">
+                          <Wind size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
+                            Tabela de Split — Ar Condicionado
+                          </h3>
+                          <p className="text-[11px] text-sky-100 opacity-90 mt-0.5 leading-relaxed">
+                            Consulte preços de 1x a 10x (Total e Prestação) das tabelas Agratto, Gree e Elgin.
+                          </p>
+                        </div>
+                      </div>
+
+                      <Link
+                        href="/tabela-split"
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white text-sky-700 hover:bg-sky-50 dark:bg-sky-600 dark:hover:bg-sky-500 dark:text-white dark:shadow-md dark:shadow-sky-600/30 text-xs font-black shadow-md transition-all active:scale-95 w-full cursor-pointer whitespace-nowrap"
+                      >
+                        <Wind size={15} className="text-sky-600 dark:text-white shrink-0" />
+                        <span className="whitespace-nowrap">Abrir Tabela de Split</span>
+                        <ChevronRight size={15} className="dark:text-white shrink-0" />
+                      </Link>
+                    </div>
+                  </>
+                )}
               </>
             )}
 
@@ -1593,22 +1614,24 @@ export default function Dashboard() {
                 </Link>
               )}
 
-              <Link 
-                href="/demands"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <ClipboardList size={17} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Demandas</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Solicitações</p>
-                </div>
-              </Link>
+              {canAccessDemands && (
+                <Link 
+                  href="/demands"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <ClipboardList size={17} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Demandas</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Solicitações</p>
+                  </div>
+                </Link>
+              )}
 
               {canAccessSocialMedia && (
                 <Link 
@@ -1648,22 +1671,24 @@ export default function Dashboard() {
                 </Link>
               )}
 
-              <Link 
-                href="/price-research"
-                className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
-                  isDarkMode 
-                    ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
-                    : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
-                }`}
-              >
-                <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                  <Tag size={17} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Pesquisa de Preço</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Concorrentes</p>
-                </div>
-              </Link>
+              {canAccessPriceResearch && (
+                <Link 
+                  href="/price-research"
+                  className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${
+                    isDarkMode 
+                      ? 'bg-slate-900 border-slate-800 hover:border-slate-700' 
+                      : 'bg-white border-slate-200/80 hover:border-slate-300 shadow-xs'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                    <Tag size={17} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">Pesquisa de Preço</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">Concorrentes</p>
+                  </div>
+                </Link>
+              )}
 
               {canAccessDeliveries && (
                 <Link 
@@ -1689,7 +1714,7 @@ export default function Dashboard() {
                 </Link>
               )}
 
-              {canAccessWarranties && (
+              {canAccessAssistances && (
                 <Link 
                   href="/warranties/assistances"
                   className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between gap-3 group ${

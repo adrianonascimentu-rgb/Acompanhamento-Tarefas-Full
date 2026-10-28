@@ -57,12 +57,14 @@ import {
   Webhook,
   Globe,
   Plus,
-  Trash2
+  Trash2,
+  Wind,
+  Award
 } from 'lucide-react';
 import CommissionsManager from '@/components/admin/CommissionsManager';
 import AdrianoCommissionsManager from '@/components/admin/AdrianoCommissionsManager';
 import { motion, AnimatePresence } from 'motion/react';
-import { useRole, DEFAULT_ADMIN_USER } from '@/hooks/useRole';
+import { useRole, DEFAULT_ADMIN_USER, DEFAULT_PERMISSIONS } from '@/hooks/useRole';
 import { useTheme } from '@/hooks/useTheme';
 import { supabase } from '@/lib/supabase';
 import { OPTIMIZED_RLS_FIX_SQL } from '@/lib/rlsOptimization';
@@ -77,14 +79,7 @@ export default function AdminSettingsPage() {
   const { isDarkMode } = useTheme();
   
   const [permissions, setPermissions] = useState<Record<string, string[]>>({
-    leads: ['admin'],
-    social_media: ['admin'],
-    whatsapp: ['admin'],
-    deliveries: ['admin', 'entregador', 'vendedor', 'estoque', 'gerente', 'caixa'],
-    transfers: ['admin', 'estoque'],
-    warranties: ['admin', 'vendedor'],
-    sales: ['admin', 'vendedor'],
-    reports: ['admin']
+    ...DEFAULT_PERMISSIONS
   });
   
   const [isSaving, setIsSaving] = useState(false);
@@ -1013,7 +1008,7 @@ END $$;`;
               <thead>
                 <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
                   <th className="p-6 text-xs font-black text-slate-400 uppercase tracking-widest">Módulo</th>
-                  {['Admin', 'Gerente', 'Caixa', 'Vendedor', 'Estoque', 'Entregador', 'Colaborador'].map(role => (
+                  {['Admin', 'Gerente', 'Supervisor', 'Caixa', 'Vendedor', 'Estoque', 'Entregador', 'Colaborador'].map(role => (
                     <th key={role} className="p-6 text-center text-xs font-black text-slate-400 uppercase tracking-widest">{role}</th>
                   ))}
                 </tr>
@@ -1025,6 +1020,9 @@ END $$;`;
                     items: [
                       { id: 'home', label: 'Início', icon: Home, desc: 'Página inicial e painel principal' },
                       { id: 'products', label: 'Catálogo de Peças', icon: Package, desc: 'Gestão e consulta de peças' },
+                      { id: 'split_table', label: 'Tabela de Split', icon: Wind, desc: 'Preços de ar condicionado Split 1x a 10x' },
+                      { id: 'loyalty', label: 'Clientes Fidelidade', icon: Award, desc: 'Consulta de pontos, bônus e último vendedor' },
+                      { id: 'loyalty_import', label: 'Importar Fidelidade / Vendas', icon: Award, desc: 'Permissão para importar relatórios de fidelidade e vendas' },
                       { id: 'tasks', label: 'Tarefas', icon: ClipboardList, desc: 'Gerenciamento de tarefas da equipe' },
                       { id: 'demands', label: 'Demandas', icon: ListTodo, desc: 'Gestão de chamados e solicitações' },
                       { id: 'routes', label: 'Rotas & GPS', icon: Truck, desc: 'Roteirização e rastreamento' },
@@ -1070,7 +1068,7 @@ END $$;`;
                 ].map(group => (
                   <React.Fragment key={group.category}>
                     <tr className={isDarkMode ? 'bg-slate-900/85' : 'bg-slate-100/80'}>
-                      <td colSpan={8} className="px-6 py-3 text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                      <td colSpan={9} className="px-6 py-3 text-xs font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
                         {group.category}
                       </td>
                     </tr>
@@ -1087,7 +1085,7 @@ END $$;`;
                             </div>
                           </div>
                         </td>
-                        {['admin', 'gerente', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'].map(role => (
+                        {['admin', 'gerente', 'supervisor', 'caixa', 'vendedor', 'estoque', 'entregador', 'user'].map(role => (
                           <td key={role} className="p-6 text-center">
                             <button
                               onClick={() => handleTogglePermission(mod.id, role)}

@@ -182,7 +182,7 @@ export function LoginForm({ onLogin }: LoginFormProps) {
           targetEmail.includes('adrianonascimentu')
         );
 
-      const finalUser = profileUser || {
+      const finalUser: any = profileUser ? { ...profileUser } : {
         id: authUser?.id || '77777777-7777-7777-7777-777777777777',
         name: authUser?.user_metadata?.name || (cleanInput.charAt(0).toUpperCase() + cleanInput.slice(1)) || 'Colaborador',
         email: targetEmail,
@@ -191,13 +191,42 @@ export function LoginForm({ onLogin }: LoginFormProps) {
         status: 'Ativo'
       };
 
+      // 4. Carregar permissões granulares de módulos e submódulos salvas em system_settings
+      if (finalUser?.id) {
+        try {
+          const { data: accessConfigRow } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'collaborator_access_config')
+            .maybeSingle();
+
+          if (accessConfigRow?.value && typeof accessConfigRow.value === 'object') {
+            const savedEntry = (accessConfigRow.value as Record<string, any>)[finalUser.id];
+            if (savedEntry) {
+              if (savedEntry.accessLevel) {
+                finalUser.access_level = savedEntry.accessLevel;
+                finalUser.type = savedEntry.accessLevel;
+              }
+              if (savedEntry.submodules && typeof savedEntry.submodules === 'object') {
+                finalUser.submodules = savedEntry.submodules;
+              }
+              if (savedEntry.homeCards && typeof savedEntry.homeCards === 'object') {
+                finalUser.homeCards = savedEntry.homeCards;
+              }
+            }
+          }
+        } catch (permErr) {
+          console.warn('Aviso ao carregar permissões granulares no login:', permErr);
+        }
+      }
+
       const isUserInactive = finalUser.status === 'Inativo' || getInactiveCollaboratorIds().includes(finalUser.id);
       if (isUserInactive) {
         await supabase.auth.signOut().catch(() => {});
         throw new Error('Sua conta de colaborador foi inativada. Entre em contato com a administração.');
       }
 
-      onLogin((finalUser.type || finalUser.role || 'user') as Role, finalUser);
+      onLogin((finalUser.access_level || finalUser.type || finalUser.role || 'user') as Role, finalUser);
     } catch (err: any) {
       console.error('Login error:', err);
       setError(err.message || 'Erro ao realizar login.');

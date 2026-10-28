@@ -81,10 +81,30 @@ export async function POST(req: Request) {
       }
     }
 
+    // 3. Carregar configurações granulares de módulos/submódulos do colaborador
+    let savedAccessEntry: any = null;
+    try {
+      const { data: accessConfigRow } = await adminClient
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'collaborator_access_config')
+        .maybeSingle();
+      if (accessConfigRow?.value && typeof accessConfigRow.value === 'object') {
+        savedAccessEntry = (accessConfigRow.value as Record<string, any>)[profile.id] || null;
+      }
+    } catch {}
+
+    const enrichedProfile = {
+      ...profile,
+      access_level: savedAccessEntry?.accessLevel || profile.type || profile.role || 'user',
+      submodules: savedAccessEntry?.submodules || null,
+      homeCards: savedAccessEntry?.homeCards || null,
+    };
+
     return NextResponse.json({
       success: true,
       email: targetEmail,
-      profile
+      profile: enrichedProfile
     });
   } catch (err: any) {
     console.error('Erro no login helper:', err);

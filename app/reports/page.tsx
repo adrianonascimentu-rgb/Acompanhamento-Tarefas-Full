@@ -9,7 +9,8 @@ import {
   LayoutGrid, Bell, Shield, ArrowRightLeft, Target, Truck, Users, 
   Settings, Home, ClipboardList, ShieldCheck, BarChart3, 
   Clock, CheckCircle2, AlertCircle, TrendingUp, Package, 
-  Calendar, Filter, ChevronRight, Activity, Share2, Download, Layers, Layers3, Tag
+  Calendar, Filter, ChevronRight, Activity, Share2, Download, Layers, Layers3, Tag,
+  Award, Wind, ShoppingBag, Boxes, Sparkles, DollarSign, Gift, UserCheck, Store, Snowflake, Zap, FileSpreadsheet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRole } from '@/hooks/useRole';
@@ -18,16 +19,139 @@ import { supabase } from '@/lib/supabase';
 import { BottomNav } from '@/components/BottomNav';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { exportConsolidatedReportToPDF } from '@/lib/exportConsolidatedPdf';
+import {
+  LoyaltyClient,
+  LOYALTY_CONFIG,
+  getStoredLoyaltyClients,
+  calculateLoyaltyStats,
+  pointsToBRL,
+  formatBRL,
+} from '@/lib/loyaltyData';
+import {
+  SPLIT_BRAND_TABLES,
+  AVAILABLE_BTUS,
+  SplitModelItem,
+} from '@/lib/splitPriceTables';
+import {
+  CatalogProduct,
+  getAllCatalogProducts,
+  inferCategory,
+} from '@/lib/catalogProducts';
+import {
+  mergeLeadsWithImported,
+  getLocalLeadAddressMap,
+} from '@/lib/leadsHelper';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316'];
 
+const DEFAULT_ML_SAMPLE_ITEMS = [
+  {
+    id: 'ml_sample_1',
+    segmento_ml: 'Brastemp',
+    codigo: '212445',
+    nome: 'FRONTAL DA GAVETA LEGUMES BRM38/BRM39+ BRASTEMP',
+    estoque: 7,
+    vds_6m: 12,
+    a_vista_cp: 172.80,
+    liq_ml_envios: 172.74,
+    pr_cp_ml: 253.00,
+    pr_vende_mais: 205.90,
+    liq_ml_full: 185.00,
+    full_price: 265.00,
+    nome_fabricante: 'WHIRLPOOL',
+  },
+  {
+    id: 'ml_sample_2',
+    segmento_ml: 'Electrolux',
+    codigo: '104322',
+    nome: 'PLACA POTENCIA REFRIGERADOR ELECTROLUX DFW52/DW52X BIVOLT',
+    estoque: 15,
+    vds_6m: 28,
+    a_vista_cp: 210.00,
+    liq_ml_envios: 205.50,
+    pr_cp_ml: 310.00,
+    pr_vende_mais: 325.00,
+    liq_ml_full: 215.00,
+    full_price: 325.00,
+    nome_fabricante: 'ELECTROLUX',
+  },
+  {
+    id: 'ml_sample_3',
+    segmento_ml: 'Consul',
+    codigo: '308912',
+    nome: 'MOTOR VENTILADOR CONDENSADORA SPLIT CONSUL 9000/12000 BTUS',
+    estoque: 9,
+    vds_6m: 19,
+    a_vista_cp: 145.00,
+    liq_ml_envios: 148.20,
+    pr_cp_ml: 219.90,
+    pr_vende_mais: 229.00,
+    liq_ml_full: 155.00,
+    full_price: 229.90,
+    nome_fabricante: 'WHIRLPOOL',
+  },
+  {
+    id: 'ml_sample_4',
+    segmento_ml: 'Elgin',
+    codigo: '416150',
+    nome: 'MICRO-MOTOR ELGIN 1/40 BIVOLT C/HELICE PLASTICA',
+    estoque: 18,
+    vds_6m: 34,
+    a_vista_cp: 65.90,
+    liq_ml_envios: 71.40,
+    pr_cp_ml: 109.90,
+    pr_vende_mais: 115.00,
+    liq_ml_full: 74.00,
+    full_price: 114.90,
+    nome_fabricante: 'ELGIN',
+  },
+];
+
 export default function ReportsPage() {
   const { isDarkMode } = useTheme();
-  const { role, user, canAccessReports, isAuthenticated, login } = useRole();
+  const {
+    role,
+    user,
+    canAccessReports,
+    canAccessLoyalty,
+    canAccessSplitTable,
+    canAccessProducts,
+    canAccessPriceResearch,
+    canAccessLeads,
+    canAccessDeliveries,
+    canAccessTasks,
+    canAccessTransfers,
+    canAccessSales,
+    canAccessWarranties,
+    canAccessDemands,
+    canAccessSocialMedia,
+    hasSubmoduleAccess,
+    isAuthenticated,
+    login,
+  } = useRole();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'consolidado' | 'geral' | 'tarefas' | 'transfers' | 'leads' | 'deliveries' | 'warranties' | 'demands' | 'vendas' | 'colaboradores' | 'social' | 'precos'>('consolidado');
+  const [activeTab, setActiveTab] = useState<
+    | 'consolidado'
+    | 'geral'
+    | 'fidelidade'
+    | 'tabela_split'
+    | 'catalogo_pecas'
+    | 'mercado_livre'
+    | 'tarefas'
+    | 'transfers'
+    | 'leads'
+    | 'deliveries'
+    | 'warranties'
+    | 'demands'
+    | 'vendas'
+    | 'colaboradores'
+    | 'social'
+    | 'precos'
+  >('consolidado');
   const [dateFilter, setDateFilter] = useState<'today' | '7days' | '15days' | '30days' | '3months' | '6months'>('30days');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'core' | 'operations' | 'sales' | 'support'>('all');
+  const [loyaltySellerFilter, setLoyaltySellerFilter] = useState<string>('all');
+  const [splitBrandFilter, setSplitBrandFilter] = useState<'all' | 'agratto' | 'gree' | 'elgin'>('all');
   
   // Raw Data State for Memoization
   const [rawData, setRawData] = useState<{
@@ -43,6 +167,9 @@ export default function ReportsPage() {
     allSalesResults: any[];
     salesTransactions: any[];
     priceResearch: any[];
+    loyaltyClients: LoyaltyClient[];
+    catalogProducts: CatalogProduct[];
+    mercadoLivreItems: any[];
   }>({
     tasks: [],
     assignees: [],
@@ -55,7 +182,10 @@ export default function ReportsPage() {
     sales: [],
     allSalesResults: [],
     salesTransactions: [],
-    priceResearch: []
+    priceResearch: [],
+    loyaltyClients: [],
+    catalogProducts: [],
+    mercadoLivreItems: [],
   });
 
   const [trendViewMode, setTrendViewMode] = useState<'daily' | 'cumulative'>('daily');
@@ -105,7 +235,8 @@ export default function ReportsPage() {
         { data: sales },
         { data: allSalesResults },
         { data: salesTransactions },
-        priceResearch
+        priceResearch,
+        mlResponse
       ] = await Promise.all([
         supabase.from('tasks').select('*'),
         supabase.from('task_assignees').select('*, profiles(name)'),
@@ -118,14 +249,38 @@ export default function ReportsPage() {
         supabase.from('sales_results').select('*, profiles(name)').eq('month', new Date().getMonth() + 1).eq('year', new Date().getFullYear()),
         supabase.from('sales_results').select('*, profiles(name)'),
         supabase.from('sales').select('*'),
-        fetch('/api/competitor-prices').then(res => res.json()).then(r => ({ data: r.data }))
+        fetch('/api/competitor-prices').then(res => res.json()).then(r => ({ data: r.data })).catch(() => ({ data: [] })),
+        fetch('/api/mercado-livre').then(res => res.json()).catch(() => ({ data: null }))
       ]);
+
+      const storedLoyalty = getStoredLoyaltyClients();
+      const storedCatalog = getAllCatalogProducts();
+      const addressMap = getLocalLeadAddressMap();
+      const mergedLeads = mergeLeadsWithImported(leads || [], addressMap);
+
+      let mlItems: any[] = [];
+      if (Array.isArray(mlResponse?.data) && mlResponse.data.length > 0) {
+        mlItems = mlResponse.data;
+      } else if (typeof window !== 'undefined') {
+        try {
+          const localMl = localStorage.getItem('mercado_livre_items');
+          if (localMl) {
+            const parsed = JSON.parse(localMl);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              mlItems = parsed;
+            }
+          }
+        } catch {}
+      }
+      if (mlItems.length === 0) {
+        mlItems = DEFAULT_ML_SAMPLE_ITEMS;
+      }
 
       setRawData({
         tasks: tasks || [],
         assignees: assignees || [],
         transfers: transfers || [],
-        leads: leads || [],
+        leads: mergedLeads,
         deliveries: deliveries || [],
         warranties: warranties || [],
         demands: demands || [],
@@ -133,7 +288,10 @@ export default function ReportsPage() {
         sales: sales || [],
         allSalesResults: allSalesResults || [],
         salesTransactions: salesTransactions || [],
-        priceResearch: priceResearch.data || []
+        priceResearch: priceResearch.data || [],
+        loyaltyClients: storedLoyalty || [],
+        catalogProducts: storedCatalog || [],
+        mercadoLivreItems: mlItems,
       });
     } catch (error: any) {
       console.error('Error fetching report data:', error?.message || error);
@@ -814,17 +972,31 @@ export default function ReportsPage() {
     return Object.values(performanceMap).sort((a, b) => b.activities - a.activities);
   }, [tasksData, filteredLeads, filteredDeliveries, rawData.sales, profileMap]);
 
-  // 4. Memoized Overall Stats
+  // 4. Memoized Overall Stats (Including Newly Added Modules)
   const overallStats = useMemo(() => {
+    const splitModelsCount = SPLIT_BRAND_TABLES.reduce(
+      (acc, brand) => acc + brand.sections.reduce((sAcc, sec) => sAcc + sec.items.length, 0),
+      0
+    );
     return [
       { name: 'Tarefas', value: filteredTasks?.length || 0, color: '#3b82f6', icon: ClipboardList },
       { name: 'Leads', value: filteredLeads?.length || 0, color: '#10b981', icon: Target },
       { name: 'Vendas', value: rawData.sales?.length || 0, color: '#f59e0b', icon: TrendingUp },
       { name: 'Entregas', value: filteredDeliveries?.length || 0, color: '#ef4444', icon: Truck },
-      { name: 'Garantias', value: filteredWarranties?.length || 0, color: '#06b6d4', icon: ShieldCheck },
-      { name: 'Transf.', value: filteredTransfers?.length || 0, color: '#8b5cf6', icon: ArrowRightLeft },
+      { name: 'Fidelidade', value: rawData.loyaltyClients?.length || 0, color: '#ec4899', icon: Award },
+      { name: 'Modelos Split', value: splitModelsCount, color: '#0ea5e9', icon: Wind },
+      { name: 'Catálogo Peças', value: rawData.catalogProducts?.length || 0, color: '#8b5cf6', icon: Package },
+      { name: 'Anúncios ML', value: rawData.mercadoLivreItems?.length || 0, color: '#eab308', icon: ShoppingBag },
     ];
-  }, [filteredTasks?.length, filteredLeads?.length, rawData.sales?.length, filteredDeliveries?.length, filteredWarranties?.length, filteredTransfers?.length]);
+  }, [
+    filteredTasks?.length,
+    filteredLeads?.length,
+    rawData.sales?.length,
+    filteredDeliveries?.length,
+    rawData.loyaltyClients?.length,
+    rawData.catalogProducts?.length,
+    rawData.mercadoLivreItems?.length,
+  ]);
 
   // 5. Memoized Transfers Data
   const transfersData = useMemo(() => {
@@ -862,7 +1034,7 @@ export default function ReportsPage() {
     };
   }, [filteredTransfers, profileMap]);
 
-  // 6. Memoized Leads Data
+  // 6. Memoized Leads Data (including imported report enrichments: seller, last purchase, loyalty bonus, neighborhood)
   const leadsData = useMemo(() => {
     const statusDist: Record<string, number> = {};
     const segmentDist: Record<string, number> = {};
@@ -870,20 +1042,66 @@ export default function ReportsPage() {
     const responsibleDist: Record<string, number> = {};
     const overTime: Record<string, number> = {};
     const leadVelocity: Record<string, number[]> = {};
+    const neighborhoodDist: Record<string, number> = {};
+    const sellerRevenueMap: Record<string, { leadsCount: number; lastPurchaseTotal: number; totalPurchased: number; bonusBRL: number }> = {};
+
+    let enrichedWithSellerCount = 0;
+    let enrichedWithLoyaltyCount = 0;
+    let totalLastPurchasesBRL = 0;
+    let totalHistoricalPurchasesBRL = 0;
+    let totalLeadsBonusBRL = 0;
 
     filteredLeads.forEach((l: any) => {
-      statusDist[l.status] = (statusDist[l.status] || 0) + 1;
+      const st = l.status || 'Novo';
+      statusDist[st] = (statusDist[st] || 0) + 1;
       segmentDist[l.segment || 'Não definido'] = (segmentDist[l.segment || 'Não definido'] || 0) + 1;
-      sourceDist[l.source || 'Desconhecido'] = (sourceDist[l.source || 'Desconhecido'] || 0) + 1;
+      const src = l.report_source || l.source || 'Prospecção / Base';
+      sourceDist[src] = (sourceDist[src] || 0) + 1;
       
-      const responsible = profileMap[l.responsible_id] || 'Ninguém';
+      const responsible =
+        l.last_seller ||
+        l.assigned_name ||
+        profileMap[l.assigned_to] ||
+        profileMap[l.responsible_id] ||
+        'Não atribuído';
       responsibleDist[responsible] = (responsibleDist[responsible] || 0) + 1;
 
-      const date = new Date(l.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const neighborhood = l.neighborhood || 'Centro / Outros';
+      neighborhoodDist[neighborhood] = (neighborhoodDist[neighborhood] || 0) + 1;
+
+      if (l.last_seller || (l.last_purchase_value && l.last_purchase_value > 0)) {
+        enrichedWithSellerCount++;
+      }
+      if ((l.loyalty_points && l.loyalty_points > 0) || (l.loyalty_bonus_brl && l.loyalty_bonus_brl > 0)) {
+        enrichedWithLoyaltyCount++;
+      }
+
+      const lastVal = Number(l.last_purchase_value || 0);
+      const histVal = Number(l.total_purchased || lastVal || 0);
+      const bonusVal = Number(l.loyalty_bonus_brl || (l.loyalty_points ? pointsToBRL(l.loyalty_points) : 0));
+
+      totalLastPurchasesBRL += lastVal;
+      totalHistoricalPurchasesBRL += histVal;
+      totalLeadsBonusBRL += bonusVal;
+
+      if (l.last_seller || responsible !== 'Não atribuído') {
+        const sKey = l.last_seller || responsible;
+        if (!sellerRevenueMap[sKey]) {
+          sellerRevenueMap[sKey] = { leadsCount: 0, lastPurchaseTotal: 0, totalPurchased: 0, bonusBRL: 0 };
+        }
+        sellerRevenueMap[sKey].leadsCount += 1;
+        sellerRevenueMap[sKey].lastPurchaseTotal += lastVal;
+        sellerRevenueMap[sKey].totalPurchased += histVal;
+        sellerRevenueMap[sKey].bonusBRL += bonusVal;
+      }
+
+      const date = l.created_at
+        ? new Date(l.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+        : 'Recente';
       overTime[date] = (overTime[date] || 0) + 1;
 
       // Lead velocity (time to convert)
-      if (l.status === 'Convertido' && l.created_at && l.updated_at) {
+      if ((l.status === 'Convertido' || l.status === 'Concluído') && l.created_at && l.updated_at) {
         const start = new Date(l.created_at).getTime();
         const end = new Date(l.updated_at).getTime();
         const diffDays = Math.max(0, (end - start) / (1000 * 60 * 60 * 24));
@@ -897,13 +1115,35 @@ export default function ReportsPage() {
       value: parseFloat((days.reduce((a, b) => a + b, 0) / days.length).toFixed(1))
     }));
 
+    const topNeighborhoods = Object.entries(neighborhoodDist)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8);
+
+    const sellerEnrichmentData = Object.entries(sellerRevenueMap)
+      .map(([name, data]) => ({
+        name,
+        leadsCount: data.leadsCount,
+        lastPurchaseTotal: Math.round(data.lastPurchaseTotal),
+        totalPurchased: Math.round(data.totalPurchased),
+        bonusBRL: parseFloat(data.bonusBRL.toFixed(2)),
+      }))
+      .sort((a, b) => b.lastPurchaseTotal - a.lastPurchaseTotal || b.leadsCount - a.leadsCount);
+
     return {
       statusDist: Object.entries(statusDist).map(([name, value]) => ({ name, value })),
       segmentDist: Object.entries(segmentDist).map(([name, value]) => ({ name, value })),
       sourceDist: Object.entries(sourceDist).map(([name, value]) => ({ name, value })),
       responsibleDist: Object.entries(responsibleDist).map(([name, value]) => ({ name, value })),
       overTime: Object.entries(overTime).map(([name, value]) => ({ name, value })),
-      avgVelocityByResponsible
+      avgVelocityByResponsible,
+      topNeighborhoods,
+      sellerEnrichmentData,
+      enrichedWithSellerCount,
+      enrichedWithLoyaltyCount,
+      totalLastPurchasesBRL,
+      totalHistoricalPurchasesBRL,
+      totalLeadsBonusBRL,
     };
   }, [filteredLeads, profileMap]);
 
@@ -1309,6 +1549,603 @@ export default function ReportsPage() {
     };
   }, [rawData.priceResearch]);
 
+  // 13. Memoized Loyalty & Seller Cross-Reference Analytics (Clientes Fidelidade & Bônus)
+  const loyaltyAnalytics = useMemo(() => {
+    const allClients = rawData.loyaltyClients || [];
+    const sellersSet = new Set<string>();
+    allClients.forEach((c) => {
+      if (c.ultimoVendedor) sellersSet.add(c.ultimoVendedor);
+    });
+    const availableSellers = Array.from(sellersSet).sort();
+
+    const filteredClients =
+      loyaltySellerFilter === 'all'
+        ? allClients
+        : loyaltySellerFilter === 'sem_vendedor'
+        ? allClients.filter((c) => !c.ultimoVendedor)
+        : allClients.filter((c) => c.ultimoVendedor === loyaltySellerFilter);
+
+    const stats = calculateLoyaltyStats(filteredClients);
+
+    // Ranking e Carteira por Vendedor (Último Atendimento)
+    const sellerMap = new Map<
+      string,
+      {
+        codigo: string;
+        nome: string;
+        clientesCount: number;
+        clientesComBonus: number;
+        somaUltimaCompraBRL: number;
+        totalHistoricoBRL: number;
+        pontosAtivos: number;
+        bonusDisponivelBRL: number;
+        pontosAVencer: number;
+      }
+    >();
+
+    // Faixas de Saldo VIP
+    const tierDist: Record<string, number> = {
+      'Sem Saldo (0 pts)': 0,
+      'Inicial (1–49 pts)': 0,
+      'Prata (50–199 pts)': 0,
+      'Ouro (200–499 pts)': 0,
+      'Diamante (500+ pts)': 0,
+    };
+
+    // Cronograma de Vencimentos por Mês/Ano
+    const expirationByMonth: Record<string, { points: number; brl: number; clients: number; sortKey: number }> = {};
+
+    let totalExpiringPoints = 0;
+
+    filteredClients.forEach((c) => {
+      const pts = c.saldoPontos || 0;
+      if (pts <= 0) tierDist['Sem Saldo (0 pts)']++;
+      else if (pts < 50) tierDist['Inicial (1–49 pts)']++;
+      else if (pts < 200) tierDist['Prata (50–199 pts)']++;
+      else if (pts < 500) tierDist['Ouro (200–499 pts)']++;
+      else tierDist['Diamante (500+ pts)']++;
+
+      if (c.proximoVencimento && pts > 0) {
+        const expPts = c.pontosAVencerProximo > 0 ? c.pontosAVencerProximo : pts;
+        totalExpiringPoints += expPts;
+        const parts = c.proximoVencimento.split('/');
+        const monthYear = parts.length === 3 ? `${parts[1]}/${parts[2]}` : c.proximoVencimento;
+        const sortKey = parts.length === 3 ? Number(parts[2]) * 100 + Number(parts[1]) : 999999;
+        if (!expirationByMonth[monthYear]) {
+          expirationByMonth[monthYear] = { points: 0, brl: 0, clients: 0, sortKey };
+        }
+        expirationByMonth[monthYear].points += expPts;
+        expirationByMonth[monthYear].brl += pointsToBRL(expPts);
+        expirationByMonth[monthYear].clients += 1;
+      }
+
+      const sellerKey = c.ultimoVendedor || 'Sem Vendedor Vinculado';
+      const prev = sellerMap.get(sellerKey) || {
+        codigo: c.ultimoVendedorCodigo || '-',
+        nome: sellerKey,
+        clientesCount: 0,
+        clientesComBonus: 0,
+        somaUltimaCompraBRL: 0,
+        totalHistoricoBRL: 0,
+        pontosAtivos: 0,
+        bonusDisponivelBRL: 0,
+        pontosAVencer: 0,
+      };
+      prev.clientesCount += 1;
+      if (pts > 0) prev.clientesComBonus += 1;
+      prev.somaUltimaCompraBRL += c.valorUltimaCompra || 0;
+      prev.totalHistoricoBRL += c.totalComprado || 0;
+      prev.pontosAtivos += pts;
+      prev.bonusDisponivelBRL += pointsToBRL(pts);
+      prev.pontosAVencer += c.pontosAVencerProximo || 0;
+      sellerMap.set(sellerKey, prev);
+    });
+
+    const sellerRanking = Array.from(sellerMap.values())
+      .map((s) => ({
+        ...s,
+        ticketMedioUltima: s.clientesCount > 0 ? s.somaUltimaCompraBRL / s.clientesCount : 0,
+        somaUltimaCompraRounded: Math.round(s.somaUltimaCompraBRL),
+        bonusDisponivelRounded: parseFloat(s.bonusDisponivelBRL.toFixed(2)),
+      }))
+      .sort((a, b) => {
+        if (a.nome === 'Sem Vendedor Vinculado') return 1;
+        if (b.nome === 'Sem Vendedor Vinculado') return -1;
+        return b.somaUltimaCompraBRL - a.somaUltimaCompraBRL || b.clientesCount - a.clientesCount;
+      });
+
+    const tierChartData = Object.entries(tierDist)
+      .map(([name, value]) => ({ name, value }))
+      .filter((d) => d.value > 0);
+
+    const pointsLifecycleData = [
+      {
+        name: 'Saldo Ativo',
+        pontos: Math.round(stats.totalPointsActive),
+        reais: parseFloat(stats.totalBonusBRL.toFixed(2)),
+      },
+      {
+        name: 'Resgatados (Convertidos)',
+        pontos: Math.round(stats.totalPointsConverted),
+        reais: parseFloat(stats.totalConvertedBRL.toFixed(2)),
+      },
+      {
+        name: 'Pontos a Vencer',
+        pontos: Math.round(totalExpiringPoints),
+        reais: parseFloat(pointsToBRL(totalExpiringPoints).toFixed(2)),
+      },
+      {
+        name: 'Expirados',
+        pontos: Math.round(stats.totalPointsExpired),
+        reais: parseFloat(pointsToBRL(stats.totalPointsExpired).toFixed(2)),
+      },
+    ];
+
+    const expirationTimelineData = Object.entries(expirationByMonth)
+      .map(([month, d]) => ({
+        month,
+        pontos: Math.round(d.points),
+        reais: parseFloat(d.brl.toFixed(2)),
+        clientes: d.clients,
+        sortKey: d.sortKey,
+      }))
+      .sort((a, b) => a.sortKey - b.sortKey)
+      .slice(0, 12);
+
+    const topOpportunities = [...filteredClients]
+      .filter((c) => c.saldoPontos > 0)
+      .sort((a, b) => b.saldoPontos - a.saldoPontos)
+      .slice(0, 20);
+
+    const redemptionRate =
+      stats.totalPointsActive + stats.totalPointsConverted + stats.totalPointsExpired > 0
+        ? Math.round(
+            (stats.totalPointsConverted /
+              (stats.totalPointsActive + stats.totalPointsConverted + stats.totalPointsExpired)) *
+              100
+          )
+        : 0;
+
+    return {
+      stats,
+      availableSellers,
+      sellerRanking,
+      tierChartData,
+      pointsLifecycleData,
+      expirationTimelineData,
+      topOpportunities,
+      totalExpiringPoints,
+      totalExpiringBRL: pointsToBRL(totalExpiringPoints),
+      redemptionRate,
+    };
+  }, [rawData.loyaltyClients, loyaltySellerFilter]);
+
+  // 14. Memoized Split Air Conditioner Price Table Analytics (Agratto, Gree, Elgin)
+  const splitTableAnalytics = useMemo(() => {
+    const allowedBrands = SPLIT_BRAND_TABLES.filter((b) => {
+      if (b.id === 'agratto') return hasSubmoduleAccess('split_table_agratto');
+      if (b.id === 'gree') return hasSubmoduleAccess('split_table_gree');
+      if (b.id === 'elgin') return hasSubmoduleAccess('split_table_elgin');
+      return true;
+    });
+
+    const activeBrands =
+      splitBrandFilter === 'all'
+        ? allowedBrands
+        : allowedBrands.filter((b) => b.id === splitBrandFilter);
+
+    const allItems: SplitModelItem[] = [];
+    activeBrands.forEach((brand) => {
+      brand.sections.forEach((sec) => {
+        sec.items.forEach((item) => allItems.push(item));
+      });
+    });
+
+    const totalModels = allItems.length;
+    const inverterCount = allItems.filter((i) => i.technology === 'Inverter').length;
+    const onOffCount = allItems.filter((i) => i.technology === 'On-Off').length;
+    const avg1x =
+      totalModels > 0 ? allItems.reduce((acc, i) => acc + i.total[0], 0) / totalModels : 0;
+    const avg10x =
+      totalModels > 0 ? allItems.reduce((acc, i) => acc + i.total[9], 0) / totalModels : 0;
+    const avgInstallment10x =
+      totalModels > 0 ? allItems.reduce((acc, i) => acc + i.prestacao[9], 0) / totalModels : 0;
+    const avgFinancingSpreadPct =
+      avg1x > 0 ? parseFloat((((avg10x - avg1x) / avg1x) * 100).toFixed(2)) : 0;
+
+    // Por Marca (Agratto, Gree, Elgin)
+    const byBrandData = allowedBrands.map((brand) => {
+      const brandItems: SplitModelItem[] = [];
+      brand.sections.forEach((sec) => sec.items.forEach((it) => brandItems.push(it)));
+      const count = brandItems.length;
+      const bAvg1x = count > 0 ? brandItems.reduce((a, b) => a + b.total[0], 0) / count : 0;
+      const bAvg10x = count > 0 ? brandItems.reduce((a, b) => a + b.total[9], 0) / count : 0;
+      const min1x = count > 0 ? Math.min(...brandItems.map((i) => i.total[0])) : 0;
+      const max1x = count > 0 ? Math.max(...brandItems.map((i) => i.total[0])) : 0;
+      return {
+        name: brand.name,
+        modelos: count,
+        media1x: Math.round(bAvg1x),
+        media10x: Math.round(bAvg10x),
+        menor1x: Math.round(min1x),
+        maior1x: Math.round(max1x),
+      };
+    });
+
+    // Por Capacidade BTU (9.000 a 60.000 BTUs)
+    const byBtuAnalysis = AVAILABLE_BTUS.map((btu) => {
+      const btuItems = allItems.filter((i) => i.btus === btu);
+      if (btuItems.length === 0) return null;
+      const invItems = btuItems.filter((i) => i.technology === 'Inverter');
+      const onOffItems = btuItems.filter((i) => i.technology === 'On-Off');
+
+      const avgInv1x =
+        invItems.length > 0
+          ? Math.round(invItems.reduce((a, b) => a + b.total[0], 0) / invItems.length)
+          : null;
+      const avgOnOff1x =
+        onOffItems.length > 0
+          ? Math.round(onOffItems.reduce((a, b) => a + b.total[0], 0) / onOffItems.length)
+          : null;
+
+      const sortedBy1x = [...btuItems].sort((a, b) => a.total[0] - b.total[0]);
+      const cheapest = sortedBy1x[0];
+      const mostExpensive = sortedBy1x[sortedBy1x.length - 1];
+      const avgBtu1x = btuItems.reduce((a, b) => a + b.total[0], 0) / btuItems.length;
+      const avgBtu10x = btuItems.reduce((a, b) => a + b.total[9], 0) / btuItems.length;
+      const maxDiffPct =
+        cheapest.total[0] > 0
+          ? parseFloat(
+              (((mostExpensive.total[0] - cheapest.total[0]) / cheapest.total[0]) * 100).toFixed(1)
+            )
+          : 0;
+
+      return {
+        btu,
+        btuLabel: `${(btu / 1000).toFixed(0)}k BTUs`,
+        count: btuItems.length,
+        avgInverter1x: avgInv1x,
+        avgOnOff1x: avgOnOff1x,
+        avg1x: Math.round(avgBtu1x),
+        avg10x: Math.round(avgBtu10x),
+        parcelaMedia10x: parseFloat((avgBtu10x / 10).toFixed(2)),
+        cheapestModel: `${cheapest.brandLabel} ${cheapest.model}`,
+        cheapestPrice1x: cheapest.total[0],
+        highestPrice1x: mostExpensive.total[0],
+        maxDiffPct,
+      };
+    }).filter(Boolean) as any[];
+
+    // Por Categoria (Hi-Wall, Piso Teto, Cassete, Cassete 1 Via)
+    const categoryCounts: Record<string, number> = {};
+    allItems.forEach((i) => {
+      categoryCounts[i.category] = (categoryCounts[i.category] || 0) + 1;
+    });
+    const byCategoryData = Object.entries(categoryCounts).map(([name, value]) => ({ name, value }));
+
+    // Curva de Parcelamento 1x a 10x
+    const installmentCurveData = Array.from({ length: 10 }, (_, idx) => {
+      const n = idx + 1;
+      const avgTotal =
+        totalModels > 0 ? allItems.reduce((a, b) => a + b.total[idx], 0) / totalModels : 0;
+      const avgParcela =
+        totalModels > 0 ? allItems.reduce((a, b) => a + b.prestacao[idx], 0) / totalModels : 0;
+      return {
+        parcela: `${n}x`,
+        totalMedio: Math.round(avgTotal),
+        valorParcela: Math.round(avgParcela),
+      };
+    });
+
+    return {
+      totalModels,
+      inverterCount,
+      onOffCount,
+      inverterSharePct: totalModels > 0 ? Math.round((inverterCount / totalModels) * 100) : 0,
+      avg1x,
+      avg10x,
+      avgInstallment10x,
+      avgFinancingSpreadPct,
+      byBrandData,
+      byBtuAnalysis,
+      byCategoryData,
+      installmentCurveData,
+      techDistData: [
+        { name: 'Inverter', value: inverterCount },
+        { name: 'On-Off (Convencional)', value: onOffCount },
+      ].filter((d) => d.value > 0),
+    };
+  }, [hasSubmoduleAccess, splitBrandFilter]);
+
+  // 15. Memoized Catalog & Inventory Analytics (Catálogo de Peças & Produtos)
+  const catalogAnalytics = useMemo(() => {
+    const items = rawData.catalogProducts || [];
+    const totalSkus = items.length;
+    let totalPhysicalStock = 0;
+    let totalStockValueBRL = 0;
+    let outOfStockCount = 0;
+    let lowStockCount = 0;
+    let healthyStockCount = 0;
+
+    const byManufacturer: Record<string, { skus: number; stockQty: number; stockValue: number }> = {};
+    const byCategory: Record<string, { skus: number; stockValue: number }> = {};
+    const priceRanges: Record<string, number> = {
+      'Até R$ 50': 0,
+      'R$ 50 a R$ 150': 0,
+      'R$ 150 a R$ 500': 0,
+      'Acima de R$ 500': 0,
+    };
+
+    items.forEach((p) => {
+      const stock = Number(p.stock || 0);
+      const price = Number(p.price || 0);
+      const itemValue = Math.max(0, stock) * price;
+      const mfg = (p.manufacturer || 'OUTROS').trim().toUpperCase();
+      const cat = p.category || inferCategory(p.name, p.manufacturer);
+
+      totalPhysicalStock += Math.max(0, stock);
+      totalStockValueBRL += itemValue;
+
+      if (stock <= 0) outOfStockCount++;
+      else if (stock <= 2) lowStockCount++;
+      else healthyStockCount++;
+
+      if (price <= 50) priceRanges['Até R$ 50']++;
+      else if (price <= 150) priceRanges['R$ 50 a R$ 150']++;
+      else if (price <= 500) priceRanges['R$ 150 a R$ 500']++;
+      else priceRanges['Acima de R$ 500']++;
+
+      if (!byManufacturer[mfg]) {
+        byManufacturer[mfg] = { skus: 0, stockQty: 0, stockValue: 0 };
+      }
+      byManufacturer[mfg].skus += 1;
+      byManufacturer[mfg].stockQty += Math.max(0, stock);
+      byManufacturer[mfg].stockValue += itemValue;
+
+      if (!byCategory[cat]) {
+        byCategory[cat] = { skus: 0, stockValue: 0 };
+      }
+      byCategory[cat].skus += 1;
+      byCategory[cat].stockValue += itemValue;
+    });
+
+    const topManufacturers = Object.entries(byManufacturer)
+      .map(([name, d]) => ({
+        name,
+        skus: d.skus,
+        valorEstoque: Math.round(d.stockValue),
+        estoqueFisico: Math.round(d.stockQty),
+      }))
+      .sort((a, b) => b.valorEstoque - a.valorEstoque)
+      .slice(0, 10);
+
+    const byCategoryData = Object.entries(byCategory)
+      .map(([name, d]) => ({
+        name,
+        skus: d.skus,
+        valorEstoque: Math.round(d.stockValue),
+      }))
+      .sort((a, b) => b.skus - a.skus);
+
+    const stockHealthData = [
+      { name: 'Estoque Saudável (> 2 un)', value: healthyStockCount, color: '#10b981' },
+      { name: 'Estoque Crítico (1 a 2 un)', value: lowStockCount, color: '#f59e0b' },
+      { name: 'Sem Estoque / Ruptura (0)', value: outOfStockCount, color: '#ef4444' },
+    ].filter((d) => d.value > 0);
+
+    const priceRangeData = Object.entries(priceRanges).map(([name, value]) => ({ name, value }));
+
+    const topValueItems = [...items]
+      .map((p) => ({
+        ...p,
+        categoryName: p.category || inferCategory(p.name, p.manufacturer),
+        totalValue: Math.max(0, Number(p.stock || 0)) * Number(p.price || 0),
+      }))
+      .sort((a, b) => b.totalValue - a.totalValue)
+      .slice(0, 15);
+
+    const avgUnitPrice =
+      totalSkus > 0 ? items.reduce((a, b) => a + Number(b.price || 0), 0) / totalSkus : 0;
+
+    return {
+      totalSkus,
+      manufacturersCount: Object.keys(byManufacturer).length,
+      totalPhysicalStock: Math.round(totalPhysicalStock),
+      totalStockValueBRL,
+      outOfStockCount,
+      lowStockCount,
+      healthyStockCount,
+      avgUnitPrice,
+      topManufacturers,
+      byCategoryData,
+      stockHealthData,
+      priceRangeData,
+      topValueItems,
+    };
+  }, [rawData.catalogProducts]);
+
+  // 16. Memoized Mercado Livre & E-commerce Analytics
+  const mercadoLivreAnalytics = useMemo(() => {
+    const items = rawData.mercadoLivreItems || [];
+    const totalAds = items.length;
+    let totalStock = 0;
+    let totalSales6m = 0;
+    let estGrossRevenue6m = 0;
+    let estNetRevenue6m = 0;
+    let cheaperOrEqualCompetitor = 0;
+    let moreExpensiveCompetitor = 0;
+    let noCompetitorMapped = 0;
+
+    const bySegment: Record<string, { ads: number; sales6m: number; stock: number; grossRev: number }> = {};
+
+    const detailedAds = items.map((item: any) => {
+      const stock = Number(item.estoque || 0);
+      const sales6m = Number(item.vds_6m || 0);
+      const cashStore = Number(item.a_vista_cp || 0);
+      const netEnvios = Number(item.liq_ml_envios || 0);
+      const priceMl = Number(item.pr_cp_ml || 0);
+      const compBest = Number(item.pr_vende_mais || 0);
+      const seg = (item.segmento_ml || item.nome_fabricante || 'Geral').trim();
+
+      totalStock += stock;
+      totalSales6m += sales6m;
+      estGrossRevenue6m += sales6m * priceMl;
+      estNetRevenue6m += sales6m * (netEnvios > 0 ? netEnvios : priceMl * 0.82);
+
+      let diffVsCompetitorPct: number | null = null;
+      if (priceMl > 0 && compBest > 0) {
+        diffVsCompetitorPct = parseFloat((((priceMl - compBest) / compBest) * 100).toFixed(1));
+        if (priceMl <= compBest) cheaperOrEqualCompetitor++;
+        else moreExpensiveCompetitor++;
+      } else {
+        noCompetitorMapped++;
+      }
+
+      if (!bySegment[seg]) {
+        bySegment[seg] = { ads: 0, sales6m: 0, stock: 0, grossRev: 0 };
+      }
+      bySegment[seg].ads += 1;
+      bySegment[seg].sales6m += sales6m;
+      bySegment[seg].stock += stock;
+      bySegment[seg].grossRev += sales6m * priceMl;
+
+      return {
+        ...item,
+        shortName: (item.nome || item.codigo || 'Anúncio').slice(0, 22),
+        stock,
+        sales6m,
+        cashStore,
+        netEnvios,
+        priceMl,
+        compBest,
+        diffVsCompetitorPct,
+        estRevenue: sales6m * priceMl,
+      };
+    });
+
+    const bySegmentData = Object.entries(bySegment)
+      .map(([name, d]) => ({
+        name,
+        anuncios: d.ads,
+        vendas6m: d.sales6m,
+        estoque: d.stock,
+        receitaEstimada: Math.round(d.grossRev),
+      }))
+      .sort((a, b) => b.vendas6m - a.vendas6m);
+
+    const competitivenessPie = [
+      { name: 'Mais Competitivo (≤ Vende Mais)', value: cheaperOrEqualCompetitor, color: '#10b981' },
+      { name: 'Acima do Concorrente (> Vende Mais)', value: moreExpensiveCompetitor, color: '#ef4444' },
+      { name: 'Sem Concorrente Mapeado', value: noCompetitorMapped, color: '#94a3b8' },
+    ].filter((d) => d.value > 0);
+
+    return {
+      totalAds,
+      totalStock,
+      totalSales6m,
+      estGrossRevenue6m,
+      estNetRevenue6m,
+      cheaperOrEqualCompetitor,
+      moreExpensiveCompetitor,
+      bySegmentData,
+      competitivenessPie,
+      detailedAds: detailedAds.sort((a, b) => b.sales6m - a.sales6m),
+    };
+  }, [rawData.mercadoLivreItems]);
+
+  // Exportador CSV Universal para a Aba Ativa
+  const handleExportActiveTabCSV = useCallback(() => {
+    let headers: string[] = [];
+    let rows: (string | number)[][] = [];
+    const filename = `relatorio-${activeTab}-${new Date().toISOString().split('T')[0]}.csv`;
+
+    if (activeTab === 'fidelidade') {
+      headers = ['Codigo Cliente', 'Nome Cliente', 'Ultimo Vendedor', 'Data Ultima Compra', 'Valor Ultima Compra (R$)', 'Total Comprado (R$)', 'Saldo Pontos', 'Bonus Credito (R$)', 'Proximo Vencimento'];
+      rows = (rawData.loyaltyClients || []).map((c) => [
+        c.codigo,
+        `"${(c.nome || '').replace(/"/g, '""')}"`,
+        `"${(c.ultimoVendedor || 'Sem Vendedor').replace(/"/g, '""')}"`,
+        c.dataUltimaCompra || '-',
+        (c.valorUltimaCompra || 0).toFixed(2),
+        (c.totalComprado || 0).toFixed(2),
+        c.saldoPontos,
+        pointsToBRL(c.saldoPontos).toFixed(2),
+        c.proximoVencimento || '-',
+      ]);
+    } else if (activeTab === 'tabela_split') {
+      headers = ['Capacidade BTUs', 'Modelos', 'Media Inverter 1x (R$)', 'Media On-Off 1x (R$)', 'Menor Preco 1x (R$)', 'Modelo Mais Economico', 'Media 10x Total (R$)', 'Parcela Media 10x (R$)'];
+      rows = splitTableAnalytics.byBtuAnalysis.map((b) => [
+        b.btu,
+        b.count,
+        b.avgInverter1x || '-',
+        b.avgOnOff1x || '-',
+        b.cheapestPrice1x.toFixed(2),
+        `"${b.cheapestModel}"`,
+        b.avg10x.toFixed(2),
+        b.parcelaMedia10x.toFixed(2),
+      ]);
+    } else if (activeTab === 'catalogo_pecas') {
+      headers = ['Codigo', 'Produto', 'Fabricante', 'Categoria', 'Estoque', 'Preco Unitario (R$)', 'Valor em Estoque (R$)'];
+      rows = (rawData.catalogProducts || []).map((p) => [
+        p.code,
+        `"${(p.name || '').replace(/"/g, '""')}"`,
+        `"${(p.manufacturer || '').replace(/"/g, '""')}"`,
+        `"${inferCategory(p.name, p.manufacturer)}"`,
+        p.stock,
+        Number(p.price || 0).toFixed(2),
+        (Math.max(0, Number(p.stock || 0)) * Number(p.price || 0)).toFixed(2),
+      ]);
+    } else if (activeTab === 'mercado_livre') {
+      headers = ['Codigo', 'Anuncio', 'Segmento', 'Estoque', 'Vendas 6M', 'A Vista Loja (R$)', 'Liquido ML Envios (R$)', 'Preco ML (R$)', 'Concorrente Vende Mais (R$)'];
+      rows = mercadoLivreAnalytics.detailedAds.map((a: any) => [
+        a.codigo,
+        `"${(a.nome || '').replace(/"/g, '""')}"`,
+        `"${a.segmento_ml || ''}"`,
+        a.stock,
+        a.sales6m,
+        a.cashStore.toFixed(2),
+        a.netEnvios.toFixed(2),
+        a.priceMl.toFixed(2),
+        a.compBest.toFixed(2),
+      ]);
+    } else if (activeTab === 'leads') {
+      headers = ['Empresa', 'Contato', 'Telefone', 'Segmento', 'Bairro', 'Status', 'Ultimo Vendedor', 'Ultima Compra (R$)', 'Pontos Fidelidade'];
+      rows = filteredLeads.map((l: any) => [
+        `"${(l.company || '').replace(/"/g, '""')}"`,
+        `"${(l.name || '').replace(/"/g, '""')}"`,
+        l.phone || '-',
+        `"${l.segment || ''}"`,
+        `"${l.neighborhood || ''}"`,
+        l.status || 'Novo',
+        `"${l.last_seller || ''}"`,
+        Number(l.last_purchase_value || 0).toFixed(2),
+        Number(l.loyalty_points || 0),
+      ]);
+    } else {
+      headers = ['Mes', 'Receita Vendas (R$)', 'Meta Vendas (R$)', 'Ticket Medio (R$)', 'Tarefas Criadas', 'Tarefas Concluidas', 'Leads Captados', 'Leads Convertidos'];
+      rows = monthlyConsolidatedData.map((m) => [
+        m.monthName,
+        m.vendasReceita.toFixed(2),
+        m.vendasMeta.toFixed(2),
+        m.ticketMedio,
+        m.tarefasCriadas,
+        m.tarefasConcluidas,
+        m.leadsCaptados,
+        m.leadsConvertidos,
+      ]);
+    }
+
+    const csvContent =
+      '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [activeTab, rawData.loyaltyClients, rawData.catalogProducts, splitTableAnalytics, mercadoLivreAnalytics, filteredLeads, monthlyConsolidatedData]);
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -1353,7 +2190,22 @@ export default function ReportsPage() {
           <div className="p-2 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
             <BarChart3 size={20} />
           </div>
-          <h1 className="text-xl font-bold tracking-tight">Análise Geral</h1>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Central de Inteligência & Relatórios</h1>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Análises executivas integradas para Comercial, Fidelidade, Climatização, Catálogo, Logística e Operações
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportActiveTabCSV}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+          >
+            <FileSpreadsheet size={15} />
+            <span className="hidden sm:inline">Exportar Planilha (CSV)</span>
+          </button>
         </div>
       </header>
       
@@ -1383,16 +2235,16 @@ export default function ReportsPage() {
         </div>
 
         {/* Highlight Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           {overallStats.map((stat, i) => (
-            <div key={i} className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl text-white" style={{ backgroundColor: stat.color }}>
-                  <stat.icon size={16} />
+            <div key={i} className={`p-3.5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl text-white shrink-0" style={{ backgroundColor: stat.color }}>
+                  <stat.icon size={15} />
                 </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{stat.name}</p>
-                  <p className="text-xl font-black">{stat.value}</p>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider truncate">{stat.name}</p>
+                  <p className="text-lg font-black">{stat.value}</p>
                 </div>
               </div>
             </div>
@@ -1412,8 +2264,8 @@ export default function ReportsPage() {
             {[
               { id: 'all', label: '✨ Todos os Relatórios' },
               { id: 'core', label: '📊 Core/Gerais' },
-              { id: 'operations', label: '🚚 Logística & Ops' },
-              { id: 'sales', label: '📈 Vendas & Comercial' },
+              { id: 'sales', label: '📈 Comercial, Fidelidade & Split' },
+              { id: 'operations', label: '🚚 Estoque, Catálogo & Logística' },
               { id: 'support', label: '🤝 Suporte & Demandas' }
             ].map((cat) => (
               <button
@@ -1433,21 +2285,25 @@ export default function ReportsPage() {
           {/* Grid de Seleção de Painéis com Descrições e Ícones em Destaque */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {[
-              { id: 'consolidado', label: 'Painel Consolidado', icon: Layers, category: 'core', desc: 'Cruzamento tridirecional de faturamento, leads e tarefas.', color: 'from-blue-500 to-indigo-600' },
-              { id: 'geral', label: 'Visão Geral', icon: LayoutGrid, category: 'core', desc: 'Resumo estatístico unificado das métricas vitais da empresa.', color: 'from-indigo-500 to-purple-600' },
-              { id: 'colaboradores', label: 'Ranking Equipe', icon: Users, category: 'core', desc: 'Desempenho operacional e comercial do time de colaboradores.', color: 'from-purple-500 to-pink-600' },
-              { id: 'deliveries', label: 'Entregas & SLA', icon: Truck, category: 'operations', desc: 'Análise aprofundada de remessas, rotas, SLA e bairros.', color: 'from-rose-500 to-orange-600' },
-              { id: 'tarefas', label: 'Gestão de Tarefas', icon: ClipboardList, category: 'operations', desc: 'Taxa de conclusão, tempo de resposta e prioridades.', color: 'from-amber-500 to-orange-600' },
-              { id: 'transfers', label: 'Transferências', icon: ArrowRightLeft, category: 'operations', desc: 'Logística de distribuição de cargas e status de envio.', color: 'from-sky-500 to-blue-600' },
-              { id: 'vendas', label: 'Resultados de Vendas', icon: TrendingUp, category: 'sales', desc: 'Performance contra metas de faturamento individuais e globais.', color: 'from-emerald-500 to-teal-600' },
-              { id: 'leads', label: 'Funil de Leads', icon: Target, category: 'sales', desc: 'Captação, taxas de conversão e distribuição por segmentos.', color: 'from-teal-500 to-cyan-600' },
-              { id: 'social', label: 'Redes Sociais', icon: Share2, category: 'sales', desc: 'Acompanhamento de postagens, reels e SLA de marketing.', color: 'from-fuchsia-500 to-pink-600' },
-              { id: 'warranties', label: 'Garantias', icon: ShieldCheck, category: 'support', desc: 'Controle de sinistros, trocas de peças e produtos afetados.', color: 'from-violet-500 to-indigo-600' },
-              { id: 'demands', label: 'Demandas Internas', icon: Bell, category: 'support', desc: 'Chamados, requisições internas de suprimentos e status.', color: 'from-cyan-500 to-blue-600' },
-              { id: 'precos', label: 'Pesquisa de Preço', icon: Tag, category: 'sales', desc: 'Análise comparativa de preços de mercado.', color: 'from-amber-500 to-orange-600' }
+              { id: 'consolidado', label: 'Painel Consolidado', icon: Layers, category: 'core', desc: 'Cruzamento tridirecional de faturamento, leads e tarefas.', color: 'from-blue-500 to-indigo-600', visible: true },
+              { id: 'fidelidade', label: 'Clientes Fidelidade & Bônus', icon: Award, category: 'sales', desc: 'Pontos ativos, bônus em R$, vencimentos e carteira por vendedor.', color: 'from-pink-500 to-rose-600', visible: canAccessLoyalty, badge: 'Novo' },
+              { id: 'tabela_split', label: 'Tabela Split & BTUs', icon: Wind, category: 'sales', desc: 'Análise de preços 1x a 10x, Inverter vs On-Off e marcas de Ar.', color: 'from-sky-500 to-cyan-600', visible: canAccessSplitTable, badge: 'Novo' },
+              { id: 'catalogo_pecas', label: 'Catálogo & Estoque', icon: Package, category: 'operations', desc: 'Capital em estoque, saúde de SKUs, fabricantes e categorias.', color: 'from-violet-500 to-purple-600', visible: canAccessProducts, badge: 'Novo' },
+              { id: 'mercado_livre', label: 'Mercado Livre & Giro', icon: ShoppingBag, category: 'sales', desc: 'Vendas 6M, margem líquida ML Envios e preço vs Vende Mais.', color: 'from-amber-500 to-yellow-600', visible: canAccessPriceResearch, badge: 'Novo' },
+              { id: 'geral', label: 'Visão Geral', icon: LayoutGrid, category: 'core', desc: 'Resumo estatístico unificado das métricas vitais da empresa.', color: 'from-indigo-500 to-purple-600', visible: true },
+              { id: 'colaboradores', label: 'Ranking Equipe', icon: Users, category: 'core', desc: 'Desempenho operacional e comercial do time de colaboradores.', color: 'from-purple-500 to-pink-600', visible: true },
+              { id: 'vendas', label: 'Resultados de Vendas', icon: TrendingUp, category: 'sales', desc: 'Performance contra metas de faturamento individuais e globais.', color: 'from-emerald-500 to-teal-600', visible: canAccessSales },
+              { id: 'leads', label: 'Funil & Leads Importados', icon: Target, category: 'sales', desc: 'Captação, cruzamento com relatórios, bairros e conversão.', color: 'from-teal-500 to-cyan-600', visible: canAccessLeads },
+              { id: 'deliveries', label: 'Entregas & SLA', icon: Truck, category: 'operations', desc: 'Análise aprofundada de remessas, rotas, SLA e bairros.', color: 'from-rose-500 to-orange-600', visible: canAccessDeliveries },
+              { id: 'tarefas', label: 'Gestão de Tarefas', icon: ClipboardList, category: 'operations', desc: 'Taxa de conclusão, tempo de resposta e prioridades.', color: 'from-amber-500 to-orange-600', visible: canAccessTasks },
+              { id: 'transfers', label: 'Transferências', icon: ArrowRightLeft, category: 'operations', desc: 'Logística de distribuição de cargas e status de envio.', color: 'from-sky-500 to-blue-600', visible: canAccessTransfers },
+              { id: 'precos', label: 'Pesquisa Concorrência', icon: Tag, category: 'sales', desc: 'Análise comparativa de preços de mercado entre lojas.', color: 'from-amber-500 to-orange-600', visible: canAccessPriceResearch },
+              { id: 'social', label: 'Redes Sociais', icon: Share2, category: 'sales', desc: 'Acompanhamento de postagens, reels e SLA de marketing.', color: 'from-fuchsia-500 to-pink-600', visible: canAccessSocialMedia },
+              { id: 'warranties', label: 'Garantias', icon: ShieldCheck, category: 'support', desc: 'Controle de sinistros, trocas de peças e produtos afetados.', color: 'from-violet-500 to-indigo-600', visible: canAccessWarranties },
+              { id: 'demands', label: 'Demandas Internas', icon: Bell, category: 'support', desc: 'Chamados, requisições internas de suprimentos e status.', color: 'from-cyan-500 to-blue-600', visible: canAccessDemands },
             ]
-              .filter(tab => selectedCategory === 'all' || tab.category === selectedCategory)
-              .map((tab) => {
+              .filter(tab => tab.visible !== false && (selectedCategory === 'all' || tab.category === selectedCategory))
+              .map((tab: any) => {
                 const isActive = activeTab === tab.id;
                 return (
                   <button
@@ -1471,11 +2327,20 @@ export default function ReportsPage() {
                       }`}>
                         <tab.icon size={16} />
                       </div>
-                      <span className={`text-[8px] uppercase font-black tracking-widest px-1.5 py-0.5 rounded-md ${
-                        isActive ? 'bg-white/10 text-white/90' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
-                      }`}>
-                        {tab.category === 'core' ? 'Core' : tab.category === 'operations' ? 'Logística' : tab.category === 'sales' ? 'Comercial' : 'Suporte'}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {tab.badge && (
+                          <span className={`text-[8px] uppercase font-black tracking-widest px-1.5 py-0.5 rounded-md ${
+                            isActive ? 'bg-amber-400 text-slate-950' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                          }`}>
+                            {tab.badge}
+                          </span>
+                        )}
+                        <span className={`text-[8px] uppercase font-black tracking-widest px-1.5 py-0.5 rounded-md ${
+                          isActive ? 'bg-white/10 text-white/90' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                        }`}>
+                          {tab.category === 'core' ? 'Core' : tab.category === 'operations' ? 'Logística' : tab.category === 'sales' ? 'Comercial' : 'Suporte'}
+                        </span>
+                      </div>
                     </div>
                     
                     <div className="flex flex-col w-full">
@@ -1746,6 +2611,867 @@ export default function ReportsPage() {
                   </div>
                 </div>
               )}
+
+              {/* RELATÓRIO 1: CLIENTES FIDELIDADE, BÔNUS & CARTEIRA POR VENDEDOR */}
+              {activeTab === 'fidelidade' && (
+                <div className="space-y-6">
+                  {/* Top Header & Seller Filter */}
+                  <div className={`p-6 rounded-3xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                    isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-r from-pink-50/80 via-rose-50/40 to-amber-50/40 border-pink-100 shadow-sm'
+                  }`}>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-pink-600 text-white shadow-md shadow-pink-500/20">
+                          <Award size={20} />
+                        </div>
+                        <h2 className="text-lg font-extrabold tracking-tight">
+                          Inteligência de Fidelidade, Bônus & Carteira por Vendedor
+                        </h2>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Regra oficial ativa: R$ {LOYALTY_CONFIG.valorProdutoPorPonto.toFixed(2)} em produtos = 1 ponto | {LOYALTY_CONFIG.pontosParaUmReal.toFixed(2)} pontos = R$ 1,00 em créditos (R$ {LOYALTY_CONFIG.valorPorPontoBRL.toFixed(2)}/pt) | Validade {LOYALTY_CONFIG.validadeMeses} meses.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-xl border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+                        <UserCheck size={14} className="text-pink-500" />
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Vendedor:</span>
+                        <select
+                          value={loyaltySellerFilter}
+                          onChange={(e) => setLoyaltySellerFilter(e.target.value)}
+                          className="text-xs font-bold bg-transparent outline-none cursor-pointer"
+                        >
+                          <option value="all">Todos os Vendedores ({rawData.loyaltyClients?.length || 0})</option>
+                          {loyaltyAnalytics.availableSellers.map((seller) => (
+                            <option key={seller} value={seller}>
+                              {seller}
+                            </option>
+                          ))}
+                          <option value="sem_vendedor">Sem Vendedor Vinculado</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 6 KPI Cards */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Clientes c/ Saldo</p>
+                      <p className="text-2xl font-black text-blue-600">
+                        {loyaltyAnalytics.stats.clientsWithBalance.toLocaleString('pt-BR')}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        de {loyaltyAnalytics.stats.totalClients.toLocaleString('pt-BR')} clientes na base
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Bônus Disponível</p>
+                      <p className="text-2xl font-black text-emerald-600">
+                        {formatBRL(loyaltyAnalytics.stats.totalBonusBRL)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {Math.round(loyaltyAnalytics.stats.totalPointsActive).toLocaleString('pt-BR')} pontos ativos
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">Risco Vencimento</p>
+                      <p className="text-2xl font-black text-amber-500">
+                        {formatBRL(loyaltyAnalytics.totalExpiringBRL)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {loyaltyAnalytics.stats.clientsWithExpiringPoints} clientes c/ pontos a vencer
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Créditos Resgatados</p>
+                      <p className="text-2xl font-black text-purple-600">
+                        {formatBRL(loyaltyAnalytics.stats.totalConvertedBRL)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Aproveitamento: {loyaltyAnalytics.redemptionRate}%
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Últimas Compras</p>
+                      <p className="text-2xl font-black text-indigo-600">
+                        {formatBRL(loyaltyAnalytics.stats.totalLastPurchaseBRL)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {loyaltyAnalytics.stats.clientsWithSellerMatch} clientes c/ vendedor
+                      </p>
+                    </div>
+
+                    <div className={`p-4 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Compras Acumuladas</p>
+                      <p className="text-2xl font-black text-pink-600">
+                        {formatBRL(loyaltyAnalytics.stats.totalPurchasedBRL)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Histórico cruzado ERP
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 1ª Linha de Gráficos: Carteira por Vendedor & Segmentação VIP */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Desempenho da Carteira por Vendedor (Última Compra R$ vs Clientes)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={loyaltyAnalytics.sellerRanking.filter(s => s.nome !== 'Sem Vendedor Vinculado')} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="nome" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: isDarkMode ? '#94a3b8' : '#64748b', fontWeight: 'bold' }} />
+                          <YAxis yAxisId="left" orientation="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#10b981' }} />
+                          <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#ec4899' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any, name: any) => {
+                              if (name === 'somaUltimaCompraRounded') return [formatBRL(Number(val)), 'Soma Últimas Compras'];
+                              if (name === 'bonusDisponivelRounded') return [formatBRL(Number(val)), 'Bônus Disponível'];
+                              return [`${val} clientes`, 'Clientes Atendidos'];
+                            }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar yAxisId="left" name="somaUltimaCompraRounded" dataKey="somaUltimaCompraRounded" fill="#10b981" radius={[6, 6, 0, 0]} />
+                          <Line yAxisId="right" type="monotone" name="clientesCount" dataKey="clientesCount" stroke="#ec4899" strokeWidth={3} dot={{ r: 4 }} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Segmentação da Carteira por Faixa de Pontos (Tiers VIP)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={loyaltyAnalytics.tierChartData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={4}
+                            label={({ name, value }) => `${value}`}
+                          >
+                            {loyaltyAnalytics.tierChartData.map((_, index) => (
+                              <Cell key={`tier-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                          <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* 2ª Linha de Gráficos: Ciclo de Vida dos Pontos & Cronograma de Vencimentos */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Balanço Financeiro de Bônus (R$ Equivalente por Status)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={loyaltyAnalytics.pointsLifecycleData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any, name: any) =>
+                              name === 'reais' ? [formatBRL(Number(val)), 'Equivalente (R$)'] : [`${Number(val).toLocaleString('pt-BR')} pts`, 'Pontos']
+                            }
+                          />
+                          <Bar dataKey="reais" name="reais" radius={[6, 6, 0, 0]} barSize={36}>
+                            {loyaltyAnalytics.pointsLifecycleData.map((_, idx) => (
+                              <Cell key={idx} fill={['#10b981', '#8b5cf6', '#f59e0b', '#ef4444'][idx % 4]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Cronograma de Vencimento de Créditos por Mês (R$ a Vencer)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={loyaltyAnalytics.expirationTimelineData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any, name: any) =>
+                              name === 'reais' ? [formatBRL(Number(val)), 'Bônus a Vencer'] : [`${val} clientes`, 'Clientes']
+                            }
+                          />
+                          <Bar dataKey="reais" name="reais" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* Tabela 1: Consolidado por Vendedor */}
+                  <div className={`overflow-hidden rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div>
+                        <h3 className={`text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Relatório Cruzado: Carteira de Fidelidade & Faturamento por Vendedor
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Cruzamento oficial do código do cliente com o último vendedor que realizou atendimento e saldo de bônus disponível para recompra.
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-pink-500/10 text-pink-600 dark:text-pink-400">
+                        {loyaltyAnalytics.sellerRanking.length} carteiras
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Vendedor</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Clientes (Últ. Atendimento)</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Com Bônus Ativo</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Soma Últimas Compras</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Ticket Médio (Últ. Compra)</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Total Histórico Comprado</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Saldo Pontos Carteira</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Bônus p/ Recompra (R$)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {loyaltyAnalytics.sellerRanking.map((row, idx) => (
+                            <tr key={idx} className={`border-t ${isDarkMode ? 'border-slate-800 hover:bg-slate-800/30' : 'border-slate-50 hover:bg-slate-50/70'}`}>
+                              <td className="p-4 text-sm font-bold flex items-center gap-2">
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-pink-500/10 text-pink-600 dark:text-pink-400">
+                                  {row.codigo}
+                                </span>
+                                <span>{row.nome}</span>
+                              </td>
+                              <td className="p-4 text-sm text-center font-black">{row.clientesCount}</td>
+                              <td className="p-4 text-sm text-center font-bold text-blue-600">{row.clientesComBonus}</td>
+                              <td className="p-4 text-sm text-right font-black text-emerald-600">{formatBRL(row.somaUltimaCompraBRL)}</td>
+                              <td className="p-4 text-sm text-right font-medium text-slate-500">{formatBRL(row.ticketMedioUltima)}</td>
+                              <td className="p-4 text-sm text-right font-bold text-indigo-600">{formatBRL(row.totalHistoricoBRL)}</td>
+                              <td className="p-4 text-sm text-right font-bold">{Math.round(row.pontosAtivos).toLocaleString('pt-BR')} pts</td>
+                              <td className="p-4 text-sm text-right font-black text-amber-600">{formatBRL(row.bonusDisponivelBRL)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Tabela 2: Top 20 Oportunidades de Recompra Ativa */}
+                  <div className={`overflow-hidden rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div>
+                        <h3 className={`text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Top 20 Clientes VIP para Ação Comercial Imediata (Maior Bônus em Créditos)
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Clientes com maior potencial de abatimento em novas compras de peças e ar condicionado.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Código / Cliente</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Último Vendedor</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Última Compra</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Valor Últ. Compra</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Total Comprado</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Saldo Pontos</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Crédito (R$)</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Próx. Vencimento</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {loyaltyAnalytics.topOpportunities.map((c) => (
+                            <tr key={c.id} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>
+                              <td className="p-4 text-xs font-bold">
+                                <span className="text-slate-400 mr-1.5">#{c.codigo}</span>
+                                {c.nome}
+                              </td>
+                              <td className="p-4 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+                                {c.ultimoVendedor || 'Não vinculado'}
+                              </td>
+                              <td className="p-4 text-xs text-center text-slate-500">
+                                {c.dataUltimaCompra || c.ultimaTransacao || '-'}
+                              </td>
+                              <td className="p-4 text-xs text-right font-bold text-emerald-600">
+                                {c.valorUltimaCompra ? formatBRL(c.valorUltimaCompra) : '-'}
+                              </td>
+                              <td className="p-4 text-xs text-right font-medium">
+                                {c.totalComprado ? formatBRL(c.totalComprado) : '-'}
+                              </td>
+                              <td className="p-4 text-xs text-right font-black text-blue-600">
+                                {c.saldoPontos.toLocaleString('pt-BR')} pts
+                              </td>
+                              <td className="p-4 text-xs text-right font-black text-emerald-600">
+                                {formatBRL(pointsToBRL(c.saldoPontos))}
+                              </td>
+                              <td className="p-4 text-xs text-center">
+                                {c.proximoVencimento ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
+                                    {c.proximoVencimento}
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* RELATÓRIO 2: TABELA DE PREÇOS DE SPLIT & CLIMATIZAÇÃO */}
+              {activeTab === 'tabela_split' && (
+                <div className="space-y-6">
+                  {/* Top Header & Brand Filter */}
+                  <div className={`p-6 rounded-3xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                    isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-r from-sky-50/80 via-cyan-50/40 to-blue-50/40 border-sky-100 shadow-sm'
+                  }`}>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-sky-600 text-white shadow-md shadow-sky-500/20">
+                          <Wind size={20} />
+                        </div>
+                        <h2 className="text-lg font-extrabold tracking-tight">
+                          Análise de Preços de Split, Capacidades (BTUs) & Parcelamento (1x a 10x)
+                        </h2>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Comparativo comercial entre fabricantes (Agratto, Gree, Elgin), tecnologias (Inverter vs On-Off) e faixas de 9.000 a 60.000 BTUs.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                      {[
+                        { id: 'all', label: 'Todas as Marcas' },
+                        { id: 'agratto', label: 'Agratto' },
+                        { id: 'gree', label: 'Gree' },
+                        { id: 'elgin', label: 'Elgin' },
+                      ].map((b) => (
+                        <button
+                          key={b.id}
+                          onClick={() => setSplitBrandFilter(b.id as any)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            splitBrandFilter === b.id
+                              ? 'bg-sky-600 text-white shadow-sm'
+                              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          {b.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 4 KPI Cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Modelos Analisados</p>
+                      <p className="text-2xl font-black text-sky-600">{splitTableAnalytics.totalModels}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {splitTableAnalytics.inverterCount} Inverter ({splitTableAnalytics.inverterSharePct}%) | {splitTableAnalytics.onOffCount} On-Off
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Ticket Médio 1x (À Vista)</p>
+                      <p className="text-2xl font-black text-emerald-600">{formatBRL(splitTableAnalytics.avg1x)}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Média geral de tabela em 1x
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Ticket Médio 10x Parcelado</p>
+                      <p className="text-2xl font-black text-blue-600">{formatBRL(splitTableAnalytics.avg10x)}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Parcela média 10x de {formatBRL(splitTableAnalytics.avgInstallment10x)}
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Variação 1x → 10x</p>
+                      <p className="text-2xl font-black text-amber-500">+{splitTableAnalytics.avgFinancingSpreadPct}%</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Acréscimo médio de parcelamento máximo
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 1ª Linha: Preço Médio por Fabricante & Preço por BTU (Inverter vs On-Off) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Comparativo de Preço Médio por Fabricante (1x vs 10x Total)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={splitTableAnalytics.byBrandData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any) => [formatBRL(Number(val)), 'Preço Médio']}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar name="Média 1x (R$)" dataKey="media1x" fill="#10b981" radius={[6, 6, 0, 0]} />
+                          <Bar name="Média 10x Total (R$)" dataKey="media10x" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Preço Médio 1x por Capacidade (BTUs) — Inverter vs On-Off", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={splitTableAnalytics.byBtuAnalysis} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="btuLabel" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any) => (val ? [formatBRL(Number(val)), 'Média 1x'] : ['Não aplicável', ''])}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar name="Inverter (1x)" dataKey="avgInverter1x" fill="#0ea5e9" radius={[6, 6, 0, 0]} />
+                          <Bar name="On-Off (1x)" dataKey="avgOnOff1x" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* 2ª Linha: Curva de Parcelamento 1x a 10x & Mix por Categoria */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Curva de Parcelamento (1x a 10x): Valor Total Médio vs Valor da Parcela", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={splitTableAnalytics.installmentCurveData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="parcela" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis yAxisId="left" orientation="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#3b82f6' }} />
+                          <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#10b981' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any, name: any) => [
+                              formatBRL(Number(val)),
+                              name === 'totalMedio' ? 'Total Financiado' : 'Valor da Parcela',
+                            ]}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar yAxisId="left" name="totalMedio" dataKey="totalMedio" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={24} />
+                          <Line yAxisId="right" type="monotone" name="valorParcela" dataKey="valorParcela" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Distribuição do Catálogo Split por Linha (Hi-Wall, Piso Teto, Cassete)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={splitTableAnalytics.byCategoryData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={50}
+                            outerRadius={80}
+                            paddingAngle={4}
+                            label={({ name, value }) => `${name}: ${value}`}
+                          >
+                            {splitTableAnalytics.byCategoryData.map((_, idx) => (
+                              <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                          <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* Tabela Analítica por Faixa de Capacidade BTU */}
+                  <div className={`overflow-hidden rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div>
+                        <h3 className={`text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Matriz Analítica por Capacidade (BTUs) — Competitividade & Melhores Opções
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Resumo estratégico por faixa de BTUs indicando o modelo de entrada mais competitivo e o ticket médio de parcelamento.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Capacidade</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Qtd. Modelos</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Modelo Mais Econômico (1x)</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Menor Preço 1x</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Média Inverter 1x</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Média On-Off 1x</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Média Total 10x</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Parcela Média 10x</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {splitTableAnalytics.byBtuAnalysis.map((row) => (
+                            <tr key={row.btu} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>
+                              <td className="p-4 text-sm font-black text-sky-600">{row.btu.toLocaleString('pt-BR')} BTUs</td>
+                              <td className="p-4 text-sm text-center font-bold">{row.count}</td>
+                              <td className="p-4 text-xs font-bold">{row.cheapestModel}</td>
+                              <td className="p-4 text-sm text-right font-black text-emerald-600">{formatBRL(row.cheapestPrice1x)}</td>
+                              <td className="p-4 text-sm text-right font-medium text-blue-600">
+                                {row.avgInverter1x ? formatBRL(row.avgInverter1x) : '-'}
+                              </td>
+                              <td className="p-4 text-sm text-right font-medium text-amber-600">
+                                {row.avgOnOff1x ? formatBRL(row.avgOnOff1x) : '-'}
+                              </td>
+                              <td className="p-4 text-sm text-right font-bold">{formatBRL(row.avg10x)}</td>
+                              <td className="p-4 text-sm text-right font-black text-indigo-600">10x {formatBRL(row.parcelaMedia10x)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* RELATÓRIO 3: CATÁLOGO DE PEÇAS, PRODUTOS & SAÚDE DE ESTOQUE */}
+              {activeTab === 'catalogo_pecas' && (
+                <div className="space-y-6">
+                  <div className={`p-6 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-r from-violet-50/80 to-purple-50/50 border-violet-100 shadow-sm'
+                  }`}>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-violet-600 text-white shadow-md shadow-violet-500/20">
+                          <Package size={20} />
+                        </div>
+                        <h2 className="text-lg font-extrabold tracking-tight">
+                          Análise de Catálogo de Peças, Capital em Estoque & Cobertura por Fabricante
+                        </h2>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Visão financeira e física do inventário de peças, equipamentos comerciais, ferramentas e insumos de refrigeração.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 4 KPI Cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Total de SKUs</p>
+                      <p className="text-2xl font-black text-violet-600">{catalogAnalytics.totalSkus.toLocaleString('pt-BR')}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Distribuídos em {catalogAnalytics.manufacturersCount} fabricantes
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Valor em Estoque</p>
+                      <p className="text-2xl font-black text-emerald-600">{formatBRL(catalogAnalytics.totalStockValueBRL)}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {catalogAnalytics.totalPhysicalStock.toLocaleString('pt-BR')} un./m em estoque físico
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Preço Médio Unitário</p>
+                      <p className="text-2xl font-black text-blue-600">{formatBRL(catalogAnalytics.avgUnitPrice)}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Média aritmética do catálogo
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-amber-500 mb-1">Estoque Crítico / Ruptura</p>
+                      <p className="text-2xl font-black text-amber-500">
+                        {catalogAnalytics.lowStockCount + catalogAnalytics.outOfStockCount} SKUs
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {catalogAnalytics.outOfStockCount} zerados | {catalogAnalytics.lowStockCount} com ≤ 2 un.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 1ª Linha: Top 10 Fabricantes por Capital em Estoque & Categorias */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Top 10 Fabricantes por Valor Financeiro em Estoque (R$)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={catalogAnalytics.topManufacturers} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis yAxisId="left" orientation="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#8b5cf6' }} />
+                          <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#10b981' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any, name: any) =>
+                              name === 'valorEstoque' ? [formatBRL(Number(val)), 'Valor em Estoque'] : [`${val} SKUs`, 'Qtd. Itens']
+                            }
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar yAxisId="left" name="valorEstoque" dataKey="valorEstoque" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+                          <Line yAxisId="right" type="monotone" name="skus" dataKey="skus" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Distribuição de SKUs por Categoria Técnica", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={catalogAnalytics.byCategoryData.slice(0, 8)} layout="vertical" margin={{ left: 25, right: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis type="number" hide />
+                          <YAxis dataKey="name" type="category" width={125} axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any) => [`${val} SKUs`, 'Itens']}
+                          />
+                          <Bar dataKey="skus" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={16}>
+                            {catalogAnalytics.byCategoryData.slice(0, 8).map((_, idx) => (
+                              <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* 2ª Linha: Saúde de Estoque & Faixas de Preço */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Saúde de Cobertura do Estoque (Disponibilidade)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={catalogAnalytics.stockHealthData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={80}
+                            paddingAngle={4}
+                            label={({ value }) => `${value}`}
+                          >
+                            {catalogAnalytics.stockHealthData.map((entry, idx) => (
+                              <Cell key={idx} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                          <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Distribuição do Catálogo por Faixa de Preço Unitário", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={catalogAnalytics.priceRangeData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip />
+                          <Bar dataKey="value" name="Quantidade de SKUs" fill="#06b6d4" radius={[6, 6, 0, 0]} barSize={36} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* Tabela Top 15 Produtos por Capital Imobilizado */}
+                  <div className={`overflow-hidden rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+                      <h3 className={`text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Top 15 Itens por Capital Imobilizado em Estoque (Curva A Financeira)
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Código</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Descrição do Produto</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Fabricante</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Categoria</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Estoque</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Preço Unit.</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Total em Estoque</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {catalogAnalytics.topValueItems.map((item) => (
+                            <tr key={item.id} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>
+                              <td className="p-4 text-xs font-black text-violet-600">#{item.code}</td>
+                              <td className="p-4 text-xs font-bold">{item.name}</td>
+                              <td className="p-4 text-xs font-semibold text-slate-500">{item.manufacturer}</td>
+                              <td className="p-4 text-xs text-slate-500">{item.categoryName}</td>
+                              <td className="p-4 text-xs text-right font-bold">{Number(item.stock).toLocaleString('pt-BR')}</td>
+                              <td className="p-4 text-xs text-right font-medium">{formatBRL(item.price)}</td>
+                              <td className="p-4 text-xs text-right font-black text-emerald-600">{formatBRL(item.totalValue)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* RELATÓRIO 4: MERCADO LIVRE, GIRO 6 MESES & COMPETITIVIDADE */}
+              {activeTab === 'mercado_livre' && (
+                <div className="space-y-6">
+                  <div className={`p-6 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                    isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-gradient-to-r from-amber-50/80 to-yellow-50/50 border-amber-100 shadow-sm'
+                  }`}>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-amber-500 text-white shadow-md shadow-amber-500/20">
+                          <ShoppingBag size={20} />
+                        </div>
+                        <h2 className="text-lg font-extrabold tracking-tight">
+                          Inteligência de Mercado Livre — Giro 6 Meses, Repasse Líquido &amp; &ldquo;Vende Mais&rdquo;
+                        </h2>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Comparativo entre Preço À Vista Loja, Líquido ML Envios, Preço ML e Preço do Concorrente de Maior Giro (&ldquo;Vende Mais&rdquo;).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 4 KPI Cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Anúncios Monitorados</p>
+                      <p className="text-2xl font-black text-amber-500">{mercadoLivreAnalytics.totalAds}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {mercadoLivreAnalytics.totalStock} un. em estoque vinculado
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Giro Acumulado (6M)</p>
+                      <p className="text-2xl font-black text-blue-600">{mercadoLivreAnalytics.totalSales6m} vendas</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Volume vendido nos últimos 6 meses
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Receita Bruta Estimada (6M)</p>
+                      <p className="text-2xl font-black text-emerald-600">{formatBRL(mercadoLivreAnalytics.estGrossRevenue6m)}</p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Líquido Envios: {formatBRL(mercadoLivreAnalytics.estNetRevenue6m)}
+                      </p>
+                    </div>
+
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Competitividade ML</p>
+                      <p className="text-2xl font-black text-indigo-600">
+                        {mercadoLivreAnalytics.cheaperOrEqualCompetitor} / {mercadoLivreAnalytics.totalAds}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Anúncios c/ preço ≤ Concorrente Vende Mais
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Gráficos Mercado Livre */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {renderChartContainer("Comparativo de Preços por Anúncio (À Vista Loja vs Preço ML vs Vende Mais)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={mercadoLivreAnalytics.detailedAds.slice(0, 10)} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="codigo" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip
+                            contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }}
+                            formatter={(val: any) => [formatBRL(Number(val)), 'Valor']}
+                          />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar name="À Vista Loja" dataKey="cashStore" fill="#10b981" radius={[4, 4, 0, 0]} />
+                          <Bar name="Preço ML" dataKey="priceMl" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          <Bar name="Concorrente Vende Mais" dataKey="compBest" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+
+                    {renderChartContainer("Vendas (6M) e Estoque por Segmento / Fabricante", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={mercadoLivreAnalytics.bySegmentData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold', fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip contentStyle={{ backgroundColor: isDarkMode ? '#0f172a' : '#fff', borderRadius: '14px', border: 'none' }} />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 'bold' }} />
+                          <Bar name="Vendas 6 Meses" dataKey="vendas6m" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                          <Bar name="Estoque Atual" dataKey="estoque" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+                        </ComposedChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* Tabela Analítica de Anúncios ML */}
+                  <div className={`overflow-hidden rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                    <div className="p-5 border-b border-slate-100 dark:border-slate-800">
+                      <h3 className={`text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Matriz de Rentabilidade & Posicionamento de Anúncios no Mercado Livre
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className={isDarkMode ? 'bg-slate-800/50' : 'bg-slate-50'}>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Cód. / Produto</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Segmento</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Estoque</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Vendas 6M</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">À Vista Loja</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Líq. ML Envios</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Nosso Preço ML</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Vende Mais (Conc.)</th>
+                            <th className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Diferença</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mercadoLivreAnalytics.detailedAds.map((ad: any, idx: number) => (
+                            <tr key={ad.id || idx} className={`border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>
+                              <td className="p-4 text-xs font-bold">
+                                <span className="text-amber-500 mr-1.5">#{ad.codigo}</span>
+                                {ad.nome}
+                              </td>
+                              <td className="p-4 text-xs font-semibold text-slate-500">{ad.segmento_ml || '-'}</td>
+                              <td className="p-4 text-xs text-center font-bold">{ad.stock}</td>
+                              <td className="p-4 text-xs text-center font-black text-blue-600">{ad.sales6m}</td>
+                              <td className="p-4 text-xs text-right font-medium">{formatBRL(ad.cashStore)}</td>
+                              <td className="p-4 text-xs text-right font-bold text-emerald-600">{formatBRL(ad.netEnvios)}</td>
+                              <td className="p-4 text-xs text-right font-black text-blue-600">{formatBRL(ad.priceMl)}</td>
+                              <td className="p-4 text-xs text-right font-bold text-amber-600">
+                                {ad.compBest > 0 ? formatBRL(ad.compBest) : '-'}
+                              </td>
+                              <td className="p-4 text-xs text-center">
+                                {ad.diffVsCompetitorPct !== null ? (
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                                    ad.diffVsCompetitorPct <= 0
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                  }`}>
+                                    {ad.diffVsCompetitorPct > 0 ? '+' : ''}{ad.diffVsCompetitorPct}%
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'geral' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2716,7 +4442,47 @@ export default function ReportsPage() {
               )}
 
               {activeTab === 'leads' && (
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  {/* Cards Executivos de Leads & Cruzamento de Relatórios Importados */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Leads Enriquecidos (Vendedor)</p>
+                      <p className="text-2xl font-black text-emerald-500">
+                        {leadsData.enrichedWithSellerCount || 0}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Com histórico de compras vinculado
+                      </p>
+                    </div>
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Volume Últimas Compras</p>
+                      <p className="text-2xl font-black text-blue-500">
+                        {formatBRL(leadsData.totalLastPurchasesBRL || 0)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Soma das últimas compras registradas
+                      </p>
+                    </div>
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Faturamento Histórico (Leads)</p>
+                      <p className="text-2xl font-black text-indigo-500">
+                        {formatBRL(leadsData.totalHistoricalPurchasesBRL || 0)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        Total acumulado dos clientes em Leads
+                      </p>
+                    </div>
+                    <div className={`p-5 rounded-3xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Bônus Fidelidade em Leads</p>
+                      <p className="text-2xl font-black text-amber-500">
+                        {formatBRL(leadsData.totalLeadsBonusBRL || 0)}
+                      </p>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">
+                        {leadsData.enrichedWithLoyaltyCount || 0} leads com saldo de pontos ativo
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {renderChartContainer("Novos Leads por Dia", (
                       <ResponsiveContainer width="100%" height="100%">
@@ -2780,6 +4546,34 @@ export default function ReportsPage() {
                           <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
                           <Tooltip />
                           <Bar dataKey="value" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+                  </div>
+
+                  {/* Novos Gráficos: Top Bairros Importados e Cruzamento por Vendedor */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {renderChartContainer("Top 10 Bairros / Regiões (Relatório de Endereços)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={leadsData.topNeighborhoods || []} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis dataKey="name" type="category" width={110} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip />
+                          <Bar dataKey="value" name="Clientes / Leads" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ))}
+                    {renderChartContainer("Faturamento Cruzado por Vendedor nos Leads (R$)", (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={leadsData.sellerEnrichmentData || []}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#1e293b' : '#f1f5f9'} />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: isDarkMode ? '#94a3b8' : '#64748b' }} />
+                          <Tooltip formatter={(val: any) => formatBRL(Number(val) || 0)} />
+                          <Legend wrapperStyle={{ fontSize: '10px', fontWeight: 700 }} />
+                          <Bar dataKey="totalComprado" name="Total Histórico (R$)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="ultimaCompra" name="Última Compra (R$)" fill="#6366f1" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     ))}

@@ -14,7 +14,10 @@ import {
   Gift,
   Clock,
   Sparkles,
+  ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   AlertTriangle,
   User,
   History,
@@ -52,6 +55,13 @@ function parseDateBR(dStr?: string | null): number {
 export default function ClientesFidelidadePage() {
   const { isDarkMode } = useTheme();
   const { showToast } = useUI();
+  const { canImportLoyalty, hasSubmoduleAccess } = useRole();
+
+  const canViewBonus = hasSubmoduleAccess('loyalty_view_bonus');
+  const canViewExpiring = hasSubmoduleAccess('loyalty_view_expiring');
+  const canViewStatements = hasSubmoduleAccess('loyalty_statements');
+  const canUseWhatsapp = hasSubmoduleAccess('loyalty_whatsapp');
+  const canImportReport = Boolean(canImportLoyalty && hasSubmoduleAccess('loyalty_import'));
 
   // State
   const [clients, setClients] = useState<LoyaltyClient[]>([]);
@@ -71,6 +81,8 @@ export default function ClientesFidelidadePage() {
     | 'validade_asc'
   >('saldo_desc');
   const [minPointsFilter, setMinPointsFilter] = useState<number | 'all'>('all');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const ITEMS_PER_PAGE = 30;
 
   // Selected client for Extrato Modal
   const [selectedClient, setSelectedClient] = useState<LoyaltyClient | null>(null);
@@ -175,6 +187,34 @@ export default function ClientesFidelidadePage() {
         return 0;
       });
   }, [clients, activeTab, sellerFilter, minPointsFilter, searchQuery, sortBy]);
+
+  // Reset pagination to page 1 when filters, search, or sort change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, sellerFilter, minPointsFilter, searchQuery, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredClients.length / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, filteredClients.length);
+  const paginatedClients = useMemo(
+    () => filteredClients.slice(startIndex, startIndex + ITEMS_PER_PAGE),
+    [filteredClients, startIndex]
+  );
+
+  const pageNumbers = useMemo(() => {
+    const pages: number[] = [];
+    const maxButtons = 5;
+    let start = Math.max(1, safeCurrentPage - Math.floor(maxButtons / 2));
+    const end = Math.min(totalPages, start + maxButtons - 1);
+    if (end - start + 1 < maxButtons) {
+      start = Math.max(1, end - maxButtons + 1);
+    }
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  }, [safeCurrentPage, totalPages]);
 
   // Copy WhatsApp bonus message
   const handleCopyWhatsApp = (client: LoyaltyClient) => {
@@ -316,14 +356,16 @@ export default function ClientesFidelidadePage() {
               <span className="hidden sm:inline">PDF Fidelidade</span>
             </a>
 
-            <button
-              type="button"
-              onClick={() => setIsImportModalOpen(true)}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer whitespace-nowrap"
-            >
-              <Upload size={14} className="shrink-0 stroke-[2.5]" />
-              <span>Importar / Atualizar Relatório</span>
-            </button>
+            {canImportReport && (
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+              >
+                <Upload size={14} className="shrink-0 stroke-[2.5]" />
+                <span>Importar / Atualizar Relatório</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -474,44 +516,48 @@ export default function ClientesFidelidadePage() {
           </div>
 
           {/* Card 5: Total em Bônus (R$) */}
-          <div
-            className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs ${
-              isDarkMode
-                ? 'bg-amber-950/20 border-amber-800/40'
-                : 'bg-amber-50/70 border-amber-200/80'
-            }`}
-          >
-            <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Bônus Disponível</span>
-              <DollarSign size={15} />
+          {canViewBonus && (
+            <div
+              className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs ${
+                isDarkMode
+                  ? 'bg-amber-950/20 border-amber-800/40'
+                  : 'bg-amber-50/70 border-amber-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Bônus Disponível</span>
+                <DollarSign size={15} />
+              </div>
+              <p className="text-lg sm:text-xl font-black tabular-nums text-amber-700 dark:text-amber-400">
+                {formatBRL(stats.totalBonusBRL)}
+              </p>
+              <p className="text-[10px] font-semibold text-amber-600/90 dark:text-amber-400/90 mt-0.5">
+                {stats.totalPointsActive.toLocaleString('pt-BR')} pts ativos
+              </p>
             </div>
-            <p className="text-lg sm:text-xl font-black tabular-nums text-amber-700 dark:text-amber-400">
-              {formatBRL(stats.totalBonusBRL)}
-            </p>
-            <p className="text-[10px] font-semibold text-amber-600/90 dark:text-amber-400/90 mt-0.5">
-              {stats.totalPointsActive.toLocaleString('pt-BR')} pts ativos
-            </p>
-          </div>
+          )}
 
           {/* Card 6: Pontos a Vencer */}
-          <div
-            className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs ${
-              isDarkMode
-                ? 'bg-rose-950/20 border-rose-800/40'
-                : 'bg-rose-50/70 border-rose-200/80'
-            }`}
-          >
-            <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 mb-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider">Pontos a Vencer</span>
-              <Clock size={15} />
+          {canViewExpiring && (
+            <div
+              className={`p-3.5 sm:p-4 rounded-2xl border shadow-xs ${
+                isDarkMode
+                  ? 'bg-rose-950/20 border-rose-800/40'
+                  : 'bg-rose-50/70 border-rose-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 mb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider">Pontos a Vencer</span>
+                <Clock size={15} />
+              </div>
+              <p className="text-xl sm:text-2xl font-black tabular-nums text-rose-700 dark:text-rose-400">
+                {stats.clientsWithExpiringPoints}
+              </p>
+              <p className="text-[10px] text-rose-600/80 dark:text-rose-400/80 mt-0.5">
+                Clientes com vencimento próximo
+              </p>
             </div>
-            <p className="text-xl sm:text-2xl font-black tabular-nums text-rose-700 dark:text-rose-400">
-              {stats.clientsWithExpiringPoints}
-            </p>
-            <p className="text-[10px] text-rose-600/80 dark:text-rose-400/80 mt-0.5">
-              Clientes com vencimento próximo
-            </p>
-          </div>
+          )}
         </section>
 
         {/* Filter & Search Bar */}
@@ -522,20 +568,22 @@ export default function ClientesFidelidadePage() {
         >
           {/* Row 1: Segment Tabs */}
           <div className="flex items-center flex-wrap gap-1.5 pb-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('com_bonus')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'com_bonus'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : isDarkMode
-                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Gift size={14} />
-              <span>Com Bônus Ativo ({stats.clientsWithBalance})</span>
-            </button>
+            {canViewBonus && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('com_bonus')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'com_bonus'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : isDarkMode
+                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Gift size={14} />
+                <span>Com Bônus Ativo ({stats.clientsWithBalance})</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -552,20 +600,22 @@ export default function ClientesFidelidadePage() {
               <span>Com Último Vendedor ({stats.clientsWithSellerMatch})</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveTab('a_vencer')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                activeTab === 'a_vencer'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : isDarkMode
-                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              <Clock size={14} />
-              <span>Pontos a Vencer ({stats.clientsWithExpiringPoints})</span>
-            </button>
+            {canViewExpiring && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('a_vencer')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'a_vencer'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : isDarkMode
+                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <Clock size={14} />
+                <span>Pontos a Vencer ({stats.clientsWithExpiringPoints})</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -801,51 +851,119 @@ export default function ClientesFidelidadePage() {
               </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr
-                    className={`border-b border-slate-200 dark:border-slate-800 ${
-                      isDarkMode
-                        ? 'bg-slate-800/90 text-slate-300'
-                        : 'bg-slate-100/90 text-slate-700'
-                    }`}
-                  >
-                    <th className="py-3 px-3.5 font-black uppercase tracking-wider">Código</th>
-                    <th className="py-3 px-3.5 font-black uppercase tracking-wider min-w-[210px]">
-                      Cliente
-                    </th>
-                    <th className="py-3 px-3.5 font-black uppercase tracking-wider min-w-[210px]">
-                      Último Vendedor que Atendeu
-                      <span className="block text-[9px] font-semibold text-sky-500 normal-case">
-                        Cruzado pelo Código do Cliente
-                      </span>
-                    </th>
-                    <th className="py-3 px-3.5 text-right font-black uppercase tracking-wider min-w-[155px]">
-                      Quanto Comprou (R$)
-                      <span className="block text-[9px] font-semibold text-slate-400 normal-case">
-                        Última Compra / Total Período
-                      </span>
-                    </th>
-                    <th className="py-3 px-3 text-right font-black uppercase tracking-wider">
-                      Saldo Pontos
-                    </th>
-                    <th className="py-3 px-3 text-right font-black uppercase tracking-wider">
-                      Bônus Compras (R$)
-                      <span className="block text-[9px] font-semibold text-slate-400 normal-case">
-                        4 pts = R$ 1,00
-                      </span>
-                    </th>
-                    <th className="py-3 px-3 text-center font-black uppercase tracking-wider">
-                      Próxima Validade
-                    </th>
-                    <th className="py-3 px-3.5 text-center font-black uppercase tracking-wider min-w-[185px]">
-                      Ações Comerciais
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {filteredClients.map((client, idx) => {
+            <>
+              {/* Top Pagination & List Info Bar */}
+              <div
+                className={`px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3 ${
+                  isDarkMode
+                    ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                    : 'bg-slate-50/80 border-slate-200 text-slate-700'
+                }`}
+              >
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 font-black">
+                    30 por página
+                  </span>
+                  <span>
+                    Exibindo{' '}
+                    <strong className="font-black text-slate-900 dark:text-white">
+                      {startIndex + 1}–{endIndex}
+                    </strong>{' '}
+                    de{' '}
+                    <strong className="font-black text-slate-900 dark:text-white">
+                      {filteredClients.length}
+                    </strong>{' '}
+                    clientes
+                  </span>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage === 1}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <ChevronLeft size={14} />
+                      <span>Anterior</span>
+                    </button>
+                    <span className="px-2.5 py-1 text-xs font-bold tabular-nums">
+                      Página <strong className="text-amber-500">{safeCurrentPage}</strong> de{' '}
+                      <strong>{totalPages}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={safeCurrentPage === totalPages}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>Próxima</span>
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr
+                      className={`border-b border-slate-200 dark:border-slate-800 ${
+                        isDarkMode
+                          ? 'bg-slate-800/90 text-slate-300'
+                          : 'bg-slate-100/90 text-slate-700'
+                      }`}
+                    >
+                      <th className="py-3 px-3.5 font-black uppercase tracking-wider">Código</th>
+                      <th className="py-3 px-3.5 font-black uppercase tracking-wider min-w-[210px]">
+                        Cliente
+                      </th>
+                      <th className="py-3 px-3.5 font-black uppercase tracking-wider min-w-[210px]">
+                        Último Vendedor que Atendeu
+                        <span className="block text-[9px] font-semibold text-sky-500 normal-case">
+                          Cruzado pelo Código do Cliente
+                        </span>
+                      </th>
+                      <th className="py-3 px-3.5 text-right font-black uppercase tracking-wider min-w-[155px]">
+                        Quanto Comprou (R$)
+                        <span className="block text-[9px] font-semibold text-slate-400 normal-case">
+                          Última Compra / Total Período
+                        </span>
+                      </th>
+                      <th className="py-3 px-3 text-right font-black uppercase tracking-wider">
+                        Saldo Pontos
+                      </th>
+                      {canViewBonus && (
+                        <th className="py-3 px-3 text-right font-black uppercase tracking-wider">
+                          Bônus Compras (R$)
+                          <span className="block text-[9px] font-semibold text-slate-400 normal-case">
+                            4 pts = R$ 1,00
+                          </span>
+                        </th>
+                      )}
+                      {canViewExpiring && (
+                        <th className="py-3 px-3 text-center font-black uppercase tracking-wider">
+                          Próxima Validade
+                        </th>
+                      )}
+                      {(canViewStatements || canUseWhatsapp) && (
+                        <th className="py-3 px-3.5 text-center font-black uppercase tracking-wider min-w-[185px]">
+                          Ações Comerciais
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                    {paginatedClients.map((client, idx) => {
                     const isPositive = client.saldoPontos > 0;
                     const bonusReais = formatBRL(pointsToBRL(client.saldoPontos));
                     const isCopied = copiedClientId === client.id;
@@ -955,82 +1073,193 @@ export default function ClientesFidelidadePage() {
                         </td>
 
                         {/* Bônus para Compras em R$ */}
-                        <td className="py-2.5 px-3 text-right font-black tabular-nums text-emerald-600 dark:text-emerald-400 text-xs">
-                          {isPositive ? bonusReais : 'R$ 0,00'}
-                        </td>
+                        {canViewBonus && (
+                          <td className="py-2.5 px-3 text-right font-black tabular-nums text-emerald-600 dark:text-emerald-400 text-xs">
+                            {isPositive ? bonusReais : 'R$ 0,00'}
+                          </td>
+                        )}
 
                         {/* Próxima Validade / Alerta de Vencimento */}
-                        <td className="py-2.5 px-3 text-center">
-                          {client.proximoVencimento ? (
-                            <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold text-[11px] tabular-nums">
-                              <Clock size={12} className="shrink-0" />
-                              <span>{client.proximoVencimento}</span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 text-[11px]">—</span>
-                          )}
-                        </td>
+                        {canViewExpiring && (
+                          <td className="py-2.5 px-3 text-center">
+                            {client.proximoVencimento ? (
+                              <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold text-[11px] tabular-nums">
+                                <Clock size={12} className="shrink-0" />
+                                <span>{client.proximoVencimento}</span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px]">—</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Ações Comerciais do Vendedor */}
-                        <td className="py-2.5 px-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            {/* Extrato Completo + Compras */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedClient(client);
-                                setModalTab(
-                                  client.historicoCompras && client.historicoCompras.length > 0
-                                    ? 'compras_vendedor'
-                                    : 'extrato_pontos'
-                                );
-                              }}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                                isDarkMode
-                                  ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
-                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                              }`}
-                              title="Ver histórico de compras por vendedor e extrato de pontos"
-                            >
-                              <FileText size={13} className="text-sky-500" />
-                              <span>Detalhes</span>
-                            </button>
+                        {(canViewStatements || canUseWhatsapp) && (
+                          <td className="py-2.5 px-3.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* Extrato Completo + Compras */}
+                              {canViewStatements && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedClient(client);
+                                    setModalTab(
+                                      client.historicoCompras && client.historicoCompras.length > 0
+                                        ? 'compras_vendedor'
+                                        : 'extrato_pontos'
+                                    );
+                                  }}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                    isDarkMode
+                                      ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                  title="Ver histórico de compras por vendedor e extrato de pontos"
+                                >
+                                  <FileText size={13} className="text-sky-500" />
+                                  <span>Detalhes</span>
+                                </button>
+                              )}
 
-                            {/* Copiar WhatsApp */}
-                            <button
-                              type="button"
-                              onClick={() => handleCopyWhatsApp(client)}
-                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
-                                isCopied
-                                  ? 'bg-emerald-600 border-emerald-600 text-white'
-                                  : isDarkMode
-                                  ? 'bg-slate-800 border-slate-700 text-emerald-400 hover:bg-emerald-600 hover:text-white'
-                                  : 'bg-white border-slate-200 text-emerald-700 hover:bg-emerald-600 hover:text-white'
-                              }`}
-                              title="Copiar mensagem personalizada com saldo e pontos a vencer para o WhatsApp"
-                            >
-                              {isCopied ? <Check size={13} /> : <Copy size={13} />}
-                              <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>
-                            </button>
+                              {/* Copiar WhatsApp & Disparar WhatsApp Web */}
+                              {canUseWhatsapp && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyWhatsApp(client)}
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                                      isCopied
+                                        ? 'bg-emerald-600 border-emerald-600 text-white'
+                                        : isDarkMode
+                                        ? 'bg-slate-800 border-slate-700 text-emerald-400 hover:bg-emerald-600 hover:text-white'
+                                        : 'bg-white border-slate-200 text-emerald-700 hover:bg-emerald-600 hover:text-white'
+                                    }`}
+                                    title="Copiar mensagem personalizada com saldo e pontos a vencer para o WhatsApp"
+                                  >
+                                    {isCopied ? <Check size={13} /> : <Copy size={13} />}
+                                    <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>
+                                  </button>
 
-                            {/* Disparar WhatsApp Web */}
-                            <a
-                              href={whatsappHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors cursor-pointer inline-flex items-center justify-center"
-                              title="Abrir no WhatsApp"
-                            >
-                              <MessageSquare size={14} />
-                            </a>
-                          </div>
-                        </td>
+                                  <a
+                                    href={whatsappHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-500 transition-colors cursor-pointer inline-flex items-center justify-center"
+                                    title="Abrir no WhatsApp"
+                                  >
+                                    <MessageSquare size={14} />
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Bottom Pagination Bar */}
+              <div
+                className={`px-4 py-3.5 border-t flex flex-col sm:flex-row items-center justify-between gap-3 ${
+                  isDarkMode
+                    ? 'bg-slate-900/90 border-slate-800 text-slate-300'
+                    : 'bg-slate-50/80 border-slate-200 text-slate-700'
+                }`}
+              >
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Mostrando clientes{' '}
+                  <strong className="font-bold text-slate-800 dark:text-slate-200">
+                    {startIndex + 1} a {endIndex}
+                  </strong>{' '}
+                  de{' '}
+                  <strong className="font-bold text-slate-800 dark:text-slate-200">
+                    {filteredClients.length}
+                  </strong>{' '}
+                  • Visualização organizada em blocos de <strong>30 clientes por vez</strong>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1 flex-wrap justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={safeCurrentPage === 1}
+                      title="Primeira página"
+                      className={`p-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <ChevronsLeft size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage === 1}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <ChevronLeft size={14} />
+                      <span>Anterior</span>
+                    </button>
+
+                    {pageNumbers.map((pageNum) => {
+                      const isActive = pageNum === safeCurrentPage;
+                      return (
+                        <button
+                          key={pageNum}
+                          type="button"
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-amber-500 text-slate-950 shadow-xs'
+                              : isDarkMode
+                              ? 'bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={safeCurrentPage === totalPages}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>Próxima</span>
+                      <ChevronRight size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={safeCurrentPage === totalPages}
+                      title="Última página"
+                      className={`p-1.5 rounded-lg border text-xs font-bold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <ChevronsRight size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </section>
       </main>

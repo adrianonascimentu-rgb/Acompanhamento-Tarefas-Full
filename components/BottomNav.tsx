@@ -48,14 +48,29 @@ export function BottomNav() {
     role, 
     isAdmin, 
     isAdriano,
+    canAccessHome,
+    canAccessProducts,
+    canAccessSplitTable,
+    canAccessLoyalty,
+    canAccessTasks,
+    canAccessDemands,
+    canAccessRoutes,
     canAccessLeads, 
     canAccessDeliveries, 
+    canAccessTruckHistory,
     canAccessTransfers, 
     canAccessWarranties, 
+    canAccessAssistances,
+    canAccessPriceResearch,
     canAccessReports, 
     canAccessWhatsapp, 
     canAccessSales, 
     canAccessSocialMedia, 
+    canAccessLivePanel,
+    canAccessCollaborators,
+    canAccessCommissions,
+    canAccessSettings,
+    canAccessAdrianoCommissions,
     logout 
   } = useRole();
   const { isDarkMode, toggleDarkMode } = useTheme();
@@ -85,33 +100,33 @@ export function BottomNav() {
     });
   };
 
-  // Abas principais ergonômicas para a equipe em campo
+  // Abas principais ergonômicas para a equipe em campo — filtradas pelas permissões de módulos do usuário
   const navItems = [
-    { 
+    ...(canAccessHome ? [{ 
       label: 'Início', 
       href: '/', 
       icon: LayoutDashboard,
       isActive: pathname === '/'
-    },
-    { 
+    }] : []),
+    ...(canAccessTasks ? [{ 
       label: 'Tarefas', 
       href: '/tasks', 
       icon: CheckSquare,
       badge: true,
       isActive: pathname?.startsWith('/tasks')
-    },
-    { 
+    }] : []),
+    ...(canAccessDeliveries || canAccessRoutes ? [{ 
       label: 'Rotas', 
-      href: '/deliveries', 
+      href: canAccessDeliveries ? '/deliveries' : '/routes', 
       icon: MapPin,
       isActive: pathname?.startsWith('/deliveries') || pathname?.startsWith('/routes')
-    },
-    { 
+    }] : []),
+    ...(canAccessWhatsapp ? [{ 
       label: 'Chat', 
       href: '/whatsapp', 
       icon: MessageSquare,
       isActive: pathname?.startsWith('/whatsapp') || pathname?.startsWith('/chat')
-    },
+    }] : []),
     { 
       label: 'Menu', 
       href: '#',
@@ -122,27 +137,31 @@ export function BottomNav() {
     },
   ];
 
-  // Itens adicionais para o menu expandido no mobile
+  // Itens adicionais para o menu expandido no mobile — todos validados pelas permissões
   const allModules = [
     { href: user?.id ? `/collaborators/${user.id}` : '#', label: 'Meu Perfil', icon: User, show: true },
-    { href: '/products', label: 'Catálogo de Peças', icon: Package, show: true },
-    { href: '/tabela-split', label: 'Tabela de Split', icon: Wind, show: true },
-    { href: '/clientes-fidelidade', label: 'Clientes Fidelidade', icon: Award, show: true },
-    { href: '/demands', label: 'Demandas', icon: ListTodo, show: true },
-    { href: '/routes', label: 'Rotas & GPS', icon: Truck, show: true },
+    { href: '/products', label: 'Catálogo de Peças', icon: Package, show: canAccessProducts },
+    { href: '/tabela-split', label: 'Tabela de Split', icon: Wind, show: canAccessSplitTable },
+    { href: '/clientes-fidelidade', label: 'Clientes Fidelidade', icon: Award, show: canAccessLoyalty },
+    { href: '/tasks', label: 'Tarefas', icon: CheckSquare, show: canAccessTasks },
+    { href: '/demands', label: 'Demandas', icon: ListTodo, show: canAccessDemands },
+    { href: '/routes', label: 'Rotas & GPS', icon: Truck, show: canAccessRoutes },
     { href: '/whatsapp', label: 'WhatsApp', icon: MessageSquare, show: canAccessWhatsapp },
     { href: '/leads', label: 'Leads (CRM)', icon: Target, show: canAccessLeads },
     { href: '/social-media', label: 'Site', icon: ShoppingBag, show: canAccessSocialMedia },
     { href: '/deliveries', label: 'Entregas', icon: Truck, show: canAccessDeliveries },
+    { href: '/reports/truck-history', label: 'Caminhão Reposição', icon: Truck, show: canAccessTruckHistory },
     { href: '/transfers', label: 'Transferências', icon: ArrowRightLeft, show: canAccessTransfers },
     { href: '/warranties', label: 'Garantias', icon: ShieldCheck, show: canAccessWarranties },
-    { href: '/price-research', label: 'Pesquisa de Preço', icon: Tag, show: true },
+    { href: '/warranties/assistances', label: 'Assistência Técnica', icon: ShieldCheck, show: canAccessAssistances },
+    { href: '/price-research', label: 'Pesquisa de Preço', icon: Tag, show: canAccessPriceResearch },
     { href: '/sales-results', label: 'Vendas & Metas', icon: TrendingUp, show: canAccessSales },
     { href: '/reports', label: 'Relatórios', icon: BarChart3, show: canAccessReports },
-    { href: '/collaborators', label: 'Equipe', icon: Users, show: isAdmin },
-    { href: '/painel-ao-vivo', label: 'Painel Ao Vivo', icon: Radio, show: isAdmin },
-    { href: '/admin/commissions', label: 'Comissionados', icon: DollarSign, show: isAdmin },
-    { href: '/admin/comissoes-adriano', label: 'Comissões Adriano', icon: DollarSign, show: isAdriano },
+    { href: '/collaborators', label: 'Equipe', icon: Users, show: canAccessCollaborators },
+    { href: '/painel-ao-vivo', label: 'Painel Ao Vivo', icon: Radio, show: canAccessLivePanel },
+    { href: '/admin/commissions', label: 'Comissionados', icon: DollarSign, show: canAccessCommissions },
+    { href: '/admin/settings', label: 'Configurações', icon: Settings, show: canAccessSettings },
+    { href: '/admin/comissoes-adriano', label: 'Comissões Adriano', icon: DollarSign, show: canAccessAdrianoCommissions },
   ].filter(item => item.show);
 
   return (
@@ -281,7 +300,7 @@ export function BottomNav() {
                   <span>{isDarkMode ? 'Tema Claro' : 'Tema Escuro'}</span>
                 </button>
 
-                {isAdmin ? (
+                {canAccessSettings ? (
                   <Link
                     href="/admin/settings"
                     onClick={() => setIsMenuOpen(false)}

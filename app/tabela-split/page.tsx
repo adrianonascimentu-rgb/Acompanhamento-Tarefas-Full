@@ -24,6 +24,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
+import { useRole } from '@/hooks/useRole';
 import {
   SPLIT_BRAND_TABLES,
   SplitBrandId,
@@ -94,6 +95,22 @@ const AVAILABLE_BTUS_SET = new Set<number>(AVAILABLE_BTUS);
 
 export default function TabelaSplitPage() {
   const { isDarkMode } = useTheme();
+  const { hasSubmoduleAccess } = useRole();
+
+  const canAccessAgratto = hasSubmoduleAccess('split_table_agratto');
+  const canAccessGree = hasSubmoduleAccess('split_table_gree');
+  const canAccessElgin = hasSubmoduleAccess('split_table_elgin');
+  const canDownloadPdf = hasSubmoduleAccess('split_table_download');
+
+  // Filter brands according to user's submodule permissions
+  const allowedBrandTables = useMemo(() => {
+    return SPLIT_BRAND_TABLES.filter((brand) => {
+      if (brand.id === 'agratto') return canAccessAgratto;
+      if (brand.id === 'gree') return canAccessGree;
+      if (brand.id === 'elgin') return canAccessElgin;
+      return true;
+    });
+  }, [canAccessAgratto, canAccessGree, canAccessElgin]);
 
   // Filter states
   const [selectedBrand, setSelectedBrand] = useState<'all' | SplitBrandId>('all');
@@ -139,7 +156,7 @@ export default function TabelaSplitPage() {
   // Pre-indexed searchable text per item ID for O(1) real-time query performance
   const searchableIndexMap = useMemo(() => {
     const map = new Map<string, string>();
-    SPLIT_BRAND_TABLES.forEach((brand) => {
+    allowedBrandTables.forEach((brand) => {
       brand.sections.forEach((section) => {
         section.items.forEach((item) => {
           const techKeywords =
@@ -156,7 +173,7 @@ export default function TabelaSplitPage() {
       });
     });
     return map;
-  }, []);
+  }, [allowedBrandTables]);
 
   // Pre-tokenized query tokens for instantaneous filtering across all items
   const queryTokens = useMemo(() => {
@@ -266,7 +283,7 @@ export default function TabelaSplitPage() {
 
   // Filter brand tables and their sections/items
   const filteredBrandTables = useMemo(() => {
-    return SPLIT_BRAND_TABLES.filter(
+    return allowedBrandTables.filter(
       (brand) => !activeBrandFilterSet || activeBrandFilterSet.has(brand.id)
     )
       .map((brand) => {
@@ -302,6 +319,7 @@ export default function TabelaSplitPage() {
       })
       .filter((brand) => brand.sections.length > 0);
   }, [
+    allowedBrandTables,
     activeBrandFilterSet,
     selectedCategory,
     selectedTech,
@@ -338,7 +356,7 @@ export default function TabelaSplitPage() {
       byBtuRange[r.id] = 0;
     });
 
-    SPLIT_BRAND_TABLES.forEach((brand) => {
+    allowedBrandTables.forEach((brand) => {
       const brandMatches = !activeBrandFilterSet || activeBrandFilterSet.has(brand.id);
 
       brand.sections.forEach((section) => {
@@ -374,6 +392,7 @@ export default function TabelaSplitPage() {
 
     return { byTech, byBtu, byBrand, byBtuRange };
   }, [
+    allowedBrandTables,
     activeBrandFilterSet,
     selectedCategory,
     activeBtuFilterSet,
@@ -495,58 +514,61 @@ export default function TabelaSplitPage() {
             </div>
           </div>
 
-          {/* Right: Direct PDF Buttons for the 3 Official Tables */}
+          {/* Right: Direct PDF Buttons for the Official Tables (respecting split_table_download) */}
           <div className="flex items-center flex-wrap gap-2">
-            {SPLIT_BRAND_TABLES.map((brand) => (
-              <div
-                key={brand.id}
-                className={`inline-flex items-center rounded-xl border text-xs font-bold overflow-hidden ${
-                  isDarkMode
-                    ? 'bg-slate-800/80 border-slate-700 text-slate-200'
-                    : 'bg-slate-100/80 border-slate-200 text-slate-700'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPreviewPdf({
-                      title: brand.fullTitle,
-                      url: brand.pdfUrl,
-                      fileName: brand.pdfFileName,
-                    })
-                  }
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-sky-600 hover:text-white transition-colors cursor-pointer"
-                  title={`Visualizar PDF original ${brand.name}`}
-                >
-                  <FileText size={13} className="shrink-0" />
-                  <span>PDF {brand.name}</span>
-                </button>
-                <a
-                  href={brand.pdfUrl}
-                  download={brand.pdfFileName}
-                  className={`px-2 py-1.5 border-l hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${
-                    isDarkMode ? 'border-slate-700' : 'border-slate-200'
+            {canDownloadPdf &&
+              allowedBrandTables.map((brand) => (
+                <div
+                  key={brand.id}
+                  className={`inline-flex items-center rounded-xl border text-xs font-bold overflow-hidden ${
+                    isDarkMode
+                      ? 'bg-slate-800/80 border-slate-700 text-slate-200'
+                      : 'bg-slate-100/80 border-slate-200 text-slate-700'
                   }`}
-                  title={`Baixar PDF ${brand.name}`}
                 >
-                  <Download size={13} />
-                </a>
-              </div>
-            ))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPreviewPdf({
+                        title: brand.fullTitle,
+                        url: brand.pdfUrl,
+                        fileName: brand.pdfFileName,
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 hover:bg-sky-600 hover:text-white transition-colors cursor-pointer"
+                    title={`Visualizar PDF original ${brand.name}`}
+                  >
+                    <FileText size={13} className="shrink-0" />
+                    <span>PDF {brand.name}</span>
+                  </button>
+                  <a
+                    href={brand.pdfUrl}
+                    download={brand.pdfFileName}
+                    className={`px-2 py-1.5 border-l hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors ${
+                      isDarkMode ? 'border-slate-700' : 'border-slate-200'
+                    }`}
+                    title={`Baixar PDF ${brand.name}`}
+                  >
+                    <Download size={13} />
+                  </a>
+                </div>
+              ))}
 
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
-                isDarkMode
-                  ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
-                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-              }`}
-              title="Imprimir tabela filtrada"
-            >
-              <Printer size={14} />
-              <span className="hidden sm:inline">Imprimir</span>
-            </button>
+            {canDownloadPdf && (
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
+                  isDarkMode
+                    ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+                title="Imprimir tabela filtrada"
+              >
+                <Printer size={14} />
+                <span className="hidden sm:inline">Imprimir</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -707,22 +729,22 @@ export default function TabelaSplitPage() {
                         type="button"
                         onClick={() => {
                           setSelectedBrand('all');
-                          if (selectedMultiBrands.length === SPLIT_BRAND_TABLES.length) {
+                          if (selectedMultiBrands.length === allowedBrandTables.length) {
                             setSelectedMultiBrands([]);
                           } else {
-                            setSelectedMultiBrands(SPLIT_BRAND_TABLES.map((b) => b.id));
+                            setSelectedMultiBrands(allowedBrandTables.map((b) => b.id));
                           }
                         }}
                         className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
                       >
-                        {selectedMultiBrands.length === SPLIT_BRAND_TABLES.length
+                        {selectedMultiBrands.length === allowedBrandTables.length
                           ? 'Desmarcar todos'
                           : 'Marcar todos'}
                       </button>
                     </div>
 
                     <div className="grid grid-cols-3 gap-2">
-                      {SPLIT_BRAND_TABLES.map((brand) => {
+                      {allowedBrandTables.map((brand) => {
                         const isChecked = selectedMultiBrands.includes(brand.id);
                         const matchingCount = filterCounts.byBrand[brand.id] || 0;
                         return (
@@ -976,10 +998,10 @@ export default function TabelaSplitPage() {
                 }`}
               >
                 <Snowflake size={14} />
-                <span>Todas as Marcas (3)</span>
+                <span>Todas as Marcas ({allowedBrandTables.length})</span>
               </button>
 
-              {SPLIT_BRAND_TABLES.map((brand) => {
+              {allowedBrandTables.map((brand) => {
                 const count = brand.sections.reduce((acc, s) => acc + s.items.length, 0);
                 const active =
                   selectedBrand === brand.id || selectedMultiBrands.includes(brand.id);
@@ -1242,30 +1264,32 @@ export default function TabelaSplitPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setPreviewPdf({
-                          title: brand.fullTitle,
-                          url: brand.pdfUrl,
-                          fileName: brand.pdfFileName,
-                        })
-                      }
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      <Eye size={14} />
-                      <span>Ver PDF Original</span>
-                    </button>
-                    <a
-                      href={brand.pdfUrl}
-                      download={brand.pdfFileName}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors"
-                    >
-                      <Download size={14} />
-                      <span>Baixar PDF</span>
-                    </a>
-                  </div>
+                  {canDownloadPdf && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPreviewPdf({
+                            title: brand.fullTitle,
+                            url: brand.pdfUrl,
+                            fileName: brand.pdfFileName,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Eye size={14} />
+                        <span>Ver PDF Original</span>
+                      </button>
+                      <a
+                        href={brand.pdfUrl}
+                        download={brand.pdfFileName}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors"
+                      >
+                        <Download size={14} />
+                        <span>Baixar PDF</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 {/* Sections inside Brand */}

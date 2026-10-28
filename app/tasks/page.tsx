@@ -266,6 +266,7 @@ function TasksContent() {
     }
   }, [filterParam]);
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'map' | 'calendar' | 'kanban'>('grid');
+  const [currentMonth, setCurrentMonth] = useState(new Date());
   const [showNearby, setShowNearby] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loadingGeo, setLoadingGeo] = useState(false);
@@ -887,8 +888,10 @@ function TasksContent() {
         }
       }
 
-      const { data, error, count } = await query
+      const queryRes = await query
         .range(currentOffset, currentOffset + LIMIT - 1);
+      let data = queryRes.data;
+      const { error, count } = queryRes;
 
       if (error) {
         if (error.code === '42501') {

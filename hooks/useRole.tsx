@@ -311,21 +311,34 @@ interface RoleContextType {
   canUploadCatalog: boolean;
   canManageHomeCards: boolean;
   canViewHomeCard: (cardId: string) => boolean;
+  hasPermission: (module: string) => boolean;
+  hasSubmoduleAccess: (submoduleKey: string) => boolean;
+  canAccessHome: boolean;
+  canAccessProducts: boolean;
+  canAccessSplitTable: boolean;
+  canAccessLoyalty: boolean;
+  canImportLoyalty: boolean;
+  canAccessTasks: boolean;
+  canAccessDemands: boolean;
+  canAccessRoutes: boolean;
   canAccessLeads: boolean;
   canAccessSocialMedia: boolean;
   canAccessWhatsapp: boolean;
   canAccessDeliveries: boolean;
   canUpdateDeliveryStatus: boolean;
+  canAccessTruckHistory: boolean;
   canAccessTransfers: boolean;
   canAccessWarranties: boolean;
+  canAccessAssistances: boolean;
+  canAccessPriceResearch: boolean;
   canAccessReports: boolean;
   canAccessSales: boolean;
-  canAccessDemands: boolean;
+  canAccessLivePanel: boolean;
+  canAccessCollaborators: boolean;
+  canAccessCommissions: boolean;
+  canAccessSettings: boolean;
+  canAccessAdrianoCommissions: boolean;
   canAccessPermanentTasks: boolean;
-  canAccessSplitTable: boolean;
-  canAccessLoyalty: boolean;
-  canImportLoyalty: boolean;
-  hasSubmoduleAccess: (submoduleKey: string) => boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (roleOrUserData: any, userData?: any) => void;
@@ -392,6 +405,19 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       
+      let savedAccessConfigMap: Record<string, any> = {};
+      try {
+        const { data: accessConfigRow } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('key', 'collaborator_access_config')
+          .maybeSingle();
+        if (accessConfigRow?.value && typeof accessConfigRow.value === 'object') {
+          savedAccessConfigMap = accessConfigRow.value as Record<string, any>;
+          setCollaboratorAccessMap(savedAccessConfigMap);
+        }
+      } catch {}
+
       if (authUser) {
         let profile: any = null;
         try {
@@ -405,17 +431,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           console.warn('Error fetching profile for authUser:', profileErr);
         }
 
-        let savedAccessEntry: any = null;
-        try {
-          const { data: accessConfigRow } = await supabase
-            .from('system_settings')
-            .select('value')
-            .eq('key', 'collaborator_access_config')
-            .maybeSingle();
-          if (accessConfigRow?.value && typeof accessConfigRow.value === 'object') {
-            savedAccessEntry = (accessConfigRow.value as Record<string, any>)[authUser.id] || null;
-          }
-        } catch {}
+        const savedAccessEntry = savedAccessConfigMap[authUser.id] || null;
 
         const emailPrefix = authUser.email ? authUser.email.split('@')[0] : '';
         const formattedEmailName = emailPrefix ? emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1) : '';
@@ -459,13 +475,47 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           localStorage.setItem('app_user_session', JSON.stringify(enrichedUser));
         } catch {}
       } else {
-        // Check local storage backup session
+        // Check local storage backup session and sync latest profile + collaborator_access_config from Supabase
         try {
           const savedSession = localStorage.getItem('app_user_session');
           if (savedSession) {
             const parsed = JSON.parse(savedSession);
             if (parsed && parsed.id) {
-              setUser(parsed);
+              let freshProfile: any = null;
+              try {
+                const { data: profileData } = await supabase
+                  .from('profiles')
+                  .select('*')
+                  .eq('id', parsed.id)
+                  .maybeSingle();
+                freshProfile = profileData;
+              } catch {}
+
+              const savedAccessEntry = savedAccessConfigMap[parsed.id] || null;
+              const mergedRoleTitle =
+                savedAccessEntry?.accessLevel ||
+                freshProfile?.type ||
+                freshProfile?.role ||
+                parsed.access_level ||
+                parsed.type ||
+                parsed.role ||
+                'user';
+              const normalizedRoleName = normalizeRole(mergedRoleTitle);
+
+              const syncedUser = {
+                ...parsed,
+                ...(freshProfile || {}),
+                access_level: savedAccessEntry?.accessLevel || freshProfile?.type || parsed.access_level || normalizedRoleName,
+                type: savedAccessEntry?.accessLevel || freshProfile?.type || parsed.type || normalizedRoleName,
+                submodules: savedAccessEntry?.submodules || parsed.submodules || null,
+                homeCards: savedAccessEntry?.homeCards || parsed.homeCards || null,
+                normalizedRole: normalizedRoleName
+              };
+
+              setUser(syncedUser);
+              try {
+                localStorage.setItem('app_user_session', JSON.stringify(syncedUser));
+              } catch {}
               setIsLoading(false);
               return;
             }
@@ -552,6 +602,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const login = (roleOrUserData: any, userData?: any) => {
     const finalData = userData || roleOrUserData;
     if (finalData) {
+      const savedEntry = finalData.id ? collaboratorAccessMap[finalData.id] : null;
       const emailPrefix = finalData.email ? finalData.email.split('@')[0] : '';
       const formattedEmailName = emailPrefix ? emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1) : '';
       const resolvedName = 
@@ -563,6 +614,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         'Usuário';
 
       const rawRoleTitle = (
+        savedEntry?.accessLevel ||
         finalData.access_level ||
         (finalData.role && finalData.role.toLowerCase() !== 'user' ? finalData.role : null) ||
         finalData.user_metadata?.role ||
@@ -579,14 +631,18 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       const enrichedUser = {
         ...finalData,
         name: resolvedName,
-        type: finalData.access_level || finalData.type || (normalizedRoleName === 'admin' ? 'admin' : normalizedRoleName),
+        access_level: savedEntry?.accessLevel || finalData.access_level || finalData.type || normalizedRoleName,
+        type: savedEntry?.accessLevel || finalData.access_level || finalData.type || (normalizedRoleName === 'admin' ? 'admin' : normalizedRoleName),
         role: finalData.role || rawRoleTitle,
+        submodules: savedEntry?.submodules || finalData.submodules || null,
+        homeCards: savedEntry?.homeCards || finalData.homeCards || null,
         normalizedRole: normalizedRoleName
       };
       setUser(enrichedUser);
       try {
         localStorage.setItem('app_user_session', JSON.stringify(enrichedUser));
       } catch {}
+      fetchPermissions();
     } else {
       setUser(roleOrUserData);
     }
@@ -685,29 +741,26 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     return defaults[cardId] ?? true;
   };
   
-  const hasPermission = (module: string) => {
+  const hasPermission = (module: string): boolean => {
     if (isAdmin) return true;
     if (!user) return false;
 
-    const effectiveSubmodules = liveAccessEntry?.submodules || user.submodules;
+    const effectiveSubmodules = liveAccessEntry?.submodules || user?.submodules;
 
-    // 0. Verificação explícita nos submódulos salvos do colaborador (collaborator_access_config)
+    // 1. Verificação explícita nos módulos/submódulos salvos do colaborador (collaborator_access_config)
+    // Se estiver desmarcado (false), bloqueia imediatamente sem permitir fallback de cargo
     if (effectiveSubmodules && typeof effectiveSubmodules[module] === 'boolean') {
       return effectiveSubmodules[module];
     }
     
-    // 1. Verificação explícita na coluna de permissão do usuário
+    // 2. Verificação explícita na coluna booleana do perfil do colaborador (profiles.can_access_<module>)
+    // Respeita tanto true quanto false explicitamente configurado
     const userAccessKey = `can_access_${module}`;
-    if (user[userAccessKey] === true) return true;
-    
-    // 2. Para entregas: Caixa, Administradores, Entregadores, Vendedores, Estoque e Gerência têm acesso nativo total
-    if (module === 'deliveries') {
-      if (isCaixa || isEntregador || isVendedor || isEstoque || isGerente) {
-        return true;
-      }
+    if (typeof user[userAccessKey] === 'boolean') {
+      return user[userAccessKey];
     }
 
-    // 3. Verificação com a lista de papéis configurados
+    // 3. Fallback para a matriz de permissões por cargo (module_permissions ou DEFAULT_PERMISSIONS)
     const allowedRoles = (permissions[module] && permissions[module].length > 0)
       ? permissions[module]
       : (DEFAULT_PERMISSIONS[module] || []);
@@ -727,77 +780,103 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  // O Caixa também pode ver todas as entregas e operar o módulo de entregas
-  const canAccessDeliveries = 
-    isAdmin || 
-    isCaixa ||
-    isEntregador ||
-    isVendedor ||
-    isEstoque ||
-    isGerente ||
-    user?.can_access_deliveries === true ||
-    user?.can_access_deliveries !== false ||
-    hasPermission('deliveries');
-
-  // Regra de Negócio: O usuário que tem a função de caixa, entrega ou estoque também pode mudar o status das entregas
-  const canUpdateDeliveryStatus = Boolean(
-    isAdmin || 
-    isCaixa || 
-    isEntregador || 
-    isEstoque ||
-    isGerente || 
-    isSupervisor ||
-    (normalizedRole as string) === 'caixa' ||
-    (normalizedRole as string) === 'estoque' ||
-    rawRole.includes('caixa') ||
-    rawRole.includes('estoque') ||
-    rawRole.includes('almoxarife') ||
-    rawRole.includes('separador') ||
-    rawRole.includes('expedi') ||
-    rawRole.includes('logistica') ||
-    rawRole.includes('financeiro') ||
-    rawRole.includes('secretaria')
-  );
-
-  // Regra de Negócio: Somente Administrador, Gerente, Supervisor ou colaborador com card habilitado têm acesso a Tarefas Permanentes & Notas
-  const canAccessPermanentTasks = Boolean(
-    isAdmin || 
-    isGerente || 
-    isSupervisor ||
-    (normalizedRole as string) === 'admin' ||
-    (normalizedRole as string) === 'gerente' ||
-    (normalizedRole as string) === 'supervisor' ||
-    rawRole.includes('admin') ||
-    rawRole.includes('gerente') ||
-    rawRole.includes('supervisor') ||
-    rawRole.includes('coordenador') ||
-    rawRole.includes('gestor') ||
-    hasPermission('permanent_tasks') ||
-    canViewHomeCard('card_tarefas_permanentes')
-  );
-
+  const canAccessHome = hasPermission('home');
+  const canAccessProducts = hasPermission('products');
   const canAccessSplitTable = hasPermission('split_table');
   const canAccessLoyalty = hasPermission('loyalty');
-  const canImportLoyalty = Boolean(isAdmin || isGerente || isSupervisor || hasPermission('loyalty_import'));
+  const canAccessTasks = hasPermission('tasks');
+  const canAccessDemands = hasPermission('demands');
+  const canAccessRoutes = hasPermission('routes');
+  const canAccessWhatsapp = hasPermission('whatsapp');
+  const canAccessLeads = hasPermission('leads');
+  const canAccessSocialMedia = hasPermission('social_media');
+  const canAccessDeliveries = hasPermission('deliveries');
+  const canAccessTruckHistory = hasPermission('truck_history');
+  const canAccessTransfers = hasPermission('transfers');
+  const canAccessWarranties = hasPermission('warranties');
+  const canAccessAssistances = hasPermission('assistances');
+  const canAccessPriceResearch = hasPermission('price_research');
+  const canAccessSales = hasPermission('sales');
+  const canAccessReports = hasPermission('reports');
+  const canAccessLivePanel = hasPermission('live_panel');
+  const canAccessCollaborators = hasPermission('collaborators');
+  const canAccessCommissions = hasPermission('commissions');
+  const canAccessSettings = hasPermission('settings');
+  const canAccessAdrianoCommissions = Boolean(isAdriano || hasPermission('adriano_commissions'));
+
+  // Regra de Negócio: O usuário que tem a função de caixa, entrega ou estoque (e tem acesso ao módulo de entregas) pode mudar o status das entregas
+  const canUpdateDeliveryStatus = Boolean(
+    canAccessDeliveries && (
+      isAdmin || 
+      isCaixa || 
+      isEntregador || 
+      isEstoque ||
+      isGerente || 
+      isSupervisor ||
+      (normalizedRole as string) === 'caixa' ||
+      (normalizedRole as string) === 'estoque' ||
+      rawRole.includes('caixa') ||
+      rawRole.includes('estoque') ||
+      rawRole.includes('almoxarife') ||
+      rawRole.includes('separador') ||
+      rawRole.includes('expedi') ||
+      rawRole.includes('logistica') ||
+      rawRole.includes('financeiro') ||
+      rawRole.includes('secretaria')
+    )
+  );
+
+  // Tarefas Permanentes & Notas: respeita desmarcação explícita em submodules / can_access_permanent_tasks
+  const canAccessPermanentTasks = (() => {
+    if (isAdmin) return true;
+    if (!user) return false;
+    const effectiveSubmodules = liveAccessEntry?.submodules || user?.submodules;
+    if (effectiveSubmodules && typeof effectiveSubmodules.permanent_tasks === 'boolean') {
+      return effectiveSubmodules.permanent_tasks;
+    }
+    if (typeof user?.can_access_permanent_tasks === 'boolean') {
+      return user.can_access_permanent_tasks;
+    }
+    const explicitHomeCards = liveAccessEntry?.homeCards || user?.homeCards;
+    if (explicitHomeCards && typeof explicitHomeCards.card_tarefas_permanentes === 'boolean') {
+      return explicitHomeCards.card_tarefas_permanentes;
+    }
+    return Boolean(isGerente || isSupervisor || hasPermission('permanent_tasks'));
+  })();
 
   const hasSubmoduleAccess = (submoduleKey: string): boolean => {
     if (isAdmin) return true;
     if (!user) return false;
-    const effectiveSubmodules = liveAccessEntry?.submodules || user.submodules;
+
+    // Se o módulo pai estiver desmarcado, todos os submódulos dele também ficam bloqueados
+    if (submoduleKey.startsWith('split_table_') && !canAccessSplitTable) {
+      return false;
+    }
+    if (submoduleKey.startsWith('loyalty_') && !canAccessLoyalty) {
+      return false;
+    }
+
+    const effectiveSubmodules = liveAccessEntry?.submodules || user?.submodules;
     if (effectiveSubmodules && typeof effectiveSubmodules[submoduleKey] === 'boolean') {
       return effectiveSubmodules[submoduleKey];
     }
+
     if (submoduleKey.startsWith('split_table_')) {
       return canAccessSplitTable;
     }
     if (submoduleKey.startsWith('loyalty_')) {
-      if (submoduleKey === 'loyalty_import') return canImportLoyalty;
+      if (submoduleKey === 'loyalty_import') {
+        return hasPermission('loyalty_import');
+      }
       return canAccessLoyalty;
     }
+
     return hasPermission(submoduleKey);
   };
 
-  const value = {
+  const canImportLoyalty = hasSubmoduleAccess('loyalty_import');
+
+  const value: RoleContextType = {
     role: normalizedRole,
     user,
     isAdmin,
@@ -811,21 +890,34 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     canUploadCatalog,
     canManageHomeCards,
     canViewHomeCard,
-    canAccessLeads: hasPermission('leads'),
-    canAccessSocialMedia: hasPermission('social_media'),
-    canAccessWhatsapp: hasPermission('whatsapp'),
-    canAccessDeliveries,
-    canUpdateDeliveryStatus,
-    canAccessTransfers: hasPermission('transfers'),
-    canAccessWarranties: hasPermission('warranties'),
-    canAccessReports: hasPermission('reports'),
-    canAccessSales: hasPermission('sales'),
-    canAccessDemands: hasPermission('demands'),
-    canAccessPermanentTasks,
+    hasPermission,
+    hasSubmoduleAccess,
+    canAccessHome,
+    canAccessProducts,
     canAccessSplitTable,
     canAccessLoyalty,
     canImportLoyalty,
-    hasSubmoduleAccess,
+    canAccessTasks,
+    canAccessDemands,
+    canAccessRoutes,
+    canAccessLeads,
+    canAccessSocialMedia,
+    canAccessWhatsapp,
+    canAccessDeliveries,
+    canUpdateDeliveryStatus,
+    canAccessTruckHistory,
+    canAccessTransfers,
+    canAccessWarranties,
+    canAccessAssistances,
+    canAccessPriceResearch,
+    canAccessReports,
+    canAccessSales,
+    canAccessLivePanel,
+    canAccessCollaborators,
+    canAccessCommissions,
+    canAccessSettings,
+    canAccessAdrianoCommissions,
+    canAccessPermanentTasks,
     isAuthenticated: !!user,
     isLoading,
     login,
