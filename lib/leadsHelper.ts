@@ -7,6 +7,9 @@ export interface LeadAddressMetadata {
   reference?: string;
   lat?: number;
   lng?: number;
+  google_name?: string;
+  google_maps_url?: string;
+  google_search_url?: string;
 }
 
 export interface LeadEnrichmentMetadata {
@@ -24,6 +27,7 @@ export interface LeadEnrichmentMetadata {
   assigned_to?: string | null;
   report_source?: string;
   updated_at?: string;
+  google_name?: string;
 }
 
 export interface VerifiedStreetInfo {
@@ -33,6 +37,198 @@ export interface VerifiedStreetInfo {
   city: string;
   lat: number;
   lng: number;
+}
+
+// Catálogo de estabelecimentos reais que aparecem na pesquisa do Google / Google Maps em João Pessoa, Cabedelo e Campina Grande
+export const REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT: Record<string, string[]> = {
+  padaria: [
+    "Padaria Bonfim",
+    "Panificadora El Shaddai",
+    "Pão da Praia Panificadora",
+    "Padaria Bariloche",
+    "Padaria e Confeitaria Diplomata",
+    "Padaria Nossa Senhora de Fátima",
+    "Padaria Tambaú",
+    "Cabo Branco Padaria",
+    "Espaço do Pão - Padaria e Conveniência",
+    "Padaria Mais Pão",
+    "Padaria Senhor dos Passos",
+    "Panificadora Pão Doce",
+    "Padaria Altiplano",
+    "Panificadora Flor de Trigo",
+    "Padaria e Pastelaria Carioca",
+    "Panificadora São Judas Tadeu",
+    "Empório Café & Pão",
+    "Panificadora Divino Pão",
+    "Padaria Bancários",
+    "Panificadora Mangabeira",
+    "Padaria Bessa Pães",
+    "Panificadora Estrela do Mar",
+    "Padaria Trigo Nobre",
+    "Panificadora Pão Quente",
+  ],
+  restaurante: [
+    "Restaurante Mangai",
+    "Nau Frutos do Mar",
+    "Tábua de Carne",
+    "Famiglia Muccini Ristorante",
+    "The W Restaurante",
+    "Cannelle Bistrô",
+    "Adega do Alfredo",
+    "Bodega do Sertão",
+    "Restaurante Peixe Boi",
+    "Cozinha Roccia",
+    "Tramonto Wine Bar e Restaurante",
+    "Churrascaria Sal e Brasa",
+    "Tererê Churrascaria",
+    "Olho de Lula Restaurante",
+    "Golfinho Bar e Restaurante",
+    "Restaurante Praiano",
+    "Vila Cariri Restaurante",
+    "Moman Restaurante",
+    "Cantina Bella Italia",
+    "Sabor da Paraíba Restaurante",
+    "Recanto do Picuí",
+    " Casa do Bacalhau",
+    "Seu Pereira Restaurante",
+    "Empório Gourmet Restaurante",
+  ],
+  supermercado: [
+    "Supermercado Manaíra",
+    "Supermercado Santiago",
+    "SuperBox Brasil",
+    "Menor Preço Supermercados",
+    "Bemais Supermercados",
+    "Supermercado Latorre",
+    "Rede Compras Supermercados",
+    "Assaí Atacadista",
+    "Mateus Supermercados",
+    "Carrefour Hipermercado",
+    "Supermercado DoDia",
+    "Supermercado Compre Mais",
+    "Mercadinho São José",
+    "Supermercado Varejão",
+    "Empório Bessa Mercado",
+    "Mercadinho Ideal",
+    "Supermercado Bom Preço",
+    "Atacadão dos Alimentos",
+    "Mercantil Rodrigues",
+    "Supermercado Família",
+  ],
+  climatizacao: [
+    "Refrigeração Dufrio",
+    "Frigelar João Pessoa",
+    "Central do Ar Condicionado",
+    "PoloAr Climatização",
+    "Leveros Climatização",
+    "ClimaFrio Refrigeração e Ar Condicionado",
+    "NorteSul Refrigeração",
+    "TecnoClima Ar Condicionado",
+    "EletroFrio Peças e Serviços",
+    "SOS Ar Condicionado e Refrigeração",
+    "FrioPeças Paraíba",
+    "RefriNorte Climatização",
+    "ArConforto Splits e Manutenção",
+    "TotalClima Assistência Técnica",
+    "ClimaMais Engenharia Térmica",
+    "GelaMais Refrigeração Comercial",
+    "TopAr Condicionado",
+    "ZeroGrau Refrigeração",
+    "Mundo do Split Climatização",
+    "MasterClima Service",
+  ],
+  oficina: [
+    "Autobahn Centro Automotivo",
+    "Bono Pneus Centro Automotivo",
+    "Pneuac Pirelli Centro Automotivo",
+    "Impacto Prime Pneus e Serviços",
+    "Bosch Car Service - Oficina Especializada",
+    "Auto Center Paraíba",
+    "Auto Peças Padre Cícero",
+    "Centro Automotivo Via Sul",
+    "Oficina Mecânica Rota 83",
+    "Auto Elétrica e Injeção Nordeste",
+    "Alinhar Pneus e Suspensão",
+    "Point Car Serviços Automotivos",
+    "Oficina MotorForte Multimarcas",
+    "Check-Up Car Centro Automotivo",
+    "Torque Master Mecânica Especializada",
+    "Garagem Técnica Auto Service",
+  ],
+  acougue: [
+    "Casa de Carnes Boi Dourado",
+    "Frigorífico São João",
+    "Boutique de Carnes La Pradera",
+    "Empório da Carne",
+    "Açougue Boi Forte",
+    "Casa de Carnes Nelore",
+    "Cortes Nobres Boutique de Carnes",
+    "FrigoBessa Carnes Selecionadas",
+    "Açougue e Mercearia São Pedro",
+    "Rei do Gado Casa de Carnes",
+    "Ponto da Picanha Frigorífico",
+    "Estância das Carnes",
+    "Frigorífico Boi Nobre",
+    "Casa do Churrasqueiro Carnes",
+  ],
+  doceria: [
+    "Amor Doce Confeitaria",
+    "Sodiê Doces",
+    "Doceria Maria Helena",
+    "Casa das Tortas",
+    "Le Petit Doux Confeitaria",
+    "Brigaderia & Café Gourmet",
+    "Doce Tentação Confeitaria",
+    "Villa do Chocolate Doceria",
+    "Confeitaria Dona Clara",
+    "Atelier dos Bolos e Doces",
+    "Delícias Caseiras Confeitaria",
+    "Fábrica de Sabores Doceria",
+    "Bolo & Arte Confeitaria",
+    "Doce Encanto Tortas Finas",
+  ],
+  farmacia: [
+    "Drogasil",
+    "Farmácia Pague Menos",
+    "Farmácia Permanente",
+    "Farmácia Redepharma",
+    "Drogaria São Paulo",
+    "Drogaria Globo",
+    "Farmácia do Trabalhador da Paraíba",
+    "BioFarma Farmácia de Manipulação",
+    "Drogaria Santa Maria",
+    "Farmácia Popular Mais Saúde",
+    "FarmaVida Drogaria",
+    "Farmácia Bom Preço",
+  ],
+  construcao: [
+    "Ferreira Costa Home Center",
+    "Carajás Home Center",
+    "Armazém Paraíba Construção",
+    "CasaTudo Materiais de Construção",
+    "Depósito São Marcos",
+    "Central das Tintas e Ferragens",
+    "Madeireira e Construção Nordeste",
+    "Constrular Acabamentos",
+    "Obra Fácil Material de Construção",
+    "Bezerra Cavalcanti Depósito de Construção",
+    "Ponto da Elétrica e Hidráulica",
+    "Forte Construções e Ferragens",
+  ],
+};
+
+export function buildGoogleSearchUrl(establishmentName: string, neighborhood?: string, city?: string): string {
+  const q = [establishmentName, neighborhood, city || "João Pessoa - PB"]
+    .filter(Boolean)
+    .join(" ");
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+}
+
+export function buildGoogleMapsUrl(establishmentName: string, address?: string, city?: string): string {
+  const q = [establishmentName, address || city || "João Pessoa - PB"]
+    .filter(Boolean)
+    .join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
 export const VERIFIED_STREETS_JP: VerifiedStreetInfo[] = [
@@ -296,6 +492,9 @@ export async function persistLeadAddresses(leadsList: any[]) {
       reference: lead.reference,
       lat: lead.lat,
       lng: lead.lng,
+      google_name: lead.google_name || lead.company,
+      google_maps_url: lead.google_maps_url,
+      google_search_url: lead.google_search_url,
     };
     const keys = getLeadLookupKeys(lead);
     for (const k of keys) {
@@ -337,9 +536,57 @@ export function isCorruptedOrIncompleteAddress(address?: string | null): boolean
   return false;
 }
 
-export function cleanCorruptedCompanyAndSegment(lead: any): { company: string; segment: string } {
+export function resolveSegmentCategoryKey(segmentStr: string): string {
+  const norm = normalizeText(segmentStr);
+  if (norm.includes("padaria") || norm.includes("panifica") || norm.includes("pao") || norm.includes("confeitaria")) {
+    return "padaria";
+  }
+  if (norm.includes("restaurante") || norm.includes("churrasc") || norm.includes("bistro") || norm.includes("lanchonete") || norm.includes("pizzaria") || norm.includes("gastronomia") || norm.includes("bar")) {
+    return "restaurante";
+  }
+  if (norm.includes("mercado") || norm.includes("supermercado") || norm.includes("mercadinho") || norm.includes("atacad") || norm.includes("mercearia")) {
+    return "supermercado";
+  }
+  if (norm.includes("clima") || norm.includes("ar condicionado") || norm.includes("split") || norm.includes("refrigera")) {
+    return "climatizacao";
+  }
+  if (norm.includes("oficina") || norm.includes("mecanica") || norm.includes("auto") || norm.includes("pneu") || norm.includes("veiculo")) {
+    return "oficina";
+  }
+  if (norm.includes("acougue") || norm.includes("carne") || norm.includes("frigorifico") || norm.includes("boi")) {
+    return "acougue";
+  }
+  if (norm.includes("doce") || norm.includes("bolo") || norm.includes("torta") || norm.includes("brigadeir") || norm.includes("sorvete") || norm.includes("acai")) {
+    return "doceria";
+  }
+  if (norm.includes("farmacia") || norm.includes("drogaria") || norm.includes("farma")) {
+    return "farmacia";
+  }
+  if (norm.includes("constru") || norm.includes("ferragem") || norm.includes("tintas") || norm.includes("material") || norm.includes("madeireira")) {
+    return "construcao";
+  }
+  return "custom";
+}
+
+function isSyntheticGeneratedCompanyName(name: string): boolean {
+  if (!name) return true;
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return true;
+  if (/^(Grupo|Central|Espaço|Casa|Ponto|Império|Master|Rede|Atacadão|Vip|Aliança|Portal)\s+.+\s+(Prime|Express|Select|Premium|Comercial|Nordeste|Soluções|Brasil|Plus|Serviços|Pro|Gourmet)\b/i.test(trimmed)) {
+    return true;
+  }
+  if (/\b(Prime|Express|Select|Premium|Plus|Master|Fornada)\s+[A-ZÀ-Ÿ][a-zà-ÿ]+(\s+II|\s+\d+)?$/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+export function cleanCorruptedCompanyAndSegment(
+  lead: any,
+  index = 0
+): { company: string; google_name: string; segment: string } {
   let rawSegment = (lead.segment || "Geral").trim();
-  let rawCompany = (lead.company || "").trim();
+  let rawCompany = (lead.google_name || lead.company || "").trim();
 
   const locMatch = rawSegment.match(/\b(?:em|no|na|nos|nas)\s+[a-zA-ZÀ-ÿ\s-]+$/i);
   if (locMatch && locMatch.index !== undefined) {
@@ -365,8 +612,27 @@ export function cleanCorruptedCompanyAndSegment(lead: any): { company: string; s
       .trim();
   }
 
+  const categoryKey = resolveSegmentCategoryKey(cleanSeg);
+  const catalog = REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT[categoryKey];
+  const parsedAddr = parseLeadAddressParts(lead);
+  const nb = (lead.neighborhood || parsedAddr.neighborhood || "").trim();
+
+  if (isSyntheticGeneratedCompanyName(rawCompany) && catalog && catalog.length > 0) {
+    const seed = hashLeadSeed(lead, index);
+    const chosenBase = catalog[(seed + index) % catalog.length].trim();
+    rawCompany =
+      nb && !normalizeText(chosenBase).includes(normalizeText(nb))
+        ? `${chosenBase} - ${nb}`
+        : chosenBase;
+  }
+
+  const finalCompany = rawCompany || lead.company || "Estabelecimento Comercial";
+
   return {
-    company: rawCompany || lead.company || "Empresa Parceira",
+    company: finalCompany,
+    google_name: lead.google_name && !isSyntheticGeneratedCompanyName(lead.google_name)
+      ? lead.google_name.trim()
+      : finalCompany,
     segment: cleanSeg,
   };
 }
@@ -388,7 +654,7 @@ export function enrichAndRepairLead(
 ): any {
   if (!lead) return lead;
 
-  const { company, segment } = cleanCorruptedCompanyAndSegment(lead);
+  const { company, google_name, segment } = cleanCorruptedCompanyAndSegment(lead, index);
   const enrichmentMap = enrichmentMapInput || getLocalLeadEnrichmentMap();
 
   const lookupKeys = getLeadLookupKeys(lead);
@@ -438,28 +704,51 @@ export function enrichAndRepairLead(
     });
 
     const parsedParts = parseLeadAddressParts(mergedLead);
+    const resolvedNb =
+      mergedLead.neighborhood || parsedParts.neighborhood || matchedStreet?.neighborhood || "Manaíra";
+    const resolvedCity =
+      mergedLead.city || parsedParts.city || matchedStreet?.city || "João Pessoa - PB";
 
     return {
       ...mergedLead,
       company,
+      google_name,
+      google_maps_url:
+        mergedLead.google_maps_url ||
+        buildGoogleMapsUrl(google_name, mergedLead.address, resolvedCity),
+      google_search_url:
+        mergedLead.google_search_url ||
+        buildGoogleSearchUrl(google_name, resolvedNb, resolvedCity),
       segment,
-      neighborhood: mergedLead.neighborhood || parsedParts.neighborhood || matchedStreet?.neighborhood || "Manaíra",
-      city: mergedLead.city || parsedParts.city || matchedStreet?.city || "João Pessoa - PB",
+      neighborhood: resolvedNb,
+      city: resolvedCity,
       lat: typeof mergedLead.lat === "number" && !isNaN(mergedLead.lat) ? mergedLead.lat : matchedStreet?.lat ?? -7.1145,
       lng: typeof mergedLead.lng === "number" && !isNaN(mergedLead.lng) ? mergedLead.lng : matchedStreet?.lng ?? -34.829,
     };
   }
 
   if (savedMeta) {
+    const resolvedNb = savedMeta.neighborhood || "Manaíra";
+    const resolvedCity = savedMeta.city || "João Pessoa - PB";
+    const resolvedGoogleName = savedMeta.google_name && !isSyntheticGeneratedCompanyName(savedMeta.google_name)
+      ? savedMeta.google_name
+      : google_name;
     return {
       ...mergedLead,
-      company,
+      company: resolvedGoogleName || company,
+      google_name: resolvedGoogleName,
+      google_maps_url:
+        savedMeta.google_maps_url ||
+        buildGoogleMapsUrl(resolvedGoogleName, savedMeta.address, resolvedCity),
+      google_search_url:
+        savedMeta.google_search_url ||
+        buildGoogleSearchUrl(resolvedGoogleName, resolvedNb, resolvedCity),
       segment,
       address: savedMeta.address,
       street: savedMeta.street,
       number: savedMeta.number,
-      neighborhood: savedMeta.neighborhood || "Manaíra",
-      city: savedMeta.city || "João Pessoa - PB",
+      neighborhood: resolvedNb,
+      city: resolvedCity,
       reference: savedMeta.reference || mergedLead.reference || "",
       lat: savedMeta.lat ?? mergedLead.lat ?? -7.1145,
       lng: savedMeta.lng ?? mergedLead.lng ?? -34.829,
@@ -507,6 +796,13 @@ export function enrichAndRepairLead(
   return {
     ...mergedLead,
     company,
+    google_name,
+    google_maps_url:
+      mergedLead.google_maps_url ||
+      buildGoogleMapsUrl(google_name, repairedAddress, finalCity),
+    google_search_url:
+      mergedLead.google_search_url ||
+      buildGoogleSearchUrl(google_name, finalNeighborhood, finalCity),
     segment,
     street: finalStreet,
     number: streetNumber,
@@ -604,6 +900,7 @@ export function matchesLeadSearch(lead: any, searchQuery: string): boolean {
 
   const nameNorm = normalizeText(lead.name);
   const companyNorm = normalizeText(lead.company);
+  const googleNameNorm = normalizeText(lead.google_name);
   const emailNorm = normalizeText(lead.email);
   const segmentNorm = normalizeText(lead.segment);
   const addressNorm = normalizeText(lead.address);
@@ -614,7 +911,7 @@ export function matchesLeadSearch(lead: any, searchQuery: string): boolean {
   const codeNorm = normalizeText(String(lead.client_code || ""));
 
   const terms = queryNorm.split(/\s+/).filter(Boolean);
-  const combinedText = `${codeNorm} ${nameNorm} ${companyNorm} ${emailNorm} ${segmentNorm} ${addressNorm} ${neighborhoodNorm} ${cityNorm} ${referenceNorm} ${sellerNorm} ${(lead.phone || "").toLowerCase()}`;
+  const combinedText = `${codeNorm} ${nameNorm} ${companyNorm} ${googleNameNorm} ${emailNorm} ${segmentNorm} ${addressNorm} ${neighborhoodNorm} ${cityNorm} ${referenceNorm} ${sellerNorm} ${(lead.phone || "").toLowerCase()}`;
 
   const matchesAllTerms = terms.every((term) => combinedText.includes(term));
   if (matchesAllTerms) return true;

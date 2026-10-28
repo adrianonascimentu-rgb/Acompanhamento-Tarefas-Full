@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock, ExternalLink, Building2 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,7 +22,10 @@ import {
   formatBRL,
 } from '@/lib/loyaltyData';
 import {
+  REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT,
   VERIFIED_STREETS_JP,
+  buildGoogleMapsUrl,
+  buildGoogleSearchUrl,
   clearLocalImportedLeads,
   enrichAndRepairLead,
   formatFullLeadAddress,
@@ -34,6 +37,7 @@ import {
   parseLeadAddressParts,
   persistLeadAddresses,
   persistLeadEnrichments,
+  resolveSegmentCategoryKey,
   saveLocalImportedLeads,
 } from '@/lib/leadsHelper';
 
@@ -360,22 +364,25 @@ export default function LeadsPage() {
       const targetCity =
         resolvedMeta.city || searchCity.trim() || 'João Pessoa - PB';
 
-      // Fallback local caso a API não responda: gera 12 leads inéditos respeitando bairro e cidade solicitados
+      // Fallback local caso a API não responda: gera 12 leads inéditos com nomes reais de estabelecimentos do Google respeitando bairro e cidade solicitados
       if (!fetchSuccess || leadsData.length === 0) {
-        const fallbackContacts = [
-          { name: 'Ricardo Albuquerque', prefix: 'Grupo', suffix: 'Prime' },
-          { name: 'Luciana Ferreira', prefix: 'Central', suffix: 'Express' },
-          { name: 'Roberto Mendes', prefix: 'Espaço', suffix: 'Select' },
-          { name: 'Ana Paula Rocha', prefix: 'Casa', suffix: 'Premium' },
-          { name: 'Fábio Vasconcelos', prefix: 'Ponto', suffix: 'Comercial' },
-          { name: 'Juliana Cavalcanti', prefix: 'Império', suffix: 'Nordeste' },
-          { name: 'Carlos Eduardo Dantas', prefix: 'Master', suffix: 'Soluções' },
-          { name: 'Patrícia Sales', prefix: 'Rede', suffix: 'Brasil' },
-          { name: 'Diego Nogueira', prefix: 'Atacadão', suffix: 'Plus' },
-          { name: 'Camila Bezerra', prefix: 'Vip', suffix: 'Serviços' },
-          { name: 'Rodrigo Nóbrega', prefix: 'Aliança', suffix: 'Pro' },
-          { name: 'Fernanda Maia', prefix: 'Portal', suffix: 'Gourmet' },
+        const fallbackContactNames = [
+          'Ricardo Albuquerque',
+          'Luciana Ferreira',
+          'Roberto Mendes',
+          'Ana Paula Rocha',
+          'Fábio Vasconcelos',
+          'Juliana Cavalcanti',
+          'Carlos Eduardo Dantas',
+          'Patrícia Sales',
+          'Diego Nogueira',
+          'Camila Bezerra',
+          'Rodrigo Nóbrega',
+          'Fernanda Maia',
         ];
+        const catKey = resolveSegmentCategoryKey(formattedSegment);
+        const realEstablishments =
+          REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT[catKey] || null;
         const matchingStreets = targetNeighborhood
           ? VERIFIED_STREETS_JP.filter(
               (s) =>
@@ -385,7 +392,7 @@ export default function LeadsPage() {
         const activeStreets =
           matchingStreets.length > 0 ? matchingStreets : VERIFIED_STREETS_JP;
 
-        leadsData = fallbackContacts.map((c, i) => {
+        leadsData = fallbackContactNames.map((contactName, i) => {
           const idx = i + currentIteration * 12;
           const loc = activeStreets[idx % activeStreets.length];
           const [minN, maxN] = loc.numberRange;
@@ -400,16 +407,32 @@ export default function LeadsPage() {
               : loc.street;
           const phoneSuffix = String(1000 + ((idx * 347 + 191) % 8999)).slice(0, 4);
           const phoneMid = String(2100 + ((idx * 173 + 83) % 7800)).slice(0, 4);
+
+          let estName = '';
+          if (realEstablishments && realEstablishments.length > 0) {
+            const baseEst = realEstablishments[idx % realEstablishments.length];
+            estName =
+              currentIteration > 0 && !baseEst.toLowerCase().includes(nb.toLowerCase())
+                ? `${baseEst} - Unidade ${nb}`
+                : baseEst;
+          } else {
+            estName = `${formattedSegment} ${nb}${currentIteration > 0 ? ` - Filial ${currentIteration + 1}` : ''}`;
+          }
+
+          const fullAddr = `${st}, ${streetNum} - ${nb}, ${ct}`;
           return {
-            name: c.name,
-            company: `${c.prefix} ${formattedSegment} ${c.suffix} ${nb}${currentIteration > 0 ? ` ${currentIteration + 1}` : ''}`,
+            name: contactName,
+            company: estName,
+            google_name: estName,
+            google_search_url: buildGoogleSearchUrl(estName, nb, ct),
+            google_maps_url: buildGoogleMapsUrl(estName, fullAddr),
             email: null,
             phone: `(83) 9${phoneMid}-${phoneSuffix}`,
             street: st,
             number: streetNum,
             neighborhood: nb,
             city: ct,
-            address: `${st}, ${streetNum} - ${nb}, ${ct}`,
+            address: fullAddr,
             lat: loc.lat + ((idx % 7) - 3) * 0.0005,
             lng: loc.lng + (((idx * 2) % 7) - 3) * 0.0005,
             segment: formattedSegment,
@@ -417,7 +440,7 @@ export default function LeadsPage() {
         });
       }
 
-      // Garante que cada lead retornado mantenha estritamente o endereço, bairro e cidade da pesquisa
+      // Garante que cada lead retornado mantenha estritamente o nome do estabelecimento no Google, endereço, bairro e cidade da pesquisa
       const sanitizedLeads = leadsData.map((l: any) => {
         const hasEmail = Boolean(
           l.email &&
@@ -436,9 +459,18 @@ export default function LeadsPage() {
           l.address && l.address.includes(nb)
             ? l.address
             : `${st}, ${num} - ${nb}, ${ct}`;
+        const googleEstablishmentName = (l.google_name || l.company || '').trim();
 
         return {
           ...l,
+          company: googleEstablishmentName,
+          google_name: googleEstablishmentName,
+          google_search_url:
+            l.google_search_url ||
+            buildGoogleSearchUrl(googleEstablishmentName, nb, ct),
+          google_maps_url:
+            l.google_maps_url ||
+            buildGoogleMapsUrl(googleEstablishmentName, fullAddr),
           email: hasEmail ? l.email.trim().toLowerCase() : null,
           segment: l.segment || formattedSegment,
           street: st,
@@ -2653,24 +2685,83 @@ export default function LeadsPage() {
                 >
                   {/* ... lead content ... */}
                   <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className={`size-10 rounded-xl flex items-center justify-center ${
+                    <div className="flex items-start gap-3">
+                      <div className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${
                         isDarkMode ? 'bg-slate-800 text-blue-400' : 'bg-blue-50 text-blue-600'
                       }`}>
-                        <User size={20} />
+                        <Building2 size={20} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-base leading-tight">{lead.name}</h3>
+                          <h3 className="font-black text-base leading-tight text-slate-900 dark:text-white">
+                            {lead.google_name || lead.company || lead.name}
+                          </h3>
                           {lead.client_code && (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 tabular-nums">
                               Cód. #{lead.client_code}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <Briefcase size={12} className="text-slate-400" />
-                          <p className="text-xs font-medium text-slate-500">{lead.company}</p>
+
+                        {/* Selo do Nome do Estabelecimento na Pesquisa do Google + Links Diretos */}
+                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold border ${
+                              isDarkMode
+                                ? 'bg-blue-500/10 text-blue-300 border-blue-500/25'
+                                : 'bg-blue-50 text-blue-700 border-blue-200/80'
+                            }`}
+                          >
+                            <Search size={11} className="text-blue-500 shrink-0" />
+                            <span>
+                              Estabelecimento no Google:{' '}
+                              <strong className="font-black">
+                                {lead.google_name || lead.company}
+                              </strong>
+                            </span>
+                          </span>
+
+                          <a
+                            href={
+                              lead.google_search_url ||
+                              buildGoogleSearchUrl(
+                                lead.google_name || lead.company || lead.name,
+                                lead.neighborhood,
+                                lead.city
+                              )
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 hover:bg-blue-600 hover:text-white dark:bg-slate-800 dark:hover:bg-blue-600 text-slate-600 dark:text-slate-300 transition-colors"
+                            title="Verificar nome e ficha do estabelecimento na Pesquisa do Google"
+                          >
+                            <ExternalLink size={10} />
+                            <span>Pesquisa Google</span>
+                          </a>
+
+                          <a
+                            href={
+                              lead.google_maps_url ||
+                              buildGoogleMapsUrl(
+                                lead.google_name || lead.company || lead.name,
+                                lead.address
+                              )
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 hover:bg-emerald-600 hover:text-white text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 transition-colors"
+                            title="Abrir localização do estabelecimento no Google Maps"
+                          >
+                            <MapPin size={10} />
+                            <span>Google Maps</span>
+                          </a>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <User size={12} className="text-slate-400 shrink-0" />
+                          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Contato comercial: <span className="font-bold text-slate-700 dark:text-slate-200">{lead.name}</span>
+                          </p>
                         </div>
                         {lead.address && (
                           <div className="flex items-center gap-1.5 mt-1">

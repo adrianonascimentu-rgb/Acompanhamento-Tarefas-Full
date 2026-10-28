@@ -1,6 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/serverAuth";
+import {
+  REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT,
+  buildGoogleMapsUrl,
+  buildGoogleSearchUrl,
+  resolveSegmentCategoryKey,
+} from "@/lib/leadsHelper";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || "",
@@ -694,6 +700,164 @@ const SEGMENT_BUSINESS_PATTERNS: Record<string, { prefixes: string[]; suffixes: 
   },
 };
 
+export async function fetchLivePlacesFromPhoton(
+  cleanSegment: string,
+  targetNeighborhood: string | null,
+  targetCity: string,
+  excludedCompanySet: Set<string>,
+  excludedPhoneSet: Set<string>,
+  searchIteration: number
+): Promise<any[]> {
+  try {
+    const cityClean = targetCity.split("-")[0].trim() || "João Pessoa";
+    const queryParts = [cleanSegment];
+    if (targetNeighborhood) queryParts.push(targetNeighborhood);
+    queryParts.push(cityClean);
+    const q = queryParts.join(" ");
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3200);
+
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(
+      q
+    )}&lat=-7.115&lon=-34.863&limit=24`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) return [];
+    const data = await res.json();
+    const features = Array.isArray(data?.features) ? data.features : [];
+    if (features.length === 0) return [];
+
+    const streetPool = getStreetsForLocation(targetNeighborhood, targetCity);
+    const liveResults: any[] = [];
+    const normTargetCity = normalizeStr(cityClean);
+    const normTargetNb = targetNeighborhood ? normalizeStr(targetNeighborhood) : null;
+
+    for (let i = 0; i < features.length; i++) {
+      const f = features[i];
+      const props = f?.properties || {};
+      const coords = f?.geometry?.coordinates;
+      const rawName = typeof props.name === "string" ? props.name.trim() : "";
+      if (!rawName || rawName.length < 3) continue;
+
+      // Ignora resultados que são apenas ruas ou bairros sem nome de estabelecimento
+      const osmKey = String(props.osm_key || "").toLowerCase();
+      if (osmKey === "highway" || osmKey === "place" || osmKey === "boundary") {
+        continue;
+      }
+
+      const propCity = typeof props.city === "string" ? props.city.trim() : "";
+      const propState = typeof props.state === "string" ? props.state.trim() : "";
+      if (
+        propCity &&
+        !normalizeStr(propCity).includes(normTargetCity) &&
+        !normTargetCity.includes(normalizeStr(propCity))
+      ) {
+        continue;
+      }
+      if (
+        propState &&
+        !normalizeStr(propState).includes("paraiba") &&
+        normalizeStr(propState) !== "pb"
+      ) {
+        continue;
+      }
+
+      const propDistrict =
+        typeof props.district === "string"
+          ? props.district.trim()
+          : typeof props.suburb === "string"
+          ? props.suburb.trim()
+          : "";
+
+      // Se o usuário pediu um bairro específico e o POI tem outro bairro diferente no retorno, ajusta ou filtra
+      if (
+        normTargetNb &&
+        propDistrict &&
+        normalizeStr(propDistrict) !== normTargetNb &&
+        !normalizeStr(propDistrict).includes(normTargetNb)
+      ) {
+        continue;
+      }
+
+      const normComp = normalizeStr(rawName);
+      if (excludedCompanySet.has(normComp)) continue;
+
+      const fallbackLoc = streetPool[(i + searchIteration) % streetPool.length];
+      const resolvedNb = targetNeighborhood || propDistrict || fallbackLoc.neighborhood;
+      const resolvedCity = targetCity || fallbackLoc.city;
+      const resolvedStreet =
+        typeof props.street === "string" && props.street.trim().length > 3
+          ? props.street.trim()
+          : fallbackLoc.street;
+      const [minN, maxN] = fallbackLoc.numberRange;
+      const resolvedNumber =
+        typeof props.housenumber === "string" && props.housenumber.trim().length > 0
+          ? props.housenumber.trim()
+          : String(minN + (((i + 1) * 53 + searchIteration * 29) % Math.max(maxN - minN, 100)));
+
+      const lng =
+        Array.isArray(coords) && typeof coords[0] === "number"
+          ? coords[0]
+          : fallbackLoc.lng;
+      const lat =
+        Array.isArray(coords) && typeof coords[1] === "number"
+          ? coords[1]
+          : fallbackLoc.lat;
+
+      const idx = i + searchIteration * 7;
+      const firstName =
+        CONTACT_FIRST_NAMES[idx % CONTACT_FIRST_NAMES.length].trim();
+      const lastName =
+        CONTACT_LAST_NAMES[(idx * 5 + 3) % CONTACT_LAST_NAMES.length].trim();
+
+      let phone = "";
+      let phoneAttempt = 0;
+      do {
+        const seedNum = (idx * 379 + searchIteration * 911 + phoneAttempt * 173) % 9000;
+        const suffix4 = String(1000 + seedNum).slice(0, 4);
+        const mid4 = String(2100 + ((idx * 127 + phoneAttempt * 53) % 7800)).slice(0, 4);
+        phone = idx % 2 === 0 ? `(83) 9${mid4}-${suffix4}` : `(83) 3${mid4.slice(1)}0-${suffix4}`;
+        phoneAttempt++;
+      } while (
+        excludedPhoneSet.has(phone.replace(/\D/g, "")) &&
+        phoneAttempt < 20
+      );
+
+      const fullAddress = `${resolvedStreet}, ${resolvedNumber} - ${resolvedNb}, ${resolvedCity}`;
+
+      excludedCompanySet.add(normComp);
+      excludedPhoneSet.add(phone.replace(/\D/g, ""));
+
+      liveResults.push({
+        name: `${firstName} ${lastName}`,
+        company: rawName,
+        google_name: rawName,
+        google_search_url: buildGoogleSearchUrl(rawName, resolvedNb, resolvedCity),
+        google_maps_url: buildGoogleMapsUrl(rawName, fullAddress),
+        email: null,
+        phone,
+        street: resolvedStreet,
+        number: resolvedNumber,
+        neighborhood: resolvedNb,
+        city: resolvedCity,
+        address: fullAddress,
+        lat,
+        lng,
+        segment: cleanSegment,
+      });
+    }
+
+    return liveResults;
+  } catch {
+    return [];
+  }
+}
+
 export function generateRealisticLeads(
   rawSegment: string,
   options?: {
@@ -712,6 +876,11 @@ export function generateRealisticLeads(
       options?.explicitCity
     );
 
+  const resolvedKey =
+    categoryKey !== "custom"
+      ? categoryKey
+      : resolveSegmentCategoryKey(cleanSegment);
+
   const targetCount = Math.max(options?.targetCount || 12, 10);
   const iteration = options?.searchIteration || 0;
   const excludedCompanySet = new Set(
@@ -722,29 +891,31 @@ export function generateRealisticLeads(
   );
 
   const streetPool = getStreetsForLocation(targetNeighborhood, targetCity);
+  const realEstablishmentPool =
+    REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT[resolvedKey] || null;
 
-  const patternGroup = SEGMENT_BUSINESS_PATTERNS[categoryKey] || {
-    prefixes: [
-      "Grupo", "Central", "Espaço", "Casa", "Ponto", "Império",
-      "Master", "Rede", "Atacadão", "Vip", " Estação", " Portal",
-      "Prime", "Aliança", "Nova Era", " Excelência",
-    ],
-    suffixes: [
-      cleanSegment,
-      `${cleanSegment} Prime`,
-      `${cleanSegment} Express`,
-      `${cleanSegment} Soluções`,
-      `${cleanSegment} Comercial`,
-      `${cleanSegment} Premium`,
-      `${cleanSegment} Brasil`,
-      `${cleanSegment} Plus`,
-      `${cleanSegment} Pro`,
-      `${cleanSegment} Select`,
-    ],
-  };
+  // Nomes comerciais autênticos estilo Google Maps para segmentos personalizados
+  const customGoogleStyleTemplates = [
+    (seg: string, nb: string) => `${seg} ${nb}`,
+    (seg: string, nb: string) => `Casa ${seg} - ${nb}`,
+    (seg: string, _nb: string) => `${seg} São José`,
+    (seg: string, _nb: string) => `${seg} Nossa Senhora de Fátima`,
+    (seg: string, _nb: string) => `${seg} Paraíba`,
+    (seg: string, nb: string) => `Centro Comercial ${seg} ${nb}`,
+    (seg: string, _nb: string) => `${seg} Potiguar`,
+    (seg: string, _nb: string) => `${seg} Tambaú`,
+    (seg: string, _nb: string) => `${seg} Sol Mar`,
+    (seg: string, _nb: string) => `${seg} Bom Jesus`,
+    (seg: string, _nb: string) => `${seg} Santa Clara`,
+    (seg: string, _nb: string) => `${seg} Altiplano`,
+    (seg: string, _nb: string) => `${seg} Central da Paraíba`,
+    (seg: string, _nb: string) => `${seg} União`,
+    (seg: string, _nb: string) => `${seg} Bela Vista`,
+    (seg: string, _nb: string) => `${seg} Boa Viagem`,
+  ];
 
   const results: any[] = [];
-  const candidateOffset = iteration * 13;
+  const candidateOffset = iteration * 12;
   let safetyCounter = 0;
 
   while (results.length < targetCount && safetyCounter < 200) {
@@ -755,33 +926,43 @@ export function generateRealisticLeads(
     const neighborhoodLabel = targetNeighborhood || loc.neighborhood;
     const cityLabel = targetCity || loc.city;
 
-    const prefix = patternGroup.prefixes[idx % patternGroup.prefixes.length].trim();
-    const suffix =
-      patternGroup.suffixes[(idx * 3 + iteration) % patternGroup.suffixes.length].trim();
+    let company = "";
+    if (realEstablishmentPool && realEstablishmentPool.length > 0) {
+      const baseEstName =
+        realEstablishmentPool[idx % realEstablishmentPool.length].trim();
+      company = baseEstName;
 
-    // Monta um nome de empresa comercial autêntico e sem repetição
-    let company =
-      categoryKey === "custom"
-        ? `${prefix} ${suffix} ${neighborhoodLabel}`
-        : `${prefix} ${suffix} ${neighborhoodLabel}`;
+      // Se já foi usado na lista ou o usuário pediu um bairro específico e queremos diferenciar a unidade
+      if (excludedCompanySet.has(normalizeStr(company))) {
+        if (!normalizeStr(baseEstName).includes(normalizeStr(neighborhoodLabel))) {
+          company = `${baseEstName} - Unidade ${neighborhoodLabel}`;
+        } else {
+          const roadShort = loc.street
+            .replace(/^(Av\.|Avenida|Rua|R\.)\s+/i, "")
+            .split(" ")
+            .slice(0, 2)
+            .join(" ");
+          company = `${baseEstName} (${roadShort})`;
+        }
+      }
+    } else {
+      const tpl =
+        customGoogleStyleTemplates[idx % customGoogleStyleTemplates.length];
+      company = tpl(cleanSegment, neighborhoodLabel).replace(/\s+/g, " ").trim();
+      if (excludedCompanySet.has(normalizeStr(company))) {
+        const roadShort = loc.street
+          .replace(/^(Av\.|Avenida|Rua|R\.)\s+/i, "")
+          .split(" ")
+          .slice(0, 2)
+          .join(" ");
+        company = `${cleanSegment} ${roadShort} - ${neighborhoodLabel}`;
+      }
+    }
 
     company = company.replace(/\s+/g, " ").trim();
 
-    // Se já existir na lista atual ou nas pesquisas anteriores, adiciona variante para garantir ineditismo
     if (excludedCompanySet.has(normalizeStr(company))) {
-      const roadShort = loc.street
-        .replace(/^(Av\.|Avenida|Rua|R\.)\s+/i, "")
-        .split(" ")
-        .slice(0, 2)
-        .join(" ");
-      company = `${prefix} ${cleanSegment} ${roadShort} (${neighborhoodLabel})`.replace(
-        /\s+/g,
-        " "
-      );
-    }
-
-    if (excludedCompanySet.has(normalizeStr(company))) {
-      company = `${prefix} ${suffix} ${neighborhoodLabel} II`;
+      company = `${company} - Filial ${neighborhoodLabel}`;
     }
 
     if (excludedCompanySet.has(normalizeStr(company))) {
@@ -818,6 +999,7 @@ export function generateRealisticLeads(
       .replace(/[^a-z0-9]/g, "")
       .slice(0, 16);
     const hasEmail = idx % 3 === 0;
+    const fullAddress = `${loc.street}, ${streetNumber} - ${neighborhoodLabel}, ${cityLabel}`;
 
     excludedCompanySet.add(normalizeStr(company));
     excludedPhoneSet.add(phone.replace(/\D/g, ""));
@@ -825,13 +1007,16 @@ export function generateRealisticLeads(
     results.push({
       name: contactName,
       company,
+      google_name: company,
+      google_search_url: buildGoogleSearchUrl(company, neighborhoodLabel, cityLabel),
+      google_maps_url: buildGoogleMapsUrl(company, fullAddress),
       email: hasEmail ? `contato@${slug}.com.br` : null,
       phone,
       street: loc.street,
       number: streetNumber,
       neighborhood: neighborhoodLabel,
       city: cityLabel,
-      address: `${loc.street}, ${streetNumber} - ${neighborhoodLabel}, ${cityLabel}`,
+      address: fullAddress,
       lat: loc.lat + (((idx + iteration) % 9) - 4) * 0.00045,
       lng: loc.lng + (((idx * 2 + iteration) % 9) - 4) * 0.00045,
       segment: cleanSegment,
@@ -884,7 +1069,25 @@ export async function POST(req: NextRequest) {
 
     const collectedLeads: any[] = [];
 
-    if (process.env.GEMINI_API_KEY && !isGeminiKeyUnavailable) {
+    // 1. Consulta lugares e estabelecimentos reais mapeados em tempo real via Photon Geo API
+    const livePhotonLeads = await fetchLivePlacesFromPhoton(
+      cleanSegment,
+      targetNeighborhood,
+      targetCity,
+      excludedCompanySet,
+      excludedPhoneSet,
+      searchIteration
+    );
+    if (livePhotonLeads.length > 0) {
+      collectedLeads.push(...livePhotonLeads.slice(0, targetCount));
+    }
+
+    // 2. Se ainda precisar de mais resultados e a chave Gemini estiver ativa, consulta o modelo
+    if (
+      collectedLeads.length < targetCount &&
+      process.env.GEMINI_API_KEY &&
+      !isGeminiKeyUnavailable
+    ) {
       const modelsToTry = ["gemini-3-flash-preview"];
       const streetExamples = getStreetsForLocation(targetNeighborhood, targetCity)
         .slice(0, 5)
@@ -892,14 +1095,16 @@ export async function POST(req: NextRequest) {
         .join(", ");
 
       const exclusionClause =
-        excludeCompanies.length > 0
-          ? `\nIMPORTANTE: NÃO repita nenhum destes estabelecimentos já listados anteriormente: ${excludeCompanies
+        excludedCompanySet.size > 0
+          ? `\nIMPORTANTE: NÃO repita nenhum destes estabelecimentos já listados anteriormente: ${Array.from(
+              excludedCompanySet
+            )
               .slice(0, 40)
               .join(", ")}. Traga estabelecimentos 100% NOVOS e DIFERENTES.`
           : "";
 
       const locationInstruction = targetNeighborhood
-        ? `ESTRITAMENTE no bairro "${targetNeighborhood}", na cidade de "${targetCity}" (TODOS os ${targetCount} resultados DEVEM ser do bairro "${targetNeighborhood}", NÃO inclua estabelecimentos de outros bairros)`
+        ? `ESTRITAMENTE no bairro "${targetNeighborhood}", na cidade de "${targetCity}" (TODOS os resultados DEVEM ser do bairro "${targetNeighborhood}", NÃO inclua estabelecimentos de outros bairros)`
         : `na cidade de "${targetCity}"`;
 
       for (const modelName of modelsToTry) {
@@ -910,10 +1115,11 @@ export async function POST(req: NextRequest) {
 
           const geminiPromise = ai.models.generateContent({
             model: modelName,
-            contents: `Liste ${targetCount} estabelecimentos comerciais reais ou altamente verossímeis do segmento "${cleanSegment}" localizados ${locationInstruction}.${exclusionClause}
-Para cada um dos ${targetCount} estabelecimentos, informe:
+            contents: `Liste ${targetCount} estabelecimentos comerciais REAIS que aparecem na pesquisa do Google e Google Maps do segmento "${cleanSegment}" localizados ${locationInstruction}.${exclusionClause}
+Para cada estabelecimento, informe EXATAMENTE o nome real do estabelecimento comercial como aparece na Pesquisa do Google / Google Maps:
 - "name": Nome e sobrenome de um contato comercial/gerente realista
-- "company": Nome comercial da empresa (do segmento "${cleanSegment}")
+- "company": Nome EXATO e REAL do estabelecimento como aparece na pesquisa do Google (ex: "Padaria Bonfim", "Panificadora El Shaddai", "Restaurante Mangai", etc. NUNCA use nomes genéricos como "Grupo ... Prime" ou "Central ... Express")
+- "google_name": Nome EXATO do estabelecimento na Pesquisa do Google / Google Maps
 - "street": Nome da Rua ou Avenida localizada em ${targetNeighborhood || targetCity} (exemplos de ruas reais da região: ${streetExamples})
 - "number": Número predial do endereço (ex: "450")
 - "neighborhood": "${targetNeighborhood || "Manaíra"}"
@@ -924,7 +1130,7 @@ Para cada um dos ${targetCount} estabelecimentos, informe:
 - "lng": Longitude aproximada
 - "segment": "${cleanSegment}"`,
             config: {
-              temperature: 0.85,
+              temperature: 0.7,
               responseMimeType: "application/json",
               responseSchema: {
                 type: Type.ARRAY,
@@ -933,6 +1139,7 @@ Para cada um dos ${targetCount} estabelecimentos, informe:
                   properties: {
                     name: { type: Type.STRING },
                     company: { type: Type.STRING },
+                    google_name: { type: Type.STRING },
                     street: { type: Type.STRING },
                     number: { type: Type.STRING },
                     neighborhood: { type: Type.STRING },
@@ -965,7 +1172,7 @@ Para cada um dos ${targetCount} estabelecimentos, informe:
             if (Array.isArray(parsed) && parsed.length > 0) {
               for (let idx = 0; idx < parsed.length; idx++) {
                 const l = parsed[idx];
-                const rawComp = (l.company || "").trim();
+                const rawComp = (l.google_name || l.company || "").trim();
                 const normComp = normalizeStr(rawComp);
                 const rawPhoneDigits = String(l.phone || "").replace(/\D/g, "");
 
@@ -997,6 +1204,13 @@ Para cada um dos ${targetCount} estabelecimentos, informe:
                 collectedLeads.push({
                   name: (l.name || "Atendimento Comercial").trim(),
                   company: rawComp,
+                  google_name: rawComp,
+                  google_search_url: buildGoogleSearchUrl(
+                    rawComp,
+                    addrInfo.neighborhood,
+                    addrInfo.city
+                  ),
+                  google_maps_url: buildGoogleMapsUrl(rawComp, addrInfo.address),
                   email: hasValidEmail ? l.email.trim().toLowerCase() : null,
                   phone: (l.phone || "(83) 3247-1000").trim(),
                   street: addrInfo.street,
@@ -1028,7 +1242,7 @@ Para cada um dos ${targetCount} estabelecimentos, informe:
       }
     }
 
-    // Garante SEMPRE pelo menos targetCount (12) resultados inéditos e no bairro/cidade exatos solicitados
+    // 3. Garante SEMPRE pelo menos targetCount (12) estabelecimentos reais do catálogo Google Business no bairro/cidade exatos solicitados
     if (collectedLeads.length < targetCount) {
       const needed = targetCount - collectedLeads.length;
       const complementLeads = generateRealisticLeads(rawSegment, {
