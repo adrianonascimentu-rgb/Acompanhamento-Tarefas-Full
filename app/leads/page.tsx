@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -45,10 +45,10 @@ const LeadsMap = dynamic(() => import('@/components/LeadsMap'), {
 });
 
 const MOCK_LEADS = [
-  { id: 1, name: 'Ricardo Santos', company: 'Restaurante Mangai', status: 'Novo', email: 'contato@mangai.com.br', phone: '(83) 3226-1615', segment: 'Restaurante', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1145, lng: -34.8290, address: 'Av. Gen. Edson Ramalho, 696 - Manaíra, João Pessoa - PB' },
-  { id: 2, name: 'Juliana Paiva', company: 'Padaria El Shaddai', status: 'Em Contato', email: null, phone: '(83) 3246-4554', segment: 'Padaria', assigned_to: null, created_at: new Date().toISOString(), lat: -7.0890, lng: -34.8320, address: 'R. Francisco Leocádio Ribeiro Coutinho, 451 - Bessa, João Pessoa - PB' },
-  { id: 3, name: 'Marcos Oliveira', company: 'Açougue do Boi', status: 'Qualificado', email: null, phone: '(83) 99123-4455', segment: 'Açougue', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1150, lng: -34.8630, address: 'Av. Dom Pedro II, 567 - Centro, João Pessoa - PB' },
-  { id: 4, name: 'Camila Doces', company: 'Amor Doce', status: 'Novo', email: 'camila@amordoce.com', phone: '(83) 3247-1122', segment: 'Doceria', assigned_to: null, created_at: new Date().toISOString(), lat: -7.1250, lng: -34.8230, address: 'Av. Cabo Branco, 2120 - Cabo Branco, João Pessoa - PB' },
+  { id: 1, name: 'Ricardo Santos', company: 'Restaurante Mangai', status: 'Novo', email: 'contato@mangai.com.br', phone: '(83) 3226-1615', segment: 'Restaurante', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), lat: -7.1145, lng: -34.8290, address: 'Av. Gen. Edson Ramalho, 696 - Manaíra, João Pessoa - PB' },
+  { id: 2, name: 'Juliana Paiva', company: 'Padaria El Shaddai', status: 'Em Contato', email: null, phone: '(83) 3246-4554', segment: 'Padaria', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), lat: -7.0890, lng: -34.8320, address: 'R. Francisco Leocádio Ribeiro Coutinho, 451 - Bessa, João Pessoa - PB' },
+  { id: 3, name: 'Marcos Oliveira', company: 'Açougue do Boi', status: 'Qualificado', email: null, phone: '(83) 99123-4455', segment: 'Açougue', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), lat: -7.1150, lng: -34.8630, address: 'Av. Dom Pedro II, 567 - Centro, João Pessoa - PB' },
+  { id: 4, name: 'Camila Doces', company: 'Amor Doce', status: 'Novo', email: 'camila@amordoce.com', phone: '(83) 3247-1122', segment: 'Doceria', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 9).toISOString(), lat: -7.1250, lng: -34.8230, address: 'Av. Cabo Branco, 2120 - Cabo Branco, João Pessoa - PB' },
 ];
 
 const MOCK_VENDEDORES = [
@@ -58,6 +58,9 @@ const MOCK_VENDEDORES = [
   { id: 'vendedor-jessica', name: 'Jessica Floriano', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/jessica/200' },
   { id: 'vendedor-adriano', name: 'Adriano teste', role: 'Vendedor', type: 'vendedor', status: 'Ativo', active: true, receives_leads: true, image_url: 'https://picsum.photos/seed/adriano/200' },
 ];
+
+const LEADS_SORT_STORAGE_KEY = 'leads_table_sort_created_at_v1';
+const LEADS_SEGMENTS_STORAGE_KEY = 'leads_table_selected_segments_v1';
 
 export default function LeadsPage() {
   const { role, user, isAdmin, canAccessLeads, isAuthenticated, isLoading: roleLoading, login } = useRole();
@@ -103,8 +106,20 @@ export default function LeadsPage() {
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [tableMissing, setTableMissing] = useState(false);
-  const [selectedSegmentFilter, setSelectedSegmentFilter] = useState<string | null>(null);
+  const [selectedSegments, setSelectedSegments] = useState<string[]>([]);
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('Todos');
+  const [createdAtSortOrder, setCreatedAtSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [tablePrefsHydrated, setTablePrefsHydrated] = useState(false);
+
+  // Busca Avançada na parte superior da tabela de leads
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
+  const [advancedMultiSegmentsInput, setAdvancedMultiSegmentsInput] = useState('');
+  const [advancedLocationFilter, setAdvancedLocationFilter] = useState('');
+  const [advancedAssignmentFilter, setAdvancedAssignmentFilter] = useState<string>('todos');
+  const [advancedDateFrom, setAdvancedDateFrom] = useState('');
+  const [advancedDateTo, setAdvancedDateTo] = useState('');
+  const [advancedLoyaltyFilter, setAdvancedLoyaltyFilter] = useState<'todos' | 'com_fidelidade' | 'com_compra'>('todos');
+
   const [userReceivesLeads, setUserReceivesLeads] = useState<boolean>(true);
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
 
@@ -126,6 +141,66 @@ export default function LeadsPage() {
     };
   } | null>(null);
   const reportFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Carrega preferências persistentes da tabela de leads (ordenação por data de criação e segmentos selecionados)
+  useEffect(() => {
+    try {
+      const savedSort = localStorage.getItem(LEADS_SORT_STORAGE_KEY);
+      if (savedSort === 'asc' || savedSort === 'desc') {
+        setCreatedAtSortOrder(savedSort);
+      }
+      const savedSegments = localStorage.getItem(LEADS_SEGMENTS_STORAGE_KEY);
+      if (savedSegments) {
+        const parsed = JSON.parse(savedSegments);
+        if (Array.isArray(parsed)) {
+          setSelectedSegments(parsed.filter((s) => typeof s === 'string' && s.trim().length > 0));
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao carregar preferências da tabela de leads:', err);
+    } finally {
+      setTablePrefsHydrated(true);
+    }
+  }, []);
+
+  // Salva de forma persistente a ordenação por data de criação
+  useEffect(() => {
+    if (!tablePrefsHydrated) return;
+    try {
+      localStorage.setItem(LEADS_SORT_STORAGE_KEY, createdAtSortOrder);
+    } catch (err) {
+      console.error('Erro ao salvar ordenação de leads:', err);
+    }
+  }, [createdAtSortOrder, tablePrefsHydrated]);
+
+  // Salva de forma persistente os múltiplos segmentos selecionados
+  useEffect(() => {
+    if (!tablePrefsHydrated) return;
+    try {
+      localStorage.setItem(LEADS_SEGMENTS_STORAGE_KEY, JSON.stringify(selectedSegments));
+    } catch (err) {
+      console.error('Erro ao salvar filtro de segmentos:', err);
+    }
+  }, [selectedSegments, tablePrefsHydrated]);
+
+  const toggleSegmentSelection = (segmentName: string) => {
+    const clean = (segmentName || 'Geral').trim();
+    setSelectedSegments((prev) =>
+      prev.includes(clean) ? prev.filter((s) => s !== clean) : [...prev, clean]
+    );
+  };
+
+  const clearAllTableFilters = () => {
+    setSearchQuery('');
+    setSelectedStatusFilter('Todos');
+    setSelectedSegments([]);
+    setAdvancedMultiSegmentsInput('');
+    setAdvancedLocationFilter('');
+    setAdvancedAssignmentFilter('todos');
+    setAdvancedDateFrom('');
+    setAdvancedDateTo('');
+    setAdvancedLoyaltyFilter('todos');
+  };
 
   useEffect(() => {
     if (user) {
@@ -466,8 +541,8 @@ export default function LeadsPage() {
       });
 
       // Alinha os filtros da listagem para que os novos resultados apareçam imediatamente
-      if (selectedSegmentFilter && selectedSegmentFilter !== formattedSegment) {
-        setSelectedSegmentFilter(null);
+      if (selectedSegments.length > 0 && !selectedSegments.includes(formattedSegment)) {
+        setSelectedSegments([]);
       }
       if (selectedStatusFilter !== 'Todos' && selectedStatusFilter !== 'Novo') {
         setSelectedStatusFilter('Todos');
@@ -1209,17 +1284,139 @@ export default function LeadsPage() {
     );
   }
 
-  const filteredLeads = visibleLeads.filter(lead => {
-    const matchesSearch = matchesLeadSearch(lead, searchQuery);
-    const matchesStatus = selectedStatusFilter === 'Todos' || (lead.status || 'Novo') === selectedStatusFilter;
-    const matchesSegment = !selectedSegmentFilter || (lead.segment || 'Geral').trim() === selectedSegmentFilter;
+  const normalizeFilterStr = (val: string) =>
+    (val || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
 
-    return matchesSearch && matchesStatus && matchesSegment;
-  });
+  const typedMultiSegmentTokens = advancedMultiSegmentsInput
+    .split(/[,;|]+/)
+    .map((t) => normalizeFilterStr(t))
+    .filter(Boolean);
+
+  const activeAdvancedFiltersCount = [
+    selectedSegments.length > 0,
+    typedMultiSegmentTokens.length > 0,
+    Boolean(advancedLocationFilter.trim()),
+    advancedAssignmentFilter !== 'todos',
+    Boolean(advancedDateFrom),
+    Boolean(advancedDateTo),
+    advancedLoyaltyFilter !== 'todos',
+  ].filter(Boolean).length;
+
+  const hasAnyActiveFilter =
+    Boolean(searchQuery.trim()) ||
+    selectedStatusFilter !== 'Todos' ||
+    activeAdvancedFiltersCount > 0;
+
+  const filteredLeads = visibleLeads
+    .filter((lead) => {
+      const matchesSearch = matchesLeadSearch(lead, searchQuery);
+      const matchesStatus =
+        selectedStatusFilter === 'Todos' || (lead.status || 'Novo') === selectedStatusFilter;
+
+      const leadSegmentRaw = (lead.segment || 'Geral').trim();
+      const leadSegmentNorm = normalizeFilterStr(leadSegmentRaw);
+
+      // Pesquisa por múltiplos segmentos simultaneamente (pills selecionados + termos digitados separados por vírgula)
+      const hasSegmentFilters =
+        selectedSegments.length > 0 || typedMultiSegmentTokens.length > 0;
+      const matchesSelectedPills = selectedSegments.some(
+        (seg) => normalizeFilterStr(seg) === leadSegmentNorm
+      );
+      const matchesTypedSegments = typedMultiSegmentTokens.some((token) =>
+        leadSegmentNorm.includes(token)
+      );
+      const matchesSegment =
+        !hasSegmentFilters || matchesSelectedPills || matchesTypedSegments;
+
+      // Filtro avançado por Bairro / Cidade / Endereço
+      const locQuery = normalizeFilterStr(advancedLocationFilter);
+      const matchesLocation =
+        !locQuery ||
+        normalizeFilterStr(
+          [lead.neighborhood, lead.city, lead.address, lead.reference]
+            .filter(Boolean)
+            .join(' ')
+        ).includes(locQuery);
+
+      // Filtro avançado por Atribuição / Vendedor
+      const hasSeller = Boolean(
+        lead.assigned_to || lead.assigned_profile?.name || lead.assigned_name
+      );
+      let matchesAssignment = true;
+      if (advancedAssignmentFilter === 'atribuidos') {
+        matchesAssignment = hasSeller;
+      } else if (advancedAssignmentFilter === 'nao_atribuidos') {
+        matchesAssignment = !hasSeller;
+      } else if (advancedAssignmentFilter !== 'todos') {
+        const targetSeller = normalizeFilterStr(advancedAssignmentFilter);
+        const leadSeller = normalizeFilterStr(
+          [lead.assigned_profile?.name, lead.assigned_name, lead.last_seller]
+            .filter(Boolean)
+            .join(' ')
+        );
+        matchesAssignment = leadSeller.includes(targetSeller);
+      }
+
+      // Filtro avançado por Período de Criação (created_at)
+      let matchesDateRange = true;
+      if (advancedDateFrom || advancedDateTo) {
+        const createdTime = lead.created_at ? new Date(lead.created_at).getTime() : 0;
+        if (!createdTime || Number.isNaN(createdTime)) {
+          matchesDateRange = false;
+        } else {
+          if (advancedDateFrom) {
+            const fromTime = new Date(`${advancedDateFrom}T00:00:00`).getTime();
+            if (createdTime < fromTime) matchesDateRange = false;
+          }
+          if (advancedDateTo) {
+            const toTime = new Date(`${advancedDateTo}T23:59:59.999`).getTime();
+            if (createdTime > toTime) matchesDateRange = false;
+          }
+        }
+      }
+
+      // Filtro avançado por Fidelidade / Histórico de Compra
+      let matchesLoyalty = true;
+      if (advancedLoyaltyFilter === 'com_fidelidade') {
+        matchesLoyalty = Boolean(lead.loyalty_points && lead.loyalty_points > 0);
+      } else if (advancedLoyaltyFilter === 'com_compra') {
+        matchesLoyalty = Boolean(
+          (lead.last_purchase_value && lead.last_purchase_value > 0) ||
+            (lead.total_purchased && lead.total_purchased > 0)
+        );
+      }
+
+      return (
+        matchesSearch &&
+        matchesStatus &&
+        matchesSegment &&
+        matchesLocation &&
+        matchesAssignment &&
+        matchesDateRange &&
+        matchesLoyalty
+      );
+    })
+    .sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const validTimeA = Number.isNaN(timeA) ? 0 : timeA;
+      const validTimeB = Number.isNaN(timeB) ? 0 : timeB;
+
+      if (validTimeA !== validTimeB) {
+        return createdAtSortOrder === 'desc'
+          ? validTimeB - validTimeA
+          : validTimeA - validTimeB;
+      }
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
 
   return (
     <div className={`flex flex-col min-h-screen transition-colors duration-300 ${isDarkMode ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900'}`}>
-      <header className={`sticky top-0 z-10 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
+      <header className={`sticky top-0 z-30 backdrop-blur-md border-b transition-colors ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'}`}>
         <div className="flex items-center p-4 justify-between w-full gap-2">
           <Link href="/" className={`flex size-10 shrink-0 items-center justify-center rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
             <ArrowLeft size={20} />
@@ -1241,7 +1438,7 @@ export default function LeadsPage() {
       </header>
 
       <main className="flex-1 overflow-y-auto pb-32">
-        <div className="p-4 space-y-6">
+        <div className="p-4 space-y-6 leads-container">
           {/* Vendedor UI: Lead Receiving Toggle & New Assignments Inbox (Visible to all for verification, labeled for admins) */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-1">
@@ -1661,124 +1858,6 @@ export default function LeadsPage() {
             </div>
           )}
 
-          {/* Search and Status Filters Component */}
-          <div className={`p-4 rounded-2xl border space-y-3 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
-            {/* Search Input Bar */}
-            <div className="relative flex items-center">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
-              <input 
-                type="text"
-                placeholder="Buscar por cliente, empresa, rua, bairro, segmento ou telefone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full h-11 pl-10 pr-24 rounded-xl border text-sm font-medium outline-none transition-all ${
-                  isDarkMode 
-                    ? 'bg-slate-950/80 border-slate-800 text-slate-100 focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30' 
-                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30'
-                }`}
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                <VoiceSearch 
-                  onResult={(text) => setSearchQuery(text)} 
-                  isDarkMode={isDarkMode} 
-                />
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery('')}
-                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full"
-                    title="Limpar pesquisa"
-                  >
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Status Filter Chips Header & Horizontal Bar */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Filter size={12} className="text-blue-500" />
-                  Filtrar por Status do Lead
-                </span>
-                {(searchQuery || selectedStatusFilter !== 'Todos' || selectedSegmentFilter) && (
-                  <button
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedStatusFilter('Todos');
-                      setSelectedSegmentFilter(null);
-                    }}
-                    className="text-[10px] font-bold text-rose-500 hover:text-rose-600 uppercase tracking-wider hover:underline flex items-center gap-1"
-                  >
-                    <X size={12} />
-                    Limpar Filtros
-                  </button>
-                )}
-              </div>
-
-              {/* Status Pills */}
-              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 pt-0.5">
-                {availableStatuses.map((st) => {
-                  const count = statusCounts[st] || 0;
-                  const isSelected = selectedStatusFilter === st;
-
-                  const getBadgeStyle = () => {
-                    if (!isSelected) {
-                      return isDarkMode
-                        ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
-                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100/80';
-                    }
-                    switch (st) {
-                      case 'Novo':
-                        return 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20';
-                      case 'Em Contato':
-                        return 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/20';
-                      case 'Qualificado':
-                        return 'bg-purple-600 border-purple-600 text-white shadow-md shadow-purple-500/20';
-                      case 'Concluído':
-                      case 'Convertido':
-                        return 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-500/20';
-                      default:
-                        return 'bg-slate-900 dark:bg-slate-100 border-slate-900 dark:border-slate-100 text-white dark:text-slate-900 shadow-md';
-                    }
-                  };
-
-                  return (
-                    <button
-                      key={st}
-                      onClick={() => setSelectedStatusFilter(st)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border shrink-0 ${getBadgeStyle()}`}
-                    >
-                      <span>{st}</span>
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
-                        isSelected
-                          ? 'bg-white/20 text-white'
-                          : isDarkMode ? 'bg-slate-800 text-slate-400' : 'bg-slate-200/80 text-slate-600'
-                      }`}>
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Results Count Summary */}
-            <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-              <span>
-                Exibindo <strong className="text-slate-900 dark:text-slate-100 font-bold">{filteredLeads.length}</strong> de <strong className="text-slate-900 dark:text-slate-100 font-bold">{leads.length}</strong> leads
-              </span>
-              {selectedSegmentFilter && (
-                <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-bold">
-                  Nicho: {selectedSegmentFilter}
-                  <button onClick={() => setSelectedSegmentFilter(null)} className="hover:text-rose-500">
-                    <X size={12} />
-                  </button>
-                </span>
-              )}
-            </div>
-          </div>
-
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-3">
             {(isAdmin || role === 'gerente') && (
@@ -1926,18 +2005,23 @@ export default function LeadsPage() {
                   <h3 className="text-sm font-bold tracking-tight">Leads por Segmento (Nichos Promissores)</h3>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Identificação dos nichos de mercado com maior concentração de oportunidades. Clique em uma barra para filtrar.
+                  Clique em uma ou mais barras para filtrar múltiplos segmentos simultaneamente.
                 </p>
               </div>
 
-              {selectedSegmentFilter && (
-                <button
-                  onClick={() => setSelectedSegmentFilter(null)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 hover:bg-indigo-200 transition-all self-start sm:self-auto flex items-center gap-1.5"
-                >
-                  <span>Filtro: {selectedSegmentFilter}</span>
-                  <X size={13} />
-                </button>
+              {selectedSegments.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
+                    {selectedSegments.length} {selectedSegments.length === 1 ? 'segmento ativo' : 'segmentos ativos'}
+                  </span>
+                  <button
+                    onClick={() => setSelectedSegments([])}
+                    className="px-2.5 py-1 rounded-xl text-xs font-bold bg-indigo-100 text-indigo-700 dark:bg-indigo-950/80 dark:text-indigo-300 hover:bg-indigo-200 transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Limpar seleção</span>
+                    <X size={13} />
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1993,28 +2077,26 @@ export default function LeadsPage() {
                         boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)'
                       }}
                       formatter={(value: any) => [`${value} Leads`, 'Volume']}
-                      labelFormatter={(label: any) => `Segmento: ${label}`}
+                      labelFormatter={(label: any) => `Segmento: ${label} (clique para alternar)`}
                     />
                     <Bar
                       dataKey="total"
                       radius={[6, 6, 0, 0]}
                       onClick={(entry: any) => {
                         if (entry && entry.segment) {
-                          setSelectedSegmentFilter(
-                            selectedSegmentFilter === entry.segment ? null : entry.segment
-                          );
+                          toggleSegmentSelection(entry.segment);
                         }
                       }}
                       className="cursor-pointer"
                     >
                       {segmentData.map((entry, index) => {
                         const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#6366f1'];
-                        const isSelected = selectedSegmentFilter === entry.segment;
+                        const isSelected = selectedSegments.includes(entry.segment);
                         return (
                           <Cell
                             key={`cell-${index}`}
                             fill={colors[index % colors.length]}
-                            opacity={selectedSegmentFilter ? (isSelected ? 1 : 0.35) : 1}
+                            opacity={selectedSegments.length > 0 ? (isSelected ? 1 : 0.35) : 1}
                           />
                         );
                       })}
@@ -2051,9 +2133,513 @@ export default function LeadsPage() {
             </div>
           )}
 
-          {/* Vendedores Overview (Admin/Gerente Only) */}
-          {/* Leads List */}
-          <div className="space-y-3">
+          {/* Tabela / Lista de Leads com Filtros Fixos e Busca Avançada na Parte Superior (.leads-container .lead-table) */}
+          <div className="lead-table space-y-3 relative">
+            {/* Painel Fixo (Sticky) de Filtros, Multi-Segmentos, Ordenação Persistente e Busca Avançada */}
+            <div
+              className={`sticky top-[68px] z-20 p-4 rounded-2xl border backdrop-blur-xl transition-all space-y-3 ${
+                isDarkMode
+                  ? 'bg-slate-900/95 border-slate-800 shadow-xl shadow-slate-950/60'
+                  : 'bg-white/95 border-slate-200/90 shadow-lg shadow-slate-200/60'
+              }`}
+            >
+              {/* Cabeçalho da Tabela de Leads + Ordenação Persistente por Data de Criação + Toggle Busca Avançada */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="p-2 rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/20">
+                    <Layers size={16} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-black tracking-tight">
+                        Tabela de Leads e Oportunidades
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        {filteredLeads.length} de {visibleLeads.length}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Filtros fixos, seleção simultânea de múltiplos segmentos e ordenação persistente por data de criação
+                    </p>
+                  </div>
+                </div>
+
+                {/* Controles Rápidos: Ordenação Persistente por Data de Criação + Botão Busca Avançada */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Seletor/Botão de Ordenação Persistente por Data de Criação */}
+                  <div
+                    className={`inline-flex items-center rounded-xl border p-1 ${
+                      isDarkMode
+                        ? 'bg-slate-950 border-slate-800'
+                        : 'bg-slate-100/80 border-slate-200'
+                    }`}
+                    title="A ordenação por data de criação fica salva automaticamente neste dispositivo"
+                  >
+                    <span className="px-2 text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                      <Clock size={12} className="text-indigo-500" />
+                      <span className="hidden sm:inline">Criação:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCreatedAtSortOrder('desc')}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        createdAtSortOrder === 'desc'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : isDarkMode
+                          ? 'text-slate-400 hover:text-slate-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <ArrowDownWideNarrow size={13} />
+                      <span>Mais Recentes</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreatedAtSortOrder('asc')}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                        createdAtSortOrder === 'asc'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : isDarkMode
+                          ? 'text-slate-400 hover:text-slate-200'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <ArrowUpNarrowWide size={13} />
+                      <span>Mais Antigos</span>
+                    </button>
+                  </div>
+
+                  {/* Botão Expandir/Recolher Busca Avançada */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedSearch((prev) => !prev)}
+                    className={`h-9 px-3 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      showAdvancedSearch || activeAdvancedFiltersCount > 0
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                        : isDarkMode
+                        ? 'bg-slate-950 border-slate-800 text-slate-300 hover:border-indigo-500/50'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300'
+                    }`}
+                  >
+                    <SlidersHorizontal size={14} />
+                    <span>Busca Avançada</span>
+                    {activeAdvancedFiltersCount > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-white text-indigo-700">
+                        {activeAdvancedFiltersCount}
+                      </span>
+                    )}
+                    {showAdvancedSearch ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+
+                  {hasAnyActiveFilter && (
+                    <button
+                      type="button"
+                      onClick={clearAllTableFilters}
+                      className="h-9 px-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500 hover:text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+                      title="Limpar todos os filtros ativos"
+                    >
+                      <X size={14} />
+                      <span className="hidden sm:inline">Limpar</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Barra de Busca Rápida */}
+              <div className="relative flex items-center">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar por cliente, código, empresa, rua, bairro, segmento ou telefone..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`w-full h-11 pl-10 pr-24 rounded-xl border text-sm font-medium outline-none transition-all ${
+                    isDarkMode
+                      ? 'bg-slate-950/90 border-slate-800 text-slate-100 focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-blue-600 focus:ring-1 focus:ring-blue-600/30'
+                  }`}
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <VoiceSearch
+                    onResult={(text) => setSearchQuery(text)}
+                    isDarkMode={isDarkMode}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full cursor-pointer"
+                      title="Limpar pesquisa"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Filtro Fixo de Múltiplos Segmentos Simultâneos */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Briefcase size={12} className="text-indigo-500" />
+                    Filtrar por Múltiplos Segmentos Simultaneamente (clique em vários)
+                  </span>
+                  {selectedSegments.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                        {selectedSegments.length} {selectedSegments.length === 1 ? 'selecionado' : 'selecionados'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSegments([])}
+                        className="text-[10px] font-bold text-rose-500 hover:underline flex items-center gap-0.5 cursor-pointer"
+                      >
+                        <X size={11} />
+                        Todos os segmentos
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSegments([])}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border shrink-0 cursor-pointer ${
+                      selectedSegments.length === 0 && typedMultiSegmentTokens.length === 0
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
+                        : isDarkMode
+                        ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Todos</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                        selectedSegments.length === 0 && typedMultiSegmentTokens.length === 0
+                          ? 'bg-white/20 text-white'
+                          : isDarkMode
+                          ? 'bg-slate-800 text-slate-400'
+                          : 'bg-slate-200/80 text-slate-600'
+                      }`}
+                    >
+                      {visibleLeads.length}
+                    </span>
+                  </button>
+
+                  {segmentData.map(({ segment, total }) => {
+                    const isSelected = selectedSegments.includes(segment);
+                    return (
+                      <button
+                        key={segment}
+                        type="button"
+                        onClick={() => toggleSegmentSelection(segment)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border shrink-0 cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-500/20'
+                            : isDarkMode
+                            ? 'bg-slate-950 border-slate-800 text-slate-300 hover:border-indigo-500/50 hover:bg-slate-800/80'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50/40'
+                        }`}
+                      >
+                        {isSelected && <Check size={12} className="stroke-[3]" />}
+                        <span>{segment}</span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : isDarkMode
+                              ? 'bg-slate-800 text-slate-400'
+                              : 'bg-slate-200/80 text-slate-600'
+                          }`}
+                        >
+                          {total}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Filtro Fixo de Status do Lead */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Filter size={12} className="text-blue-500" />
+                    Status do Atendimento
+                  </span>
+                </div>
+
+                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 pt-0.5">
+                  {availableStatuses.map((st) => {
+                    const count = statusCounts[st] || 0;
+                    const isSelected = selectedStatusFilter === st;
+
+                    const getBadgeStyle = () => {
+                      if (!isSelected) {
+                        return isDarkMode
+                          ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/80'
+                          : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100/80';
+                      }
+                      switch (st) {
+                        case 'Novo':
+                          return 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20';
+                        case 'Em Contato':
+                          return 'bg-amber-500 border-amber-500 text-white shadow-md shadow-amber-500/20';
+                        case 'Qualificado':
+                          return 'bg-purple-600 border-purple-600 text-white shadow-md shadow-purple-500/20';
+                        case 'Concluído':
+                        case 'Convertido':
+                          return 'bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-500/20';
+                        default:
+                          return 'bg-slate-900 dark:bg-slate-100 border-slate-900 dark:border-slate-100 text-white dark:text-slate-900 shadow-md';
+                      }
+                    };
+
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => setSelectedStatusFilter(st)}
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border shrink-0 cursor-pointer ${getBadgeStyle()}`}
+                      >
+                        <span>{st}</span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : isDarkMode
+                              ? 'bg-slate-800 text-slate-400'
+                              : 'bg-slate-200/80 text-slate-600'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Painel Expandível de Busca Avançada */}
+              {showAdvancedSearch && (
+                <div
+                  className={`pt-3 mt-2 border-t space-y-3 ${
+                    isDarkMode ? 'border-slate-800' : 'border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                      <SlidersHorizontal size={13} />
+                      Busca Avançada de Leads
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Combine múltiplos segmentos, localização, vendedor e período de criação
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    {/* 1. Pesquisa Textual de Múltiplos Segmentos Simultâneos */}
+                    <div className="md:col-span-5">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Múltiplos Segmentos (separe por vírgula)
+                      </label>
+                      <div className="relative flex items-center">
+                        <Briefcase size={14} className="absolute left-3 text-indigo-500 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="Ex: Padaria, Restaurante, Climatização..."
+                          value={advancedMultiSegmentsInput}
+                          onChange={(e) => setAdvancedMultiSegmentsInput(e.target.value)}
+                          className={`w-full h-10 pl-8 pr-8 rounded-xl border text-xs font-semibold outline-none transition-all ${
+                            isDarkMode
+                              ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-500'
+                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-600'
+                          }`}
+                        />
+                        {advancedMultiSegmentsInput && (
+                          <button
+                            type="button"
+                            onClick={() => setAdvancedMultiSegmentsInput('')}
+                            className="absolute right-2.5 text-slate-400 hover:text-slate-600"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. Filtro por Bairro / Cidade / Rua */}
+                    <div className="md:col-span-4">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Bairro, Cidade ou Logradouro
+                      </label>
+                      <div className="relative flex items-center">
+                        <MapPin size={14} className="absolute left-3 text-indigo-500 pointer-events-none" />
+                        <input
+                          type="text"
+                          list="jp-neighborhoods-list"
+                          placeholder="Ex: Manaíra, Bessa, Cabedelo..."
+                          value={advancedLocationFilter}
+                          onChange={(e) => setAdvancedLocationFilter(e.target.value)}
+                          className={`w-full h-10 pl-8 pr-8 rounded-xl border text-xs font-semibold outline-none transition-all ${
+                            isDarkMode
+                              ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-500'
+                              : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-600'
+                          }`}
+                        />
+                        {advancedLocationFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setAdvancedLocationFilter('')}
+                            className="absolute right-2.5 text-slate-400 hover:text-slate-600"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Filtro por Atribuição / Vendedor */}
+                    <div className="md:col-span-3">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Atribuição / Vendedor
+                      </label>
+                      <select
+                        value={advancedAssignmentFilter}
+                        onChange={(e) => setAdvancedAssignmentFilter(e.target.value)}
+                        className={`w-full h-10 px-3 rounded-xl border text-xs font-semibold outline-none transition-all ${
+                          isDarkMode
+                            ? 'bg-slate-950 border-slate-800 text-slate-100 focus:border-indigo-500'
+                            : 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-600'
+                        }`}
+                      >
+                        <option value="todos">Todos os Leads</option>
+                        <option value="atribuidos">Apenas Atribuídos</option>
+                        <option value="nao_atribuidos">Sem Vendedor (Livres)</option>
+                        {vendedores.map((v) => (
+                          <option key={v.id} value={v.name}>
+                            Vendedor: {v.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Linha 2 da Busca Avançada: Período de Criação + Histórico Fidelidade */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3 pt-1">
+                    <div className="md:col-span-3">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Criado a partir de
+                      </label>
+                      <input
+                        type="date"
+                        value={advancedDateFrom}
+                        onChange={(e) => setAdvancedDateFrom(e.target.value)}
+                        className={`w-full h-10 px-3 rounded-xl border text-xs font-semibold outline-none ${
+                          isDarkMode
+                            ? 'bg-slate-950 border-slate-800 text-slate-100'
+                            : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Criado até
+                      </label>
+                      <input
+                        type="date"
+                        value={advancedDateTo}
+                        onChange={(e) => setAdvancedDateTo(e.target.value)}
+                        className={`w-full h-10 px-3 rounded-xl border text-xs font-semibold outline-none ${
+                          isDarkMode
+                            ? 'bg-slate-950 border-slate-800 text-slate-100'
+                            : 'bg-slate-50 border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="md:col-span-6">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                        Vínculo Comercial / Fidelidade
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: 'todos', label: 'Todos' },
+                          { id: 'com_fidelidade', label: 'Com Fidelidade' },
+                          { id: 'com_compra', label: 'Com Compra' },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() =>
+                              setAdvancedLoyaltyFilter(
+                                opt.id as 'todos' | 'com_fidelidade' | 'com_compra'
+                              )
+                            }
+                            className={`h-10 px-2 rounded-xl border text-[11px] font-bold transition-all cursor-pointer ${
+                              advancedLoyaltyFilter === opt.id
+                                ? 'bg-indigo-600 border-indigo-600 text-white'
+                                : isDarkMode
+                                ? 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Resumo de Resultados e Badges de Filtros Ativos */}
+              <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-slate-500 dark:text-slate-400 pt-1.5 border-t border-slate-100 dark:border-slate-800/80">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span>
+                    Exibindo{' '}
+                    <strong className="text-slate-900 dark:text-slate-100 font-bold">
+                      {filteredLeads.length}
+                    </strong>{' '}
+                    de{' '}
+                    <strong className="text-slate-900 dark:text-slate-100 font-bold">
+                      {visibleLeads.length}
+                    </strong>{' '}
+                    leads
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold inline-flex items-center gap-1">
+                    <ArrowUpDown size={11} className="text-indigo-500" />
+                    Ordenação persistente:{' '}
+                    {createdAtSortOrder === 'desc'
+                      ? 'Mais Recentes Primeiro'
+                      : 'Mais Antigos Primeiro'}
+                  </span>
+                </div>
+
+                {selectedSegments.length > 0 && (
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[10px] font-bold text-slate-400">Segmentos:</span>
+                    {selectedSegments.map((seg) => (
+                      <span
+                        key={seg}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 text-[10px] font-bold"
+                      >
+                        {seg}
+                        <button
+                          type="button"
+                          onClick={() => toggleSegmentSelection(seg)}
+                          className="hover:text-rose-500 cursor-pointer"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {filteredLeads.length > 0 ? (
               filteredLeads.map((lead, idx) => (
                 <motion.div

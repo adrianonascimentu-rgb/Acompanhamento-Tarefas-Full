@@ -841,15 +841,14 @@ export function generateRealisticLeads(
   return results;
 }
 
+let isGeminiKeyUnavailable = false;
+
 export async function POST(req: NextRequest) {
   try {
     try {
       await requireAuth(req);
-    } catch (authErr) {
-      console.warn(
-        "Verificação de sessão em search-leads prosseguiu com fallback:",
-        authErr
-      );
+    } catch {
+      // Prossegue com geração de leads mesmo sem sessão ativa no header
     }
 
     const body = await req.json();
@@ -885,8 +884,8 @@ export async function POST(req: NextRequest) {
 
     const collectedLeads: any[] = [];
 
-    if (process.env.GEMINI_API_KEY) {
-      const modelsToTry = ["gemini-3.8-flash", "gemini-flash-latest"];
+    if (process.env.GEMINI_API_KEY && !isGeminiKeyUnavailable) {
+      const modelsToTry = ["gemini-3-flash-preview"];
       const streetExamples = getStreetsForLocation(targetNeighborhood, targetCity)
         .slice(0, 5)
         .map((s) => `${s.street} (${s.neighborhood})`)
@@ -906,7 +905,7 @@ export async function POST(req: NextRequest) {
       for (const modelName of modelsToTry) {
         try {
           const timeoutPromise = new Promise<null>((resolve) =>
-            setTimeout(() => resolve(null), 12000)
+            setTimeout(() => resolve(null), 10000)
           );
 
           const geminiPromise = ai.models.generateContent({
@@ -1014,10 +1013,17 @@ Para cada um dos ${targetCount} estabelecimentos, informe:
             }
           }
         } catch (geminiErr: any) {
-          console.warn(
-            `Tentativa com modelo ${modelName} em search-leads falhou:`,
-            geminiErr?.message
-          );
+          const errMsg = String(geminiErr?.message || "");
+          if (
+            errMsg.includes("403") ||
+            errMsg.includes("401") ||
+            errMsg.includes("PERMISSION_DENIED") ||
+            errMsg.includes("leaked") ||
+            errMsg.includes("API_KEY_INVALID")
+          ) {
+            isGeminiKeyUnavailable = true;
+            break;
+          }
         }
       }
     }
