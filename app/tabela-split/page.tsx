@@ -9,19 +9,14 @@ import {
   Download,
   Copy,
   Check,
-  Filter,
-  SlidersHorizontal,
-  ExternalLink,
   X,
   Eye,
   Calculator,
-  Sparkles,
   Snowflake,
-  Zap,
   ChevronRight,
   Building2,
   Printer,
-  Share2,
+  RotateCcw,
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import { useRole } from '@/hooks/useRole';
@@ -36,50 +31,6 @@ import {
 } from '@/lib/splitPriceTables';
 
 const INSTALLMENTS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
-
-interface BtuRangeOption {
-  id: string;
-  label: string;
-  shortLabel: string;
-  subtitle: string;
-  min: number;
-  max: number;
-}
-
-const BTU_RANGES: readonly BtuRangeOption[] = [
-  {
-    id: 'range-9k-12k',
-    label: '9.000 a 12.000 BTUs',
-    shortLabel: '9k – 12k BTUs',
-    subtitle: 'Residencial Compacto',
-    min: 9000,
-    max: 12000,
-  },
-  {
-    id: 'range-18k-24k',
-    label: '18.000 a 24.000 BTUs',
-    shortLabel: '18k – 24k BTUs',
-    subtitle: 'Salas & Médio Porte',
-    min: 18000,
-    max: 24000,
-  },
-  {
-    id: 'range-27k-36k',
-    label: '27.000 a 36.000 BTUs',
-    shortLabel: '27k – 36k BTUs',
-    subtitle: 'Comercial & Amplo',
-    min: 27000,
-    max: 36000,
-  },
-  {
-    id: 'range-48k-60k',
-    label: '48.000 a 60.000 BTUs',
-    shortLabel: '48k – 60k BTUs',
-    subtitle: 'Alta Capacidade / Piso & Cassete',
-    min: 48000,
-    max: 60000,
-  },
-] as const;
 
 const normalizeSearchText = (str: string) =>
   str
@@ -112,15 +63,11 @@ export default function TabelaSplitPage() {
     });
   }, [canAccessAgratto, canAccessGree, canAccessElgin]);
 
-  // Filter states
-  const [selectedBrand, setSelectedBrand] = useState<'all' | SplitBrandId>('all');
-  const [selectedMultiBrands, setSelectedMultiBrands] = useState<SplitBrandId[]>([]);
-  const [selectedBtuRanges, setSelectedBtuRanges] = useState<string[]>([]);
-  const [selectedMultiBtus, setSelectedMultiBtus] = useState<number[]>([]);
-  const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState<boolean>(true);
-  const [selectedCategory, setSelectedCategory] = useState<'all' | SplitCategory>('all');
+  // Unified, simple filter states
+  const [selectedBrands, setSelectedBrands] = useState<SplitBrandId[]>([]);
+  const [selectedBtus, setSelectedBtus] = useState<number[]>([]);
   const [selectedTech, setSelectedTech] = useState<'all' | SplitTechnology>('all');
-  const [selectedBtu, setSelectedBtu] = useState<number | 'all'>('all');
+  const [selectedCategory, setSelectedCategory] = useState<'all' | SplitCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedInstallment, setHighlightedInstallment] = useState<number | null>(10);
 
@@ -212,80 +159,37 @@ export default function TabelaSplitPage() {
     [queryTokens, searchableIndexMap]
   );
 
-  // Set of allowed BTU values combining multi-ranges, multi-BTU chips, and single BTU pill
   const activeBtuFilterSet = useMemo(() => {
-    const hasRanges = selectedBtuRanges.length > 0;
-    const hasMultiBtus = selectedMultiBtus.length > 0;
-    const hasSingleBtu = selectedBtu !== 'all';
+    if (selectedBtus.length === 0) return null;
+    return new Set<number>(selectedBtus);
+  }, [selectedBtus]);
 
-    if (!hasRanges && !hasMultiBtus && !hasSingleBtu) {
-      return null; // null means all BTUs allowed
-    }
-
-    const allowed = new Set<number>();
-
-    if (hasRanges) {
-      selectedBtuRanges.forEach((rangeId) => {
-        const range = BTU_RANGES.find((r) => r.id === rangeId);
-        if (range) {
-          AVAILABLE_BTUS.forEach((btu) => {
-            if (btu >= range.min && btu <= range.max) {
-              allowed.add(btu);
-            }
-          });
-        }
-      });
-    }
-
-    if (hasMultiBtus) {
-      selectedMultiBtus.forEach((btu) => allowed.add(btu));
-    }
-
-    if (hasSingleBtu) {
-      allowed.add(selectedBtu);
-    }
-
-    return allowed;
-  }, [selectedBtuRanges, selectedMultiBtus, selectedBtu]);
-
-  // Set of allowed brands combining multi-manufacturer filter and brand tab
   const activeBrandFilterSet = useMemo(() => {
-    if (selectedMultiBrands.length > 0) {
-      return new Set<SplitBrandId>(selectedMultiBrands);
-    }
-    if (selectedBrand !== 'all') {
-      return new Set<SplitBrandId>([selectedBrand]);
-    }
-    return null; // all brands allowed
-  }, [selectedMultiBrands, selectedBrand]);
+    if (selectedBrands.length === 0) return null;
+    return new Set<SplitBrandId>(selectedBrands);
+  }, [selectedBrands]);
 
-  // Toggle helpers for Advanced Search Filter
-  const toggleMultiBrand = (brandId: SplitBrandId) => {
-    setSelectedBrand('all');
-    setSelectedMultiBrands((prev) =>
-      prev.includes(brandId) ? prev.filter((id) => id !== brandId) : [...prev, brandId]
-    );
+  const toggleBrand = (brandId: SplitBrandId) => {
+    setSelectedBrands((prev) => {
+      const next = prev.includes(brandId)
+        ? prev.filter((id) => id !== brandId)
+        : [...prev, brandId];
+      // If user selected all available brands, reset to empty (= Todas)
+      if (next.length === allowedBrandTables.length) return [];
+      return next;
+    });
   };
 
-  const toggleBtuRange = (rangeId: string) => {
-    setSelectedBtu('all');
-    setSelectedBtuRanges((prev) =>
-      prev.includes(rangeId) ? prev.filter((id) => id !== rangeId) : [...prev, rangeId]
-    );
-  };
-
-  const toggleMultiBtu = (btu: number) => {
-    setSelectedBtu('all');
-    setSelectedMultiBtus((prev) =>
+  const toggleBtu = (btu: number) => {
+    setSelectedBtus((prev) =>
       prev.includes(btu) ? prev.filter((b) => b !== btu) : [...prev, btu]
     );
   };
 
   // Filter brand tables and their sections/items
   const filteredBrandTables = useMemo(() => {
-    return allowedBrandTables.filter(
-      (brand) => !activeBrandFilterSet || activeBrandFilterSet.has(brand.id)
-    )
+    return allowedBrandTables
+      .filter((brand) => !activeBrandFilterSet || activeBrandFilterSet.has(brand.id))
       .map((brand) => {
         const filteredSections = brand.sections
           .map((section) => {
@@ -335,7 +239,7 @@ export default function TabelaSplitPage() {
     );
   }, [filteredBrandTables]);
 
-  // Calculate available counts per technology, BTU, brand, and BTU range for real-time feedback
+  // Calculate available counts per technology, BTU, and brand for real-time feedback
   const filterCounts = useMemo(() => {
     const byTech: Record<'all' | SplitTechnology, number> = {
       all: 0,
@@ -351,10 +255,6 @@ export default function TabelaSplitPage() {
       gree: 0,
       elgin: 0,
     };
-    const byBtuRange: Record<string, number> = {};
-    BTU_RANGES.forEach((r) => {
-      byBtuRange[r.id] = 0;
-    });
 
     allowedBrandTables.forEach((brand) => {
       const brandMatches = !activeBrandFilterSet || activeBrandFilterSet.has(brand.id);
@@ -367,7 +267,6 @@ export default function TabelaSplitPage() {
           const btuMatches = !activeBtuFilterSet || activeBtuFilterSet.has(item.btus);
           const techMatches = selectedTech === 'all' || item.technology === selectedTech;
 
-          // Count per manufacturer (ignoring brand filter so user sees available count in other manufacturers)
           if (btuMatches && techMatches) {
             byBrand[brand.id] = (byBrand[brand.id] || 0) + 1;
           }
@@ -380,17 +279,12 @@ export default function TabelaSplitPage() {
           }
           if (techMatches) {
             byBtu[item.btus] = (byBtu[item.btus] || 0) + 1;
-            BTU_RANGES.forEach((range) => {
-              if (item.btus >= range.min && item.btus <= range.max) {
-                byBtuRange[range.id] = (byBtuRange[range.id] || 0) + 1;
-              }
-            });
           }
         });
       });
     });
 
-    return { byTech, byBtu, byBrand, byBtuRange };
+    return { byTech, byBtu, byBrand };
   }, [
     allowedBrandTables,
     activeBrandFilterSet,
@@ -430,45 +324,18 @@ export default function TabelaSplitPage() {
   };
 
   const resetFilters = () => {
-    setSelectedBrand('all');
-    setSelectedMultiBrands([]);
-    setSelectedBtuRanges([]);
-    setSelectedMultiBtus([]);
+    setSelectedBrands([]);
+    setSelectedBtus([]);
     setSelectedCategory('all');
     setSelectedTech('all');
-    setSelectedBtu('all');
     setSearchQuery('');
   };
 
-  const resetAdvancedFilters = () => {
-    setSelectedMultiBrands([]);
-    setSelectedBtuRanges([]);
-    setSelectedMultiBtus([]);
-  };
-
-  const applyQuickCombo = (btu: number, tech: SplitTechnology) => {
-    setSelectedBtuRanges([]);
-    setSelectedMultiBtus([]);
-    if (selectedBtu === btu && selectedTech === tech) {
-      setSelectedBtu('all');
-      setSelectedTech('all');
-    } else {
-      setSelectedBtu(btu);
-      setSelectedTech(tech);
-    }
-  };
-
-  const activeAdvancedCount =
-    selectedMultiBrands.length + selectedBtuRanges.length + selectedMultiBtus.length;
-
   const hasActiveFilters =
-    selectedBrand !== 'all' ||
-    selectedMultiBrands.length > 0 ||
-    selectedBtuRanges.length > 0 ||
-    selectedMultiBtus.length > 0 ||
+    selectedBrands.length > 0 ||
+    selectedBtus.length > 0 ||
     selectedCategory !== 'all' ||
     selectedTech !== 'all' ||
-    selectedBtu !== 'all' ||
     searchQuery.trim() !== '';
 
   return (
@@ -574,34 +441,16 @@ export default function TabelaSplitPage() {
       </header>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-5 space-y-5">
-        {/* Control Bar: Real-Time Search + Advanced Multi-Filter + Brand Selector + BTU & Technology Filters */}
+        {/* Simplified, Easy-to-Use Filter Panel */}
         <section
+          id="split-advanced-search-filter"
           className={`p-4 sm:p-5 rounded-2xl border shadow-xs space-y-4 ${
             isDarkMode ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
           }`}
         >
-          {/* Prominent Real-Time Search Box for Commercial Team */}
-          <div
-            className={`p-3.5 rounded-2xl border transition-all ${
-              isDarkMode
-                ? 'bg-slate-950/70 border-slate-800 focus-within:border-sky-500/70'
-                : 'bg-sky-50/50 border-sky-100 focus-within:border-sky-500 focus-within:bg-white'
-            }`}
-          >
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-2">
-              <label
-                htmlFor="split-realtime-search"
-                className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-600 dark:text-sky-400"
-              >
-                <Search size={14} />
-                <span>Busca em Tempo Real — Consulta Rápida Comercial</span>
-              </label>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                Filtre combinando <strong>BTUs</strong> + <strong>Tecnologia (Inverter / On-Off)</strong> + <strong>Modelo ou Código</strong> (Atalho: <kbd className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">/</kbd>)
-              </span>
-            </div>
-
-            <div className="relative flex items-center">
+          {/* 1. Search Bar + Clear All Button */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+            <div className="relative flex-1 flex items-center">
               <Search
                 size={18}
                 className="absolute left-3.5 text-sky-600 dark:text-sky-400 pointer-events-none"
@@ -612,16 +461,26 @@ export default function TabelaSplitPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Digite para filtrar na hora: ex. 12000 Inverter, 9.000 On-Off, 18k Gree, 24000, LIV TOP, código 37909..."
-                className={`w-full pl-11 pr-36 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold outline-none transition-all ${
+                placeholder="Buscar por código (ex: 37909), modelo (ex: Liv Top), BTUs (ex: 12000) ou Inverter..."
+                className={`w-full pl-10 pr-28 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold outline-none transition-all ${
                   isDarkMode
-                    ? 'bg-slate-900 border-slate-700 text-white placeholder:text-slate-400 focus:border-sky-500'
-                    : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-sky-600 shadow-2xs'
+                    ? 'bg-slate-950 border-slate-700 text-white placeholder:text-slate-400 focus:border-sky-500'
+                    : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-sky-600'
                 }`}
               />
               <div className="absolute right-2.5 flex items-center gap-1.5">
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="p-1 rounded-lg bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
+                    title="Limpar texto da busca"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
                 <span
-                  className={`text-[11px] font-bold px-2 py-1 rounded-lg tabular-nums ${
+                  className={`text-[11px] font-bold px-2 py-0.5 rounded-lg tabular-nums ${
                     totalMatchingModels > 0
                       ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
                       : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
@@ -629,407 +488,245 @@ export default function TabelaSplitPage() {
                 >
                   {totalMatchingModels} {totalMatchingModels === 1 ? 'item' : 'itens'}
                 </span>
-                {searchQuery && (
+              </div>
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 hover:bg-rose-600 hover:text-white transition-colors cursor-pointer shrink-0"
+              >
+                <RotateCcw size={14} />
+                <span>Limpar Filtros</span>
+              </button>
+            )}
+          </div>
+
+          {/* 2. Main Filter Row: Marca + Tecnologia + Linha */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-1">
+            {/* Marca (Fabricante) */}
+            <div
+              className={`lg:col-span-5 p-3 rounded-xl border ${
+                isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50/70 border-slate-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Building2 size={13} className="text-sky-500" />
+                  <span>1. Marca (Fabricante)</span>
+                </span>
+                {selectedBrands.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="p-1.5 rounded-lg bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-rose-500 hover:text-white transition-colors cursor-pointer"
-                    title="Limpar busca"
+                    onClick={() => setSelectedBrands([])}
+                    className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
                   >
-                    <X size={14} />
+                    Mostrar todas
                   </button>
                 )}
               </div>
-            </div>
-
-            {/* Advanced Search Filter Directly Below #split-realtime-search */}
-            <div
-              id="split-advanced-search-filter"
-              className={`mt-3 rounded-xl border transition-all ${
-                isDarkMode
-                  ? 'bg-slate-900/90 border-slate-800'
-                  : 'bg-white/95 border-sky-200/80 shadow-2xs'
-              }`}
-            >
-              {/* Header Bar of Advanced Search Filter */}
-              <div className="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center flex-wrap gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setIsAdvancedFilterOpen((prev) => !prev)}
-                  className="flex items-center gap-2 text-left cursor-pointer group"
-                >
-                  <div
-                    className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${
-                      activeAdvancedCount > 0
-                        ? 'bg-sky-600 text-white'
-                        : isDarkMode
-                        ? 'bg-slate-800 text-sky-400 group-hover:bg-slate-700'
-                        : 'bg-sky-100 text-sky-700 group-hover:bg-sky-200'
-                    }`}
-                  >
-                    <SlidersHorizontal size={13} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-100">
-                        Filtro de Busca Avançada
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
-                        Múltiplos Fabricantes & Faixas de BTUs
-                      </span>
-                      {activeAdvancedCount > 0 && (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 tabular-nums">
-                          {activeAdvancedCount}{' '}
-                          {activeAdvancedCount === 1 ? 'filtro ativo' : 'filtros ativos'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-
-                <div className="flex items-center gap-2">
-                  {activeAdvancedCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={resetAdvancedFilters}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 transition-colors cursor-pointer"
-                    >
-                      <X size={12} />
-                      <span>Limpar seleção avançada</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setIsAdvancedFilterOpen((prev) => !prev)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
-                      isDarkMode
-                        ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {isAdvancedFilterOpen ? 'Recolher' : 'Expandir filtros'}
-                  </button>
-                </div>
-              </div>
-
-              {isAdvancedFilterOpen && (
-                <div
-                  className={`px-3.5 pb-3.5 pt-2.5 border-t grid grid-cols-1 lg:grid-cols-12 gap-4 ${
-                    isDarkMode ? 'border-slate-800' : 'border-slate-100'
+                  onClick={() => setSelectedBrands([])}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                    selectedBrands.length === 0
+                      ? 'bg-sky-600 text-white shadow-2xs'
+                      : isDarkMode
+                      ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                   }`}
                 >
-                  {/* Column 1: Multi-Select Manufacturers (Fabricantes Simultâneos) */}
-                  <div className="lg:col-span-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        <Building2 size={12} className="text-sky-500" />
-                        <span>Fabricantes (Múltipla Escolha)</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedBrand('all');
-                          if (selectedMultiBrands.length === allowedBrandTables.length) {
-                            setSelectedMultiBrands([]);
-                          } else {
-                            setSelectedMultiBrands(allowedBrandTables.map((b) => b.id));
-                          }
-                        }}
-                        className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                  Todas
+                </button>
+                {allowedBrandTables.map((brand) => {
+                  const isSelected = selectedBrands.includes(brand.id);
+                  const count = filterCounts.byBrand[brand.id] || 0;
+                  return (
+                    <button
+                      key={brand.id}
+                      type="button"
+                      onClick={() => toggleBrand(brand.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-sky-600 text-white shadow-2xs'
+                          : isDarkMode
+                          ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{brand.name}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded tabular-nums ${
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : isDarkMode
+                            ? 'bg-slate-700 text-slate-300'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
                       >
-                        {selectedMultiBrands.length === allowedBrandTables.length
-                          ? 'Desmarcar todos'
-                          : 'Marcar todos'}
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2">
-                      {allowedBrandTables.map((brand) => {
-                        const isChecked = selectedMultiBrands.includes(brand.id);
-                        const matchingCount = filterCounts.byBrand[brand.id] || 0;
-                        return (
-                          <button
-                            key={brand.id}
-                            type="button"
-                            onClick={() => toggleMultiBrand(brand.id)}
-                            className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
-                              isChecked
-                                ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
-                                : isDarkMode
-                                ? 'bg-slate-800/80 border-slate-700 text-slate-200 hover:border-sky-500/50'
-                                : 'bg-slate-50 border-slate-200 text-slate-800 hover:border-sky-400 hover:bg-sky-50/40'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-1 w-full">
-                              <span className="text-xs font-black uppercase tracking-tight truncate">
-                                {brand.name}
-                              </span>
-                              <span
-                                className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
-                                  isChecked
-                                    ? 'bg-white text-sky-600 border-white'
-                                    : isDarkMode
-                                    ? 'border-slate-600 bg-slate-900'
-                                    : 'border-slate-300 bg-white'
-                                }`}
-                              >
-                                {isChecked && <Check size={11} strokeWidth={3} />}
-                              </span>
-                            </div>
-                            <span
-                              className={`text-[10px] font-bold tabular-nums ${
-                                isChecked
-                                  ? 'text-sky-100'
-                                  : 'text-slate-500 dark:text-slate-400'
-                              }`}
-                            >
-                              {matchingCount} {matchingCount === 1 ? 'modelo' : 'modelos'}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Column 2: Multi-Select BTU Ranges (Faixas de BTUs Simultâneas) */}
-                  <div className="lg:col-span-8 space-y-2">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                        <Snowflake size={12} className="text-sky-500" />
-                        <span>Faixas de BTUs Simultâneas (Combine 1 ou mais faixas)</span>
+                        {count}
                       </span>
-                      {(selectedBtuRanges.length > 0 || selectedMultiBtus.length > 0) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedBtuRanges([]);
-                            setSelectedMultiBtus([]);
-                          }}
-                          className="text-[10px] font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
-                        >
-                          Limpar BTUs ({selectedBtuRanges.length + selectedMultiBtus.length})
-                        </button>
-                      )}
-                    </div>
-
-                    {/* 4 Simultaneous BTU Range Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
-                      {BTU_RANGES.map((range) => {
-                        const isSelected = selectedBtuRanges.includes(range.id);
-                        const rangeCount = filterCounts.byBtuRange[range.id] || 0;
-                        return (
-                          <button
-                            key={range.id}
-                            type="button"
-                            onClick={() => toggleBtuRange(range.id)}
-                            className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 ${
-                              isSelected
-                                ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
-                                : isDarkMode
-                                ? 'bg-slate-800/80 border-slate-700 text-slate-200 hover:border-sky-500/50'
-                                : 'bg-slate-50 border-slate-200 text-slate-800 hover:border-sky-400 hover:bg-sky-50/40'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-1.5 w-full">
-                              <span className="text-xs font-black tabular-nums">
-                                {range.shortLabel}
-                              </span>
-                              <span
-                                className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
-                                  isSelected
-                                    ? 'bg-white text-sky-600 border-white'
-                                    : isDarkMode
-                                    ? 'border-slate-600 bg-slate-900'
-                                    : 'border-slate-300 bg-white'
-                                }`}
-                              >
-                                {isSelected && <Check size={11} strokeWidth={3} />}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-1 w-full">
-                              <span
-                                className={`text-[10px] font-semibold truncate ${
-                                  isSelected
-                                    ? 'text-sky-100'
-                                    : 'text-slate-500 dark:text-slate-400'
-                                }`}
-                              >
-                                {range.subtitle}
-                              </span>
-                              <span
-                                className={`text-[10px] font-black px-1.5 py-0.2 rounded tabular-nums shrink-0 ${
-                                  isSelected
-                                    ? 'bg-white/20 text-white'
-                                    : isDarkMode
-                                    ? 'bg-slate-700 text-slate-300'
-                                    : 'bg-slate-200/80 text-slate-700'
-                                }`}
-                              >
-                                {rangeCount}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Multi-select Specific BTU Capacities */}
-                    <div className="pt-1 flex items-center flex-wrap gap-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-                        BTUs Específicos (Múltiplos):
-                      </span>
-                      {AVAILABLE_BTUS.map((btu) => {
-                        const isDirectSelected = selectedMultiBtus.includes(btu);
-                        const isCoveredByRange = selectedBtuRanges.some((rId) => {
-                          const r = BTU_RANGES.find((item) => item.id === rId);
-                          return r ? btu >= r.min && btu <= r.max : false;
-                        });
-                        const count = filterCounts.byBtu[btu] || 0;
-                        return (
-                          <button
-                            key={`multi-btu-${btu}`}
-                            type="button"
-                            onClick={() => toggleMultiBtu(btu)}
-                            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold tabular-nums transition-all cursor-pointer flex items-center gap-1 border ${
-                              isDirectSelected
-                                ? 'bg-sky-600 text-white border-sky-600 shadow-2xs'
-                                : isCoveredByRange
-                                ? isDarkMode
-                                  ? 'bg-sky-500/20 text-sky-300 border-sky-500/40'
-                                  : 'bg-sky-100 text-sky-800 border-sky-300'
-                                : count === 0
-                                ? isDarkMode
-                                  ? 'bg-slate-900 text-slate-600 border-slate-800'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200/60'
-                                : isDarkMode
-                                ? 'bg-slate-800 text-slate-300 border-slate-700 hover:border-sky-500/50'
-                                : 'bg-white text-slate-700 border-slate-200 hover:border-sky-300'
-                            }`}
-                            title={`Selecionar ${btu.toLocaleString('pt-BR')} BTUs (${count} disponíveis)`}
-                          >
-                            {(isDirectSelected || isCoveredByRange) && (
-                              <Check size={10} strokeWidth={3} />
-                            )}
-                            <span>{btu / 1000}k</span>
-                            <span
-                              className={`text-[9px] px-1 rounded ${
-                                isDirectSelected
-                                  ? 'bg-white/20 text-white'
-                                  : isDarkMode
-                                  ? 'bg-slate-700 text-slate-400'
-                                  : 'bg-slate-100 text-slate-500'
-                              }`}
-                            >
-                              {count}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
-            {/* Quick 1-Click Commercial Combinations (BTUs + Inverter/On-Off) */}
-            <div className="mt-2.5 flex items-center flex-wrap gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1">
-                Consulta 1-Clique:
-              </span>
-              {(
-                [
-                  { btu: 9000, tech: 'Inverter' as SplitTechnology, label: '9.000 Inverter' },
-                  { btu: 9000, tech: 'On-Off' as SplitTechnology, label: '9.000 On-Off' },
-                  { btu: 12000, tech: 'Inverter' as SplitTechnology, label: '12.000 Inverter' },
-                  { btu: 12000, tech: 'On-Off' as SplitTechnology, label: '12.000 On-Off' },
-                  { btu: 18000, tech: 'Inverter' as SplitTechnology, label: '18.000 Inverter' },
-                  { btu: 24000, tech: 'Inverter' as SplitTechnology, label: '24.000 Inverter' },
-                  { btu: 36000, tech: 'Inverter' as SplitTechnology, label: '36.000 Inverter' },
-                  { btu: 36000, tech: 'On-Off' as SplitTechnology, label: '36.000 On-Off' },
-                ] as const
-              ).map((combo) => {
-                const isActive = selectedBtu === combo.btu && selectedTech === combo.tech;
-                return (
-                  <button
-                    key={`${combo.btu}-${combo.tech}`}
-                    type="button"
-                    onClick={() => applyQuickCombo(combo.btu, combo.tech)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                      isActive
-                        ? 'bg-sky-600 text-white shadow-xs'
-                        : isDarkMode
-                        ? 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-slate-700'
-                        : 'bg-white text-slate-700 hover:bg-sky-50 border border-slate-200'
-                    }`}
-                  >
-                    <Zap
-                      size={11}
-                      className={
-                        isActive
-                          ? 'text-amber-300'
-                          : combo.tech === 'Inverter'
-                          ? 'text-emerald-500'
-                          : 'text-amber-500'
-                      }
-                    />
-                    <span>{combo.label}</span>
-                  </button>
-                );
-              })}
+            {/* Tecnologia (Inverter / On-Off) */}
+            <div
+              className={`lg:col-span-3 p-3 rounded-xl border ${
+                isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50/70 border-slate-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  2. Tecnologia
+                </span>
+              </div>
+              <div className="flex items-center flex-wrap gap-1.5">
+                {(['all', 'Inverter', 'On-Off'] as const).map((tech) => {
+                  const active = selectedTech === tech;
+                  const count = filterCounts.byTech[tech];
+                  return (
+                    <button
+                      key={tech}
+                      type="button"
+                      onClick={() => setSelectedTech(active && tech !== 'all' ? 'all' : tech)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                        active
+                          ? tech === 'Inverter'
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : tech === 'On-Off'
+                            ? 'bg-amber-500 text-slate-950 shadow-2xs'
+                            : 'bg-sky-600 text-white shadow-2xs'
+                          : isDarkMode
+                          ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span>{tech === 'all' ? 'Todas' : tech}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded tabular-nums ${
+                          active
+                            ? 'bg-black/15 text-current'
+                            : isDarkMode
+                            ? 'bg-slate-700 text-slate-400'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Linha / Tipo de Aparelho */}
+            <div
+              className={`lg:col-span-4 p-3 rounded-xl border ${
+                isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50/70 border-slate-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  3. Tipo / Linha
+                </span>
+              </div>
+              <div className="flex items-center flex-wrap gap-1.5">
+                {(['all', 'Hi-Wall', 'Piso Teto', 'Cassete', 'Cassete 1 Via'] as const).map(
+                  (cat) => {
+                    const active = selectedCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setSelectedCategory(active && cat !== 'all' ? 'all' : cat)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          active
+                            ? 'bg-sky-600 text-white shadow-2xs'
+                            : isDarkMode
+                            ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                            : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {cat === 'all' ? 'Todas' : cat}
+                      </button>
+                    );
+                  }
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Row 1: Brand Tabs + Category Filter */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-            {/* Brand Tabs */}
+          {/* 3. Capacidade em BTUs (Single Unified Row - 1 Click or Multi-Select) */}
+          <div
+            className={`p-3 rounded-xl border ${
+              isDarkMode ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50/70 border-slate-200/80'
+            }`}
+          >
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Snowflake size={13} className="text-sky-500" />
+                <span>4. Capacidade em BTUs (Clique em 1 ou mais capacidades)</span>
+              </span>
+              {selectedBtus.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedBtus([])}
+                  className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                >
+                  Mostrar todos os BTUs
+                </button>
+              )}
+            </div>
+
             <div className="flex items-center flex-wrap gap-1.5">
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedMultiBrands([]);
-                  setSelectedBrand('all');
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 ${
-                  selectedBrand === 'all' && selectedMultiBrands.length === 0
-                    ? 'bg-sky-600 text-white shadow-xs'
+                onClick={() => setSelectedBtus([])}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                  selectedBtus.length === 0
+                    ? 'bg-sky-600 text-white shadow-2xs'
                     : isDarkMode
                     ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <Snowflake size={14} />
-                <span>Todas as Marcas ({allowedBrandTables.length})</span>
+                Todos
               </button>
 
-              {allowedBrandTables.map((brand) => {
-                const count = brand.sections.reduce((acc, s) => acc + s.items.length, 0);
-                const active =
-                  selectedBrand === brand.id || selectedMultiBrands.includes(brand.id);
+              {AVAILABLE_BTUS.map((btu) => {
+                const active = selectedBtus.includes(btu);
+                const count = filterCounts.byBtu[btu] || 0;
                 return (
                   <button
-                    key={brand.id}
+                    key={btu}
                     type="button"
-                    onClick={() => {
-                      setSelectedMultiBrands([]);
-                      setSelectedBrand(brand.id);
-                    }}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-2 ${
+                    onClick={() => toggleBtu(btu)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold tabular-nums transition-all cursor-pointer flex items-center gap-1.5 ${
                       active
-                        ? 'bg-sky-600 text-white shadow-xs'
+                        ? 'bg-sky-600 text-white shadow-2xs'
+                        : count === 0
+                        ? isDarkMode
+                          ? 'bg-slate-900 text-slate-600 border border-slate-800'
+                          : 'bg-slate-100/70 text-slate-400 border border-slate-200/60'
                         : isDarkMode
-                        ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                     }`}
+                    title={`Filtrar por ${btu.toLocaleString('pt-BR')} BTUs (${count} modelos)`}
                   >
-                    <Building2 size={14} />
-                    <span>{brand.name.toUpperCase()}</span>
+                    <span>{btu.toLocaleString('pt-BR')}</span>
                     <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-md tabular-nums ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded ${
                         active
                           ? 'bg-white/20 text-white'
                           : isDarkMode
-                          ? 'bg-slate-700 text-slate-300'
-                          : 'bg-slate-200 text-slate-600'
+                          ? 'bg-slate-700 text-slate-400'
+                          : 'bg-slate-100 text-slate-500'
                       }`}
                     >
                       {count}
@@ -1038,145 +735,77 @@ export default function TabelaSplitPage() {
                 );
               })}
             </div>
-
-            {/* Category Filter */}
-            <div className="flex items-center flex-wrap gap-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Linha:
-              </span>
-              {(['all', 'Hi-Wall', 'Piso Teto', 'Cassete', 'Cassete 1 Via'] as const).map(
-                (cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-colors cursor-pointer ${
-                      selectedCategory === cat
-                        ? 'bg-sky-600/15 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400 border border-sky-500/30'
-                        : isDarkMode
-                        ? 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
-                        : 'bg-slate-100 text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {cat === 'all' ? 'Todas' : cat}
-                  </button>
-                )
-              )}
-            </div>
           </div>
 
-          {/* Row 2: Technology (Inverter / On-Off) + BTU Capacity Quick Filter Pills */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
-            <div className="flex flex-col sm:flex-row sm:items-center flex-wrap gap-3">
-              {/* Technology Filter with Live Counts */}
-              <div className="flex items-center flex-wrap gap-1.5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Tecnologia:
-                </span>
-                {(['all', 'Inverter', 'On-Off'] as const).map((tech) => {
-                  const active = selectedTech === tech;
-                  const count = filterCounts.byTech[tech];
-                  return (
-                    <button
-                      key={tech}
-                      type="button"
-                      onClick={() => setSelectedTech(tech)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
-                        active
-                          ? tech === 'Inverter'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : tech === 'On-Off'
-                            ? 'bg-amber-500 text-slate-950 shadow-xs'
-                            : 'bg-sky-600 text-white shadow-xs'
-                          : isDarkMode
-                          ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <span>{tech === 'all' ? 'Todas' : tech}</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded-md tabular-nums ${
-                          active
-                            ? 'bg-black/15 text-current'
-                            : isDarkMode
-                            ? 'bg-slate-700 text-slate-400'
-                            : 'bg-slate-200 text-slate-600'
-                        }`}
+          {/* 4. Bottom Bar: Active Filter Summary Chips + Highlight Installment Selector */}
+          <div className="pt-1 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Active Filters Summary */}
+            <div className="flex items-center flex-wrap gap-1.5 min-h-[28px]">
+              {hasActiveFilters ? (
+                <>
+                  <span className="text-[11px] font-bold text-slate-400 mr-1">
+                    Filtros ativos:
+                  </span>
+                  {selectedBrands.map((brandId) => {
+                    const b = allowedBrandTables.find((item) => item.id === brandId);
+                    return (
+                      <button
+                        key={`chip-brand-${brandId}`}
+                        type="button"
+                        onClick={() => toggleBrand(brandId)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 hover:bg-sky-500/25 cursor-pointer"
                       >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="h-5 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
-
-              {/* BTU Capacity Interactive Pills */}
-              <div className="flex items-center flex-wrap gap-1.5">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Capacidade (BTUs):
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedBtu('all')}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
-                    selectedBtu === 'all'
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : isDarkMode
-                      ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  Todos
-                </button>
-                {AVAILABLE_BTUS.map((btu) => {
-                  const active = selectedBtu === btu;
-                  const count = filterCounts.byBtu[btu] || 0;
-                  return (
+                        <span>Marca: {b?.name || brandId}</span>
+                        <X size={12} />
+                      </button>
+                    );
+                  })}
+                  {selectedTech !== 'all' && (
                     <button
-                      key={btu}
                       type="button"
-                      onClick={() => setSelectedBtu(active ? 'all' : btu)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tabular-nums transition-all cursor-pointer flex items-center gap-1 ${
-                        active
-                          ? 'bg-sky-600 text-white shadow-xs'
-                          : count === 0
-                          ? isDarkMode
-                            ? 'bg-slate-900 text-slate-600 border border-slate-800'
-                            : 'bg-slate-50 text-slate-400 border border-slate-200/60'
-                          : isDarkMode
-                          ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                      title={`Filtrar por ${btu.toLocaleString('pt-BR')} BTUs (${count} modelos)`}
+                      onClick={() => setSelectedTech('all')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 cursor-pointer"
                     >
-                      <span>{btu.toLocaleString('pt-BR')}</span>
-                      <span
-                        className={`text-[9px] px-1 rounded ${
-                          active
-                            ? 'bg-white/20 text-white'
-                            : isDarkMode
-                            ? 'bg-slate-700 text-slate-400'
-                            : 'bg-slate-200/80 text-slate-500'
-                        }`}
-                      >
-                        {count}
-                      </span>
+                      <span>Tecnologia: {selectedTech}</span>
+                      <X size={12} />
                     </button>
-                  );
-                })}
-              </div>
-
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="inline-flex items-center gap-1 text-xs font-black text-rose-600 dark:text-rose-400 hover:underline px-2.5 py-1 rounded-lg bg-rose-500/10 cursor-pointer"
-                >
-                  <X size={13} />
-                  <span>Limpar filtros</span>
-                </button>
+                  )}
+                  {selectedCategory !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('all')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 hover:bg-sky-500/25 cursor-pointer"
+                    >
+                      <span>Linha: {selectedCategory}</span>
+                      <X size={12} />
+                    </button>
+                  )}
+                  {selectedBtus.map((btu) => (
+                    <button
+                      key={`chip-btu-${btu}`}
+                      type="button"
+                      onClick={() => toggleBtu(btu)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 hover:bg-sky-500/25 cursor-pointer"
+                    >
+                      <span>{btu.toLocaleString('pt-BR')} BTUs</span>
+                      <X size={12} />
+                    </button>
+                  ))}
+                  {searchQuery.trim() !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 cursor-pointer"
+                    >
+                      <span>Busca: &quot;{searchQuery.trim()}&quot;</span>
+                      <X size={12} />
+                    </button>
+                  )}
+                </>
+              ) : (
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Exibindo todos os <strong>{totalMatchingModels} modelos</strong> disponíveis. Clique em qualquer filtro acima para refinar.
+                </span>
               )}
             </div>
 
