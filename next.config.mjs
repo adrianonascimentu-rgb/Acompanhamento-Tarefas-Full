@@ -2,6 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   distDir: process.env.NODE_ENV === 'production' && !process.env.VERCEL ? '.next-build' : '.next',
+  experimental: {
+    optimizePackageImports: ['lucide-react', 'recharts', 'date-fns', 'motion'],
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },

@@ -38,24 +38,38 @@ export interface VerifiedStreetInfo {
 export const VERIFIED_STREETS_JP: VerifiedStreetInfo[] = [
   { street: "Av. General Edson Ramalho", numberRange: [120, 980], neighborhood: "Manaíra", city: "João Pessoa - PB", lat: -7.1058, lng: -34.8322 },
   { street: "Av. João Maurício", numberRange: [150, 1400], neighborhood: "Manaíra", city: "João Pessoa - PB", lat: -7.1012, lng: -34.8245 },
+  { street: "Av. Governador Flávio Ribeiro Coutinho", numberRange: [200, 1150], neighborhood: "Manaíra", city: "João Pessoa - PB", lat: -7.1025, lng: -34.8388 },
+  { street: "Av. Presidente Afonso Pena", numberRange: [120, 1300], neighborhood: "Bessa", city: "João Pessoa - PB", lat: -7.0685, lng: -34.8412 },
+  { street: "Av. Nilo Peçanha", numberRange: [90, 860], neighborhood: "Bessa", city: "João Pessoa - PB", lat: -7.0662, lng: -34.8435 },
+  { street: "Av. Artur Monteiro de Paiva", numberRange: [150, 1250], neighborhood: "Bessa", city: "João Pessoa - PB", lat: -7.0715, lng: -34.8398 },
+  { street: "Av. Fernando Luis Henrique dos Santos", numberRange: [300, 1600], neighborhood: "Jardim Oceania", city: "João Pessoa - PB", lat: -7.0815, lng: -34.8341 },
+  { street: "Rua Francisco Leocádio Ribeiro Coutinho", numberRange: [80, 750], neighborhood: "Aeroclube", city: "João Pessoa - PB", lat: -7.0894, lng: -34.8392 },
   { street: "Rua Professora Maria Sales", numberRange: [80, 650], neighborhood: "Tambaú", city: "João Pessoa - PB", lat: -7.1142, lng: -34.8258 },
   { street: "Av. Almirante Tamandaré", numberRange: [100, 900], neighborhood: "Tambaú", city: "João Pessoa - PB", lat: -7.1185, lng: -34.8232 },
   { street: "Rua dos Navegantes", numberRange: [50, 480], neighborhood: "Tambaú", city: "João Pessoa - PB", lat: -7.1169, lng: -34.8264 },
   { street: "Av. Senador Nego", numberRange: [110, 790], neighborhood: "Tambaú", city: "João Pessoa - PB", lat: -7.1135, lng: -34.8291 },
-  { street: "Av. Cabo Branco", numberRange: [1200, 3400], neighborhood: "Cabo Branco", city: "João Pessoa - PB", lat: -7.1315, lng: -34.8198 },
-  { street: "Rua Francisco Leocádio Ribeiro Coutinho", numberRange: [80, 750], neighborhood: "Aeroclube", city: "João Pessoa - PB", lat: -7.0894, lng: -34.8392 },
-  { street: "Av. Governador Flávio Ribeiro Coutinho", numberRange: [200, 1150], neighborhood: "Manaíra", city: "João Pessoa - PB", lat: -7.1025, lng: -34.8388 },
-  { street: "Av. Presidente Epitácio Pessoa", numberRange: [750, 3900], neighborhood: "Miramar", city: "João Pessoa - PB", lat: -7.1204, lng: -34.8495 },
-  { street: "Av. Dom Pedro II", numberRange: [300, 1850], neighborhood: "Torre", city: "João Pessoa - PB", lat: -7.1282, lng: -34.8675 },
-  { street: "Rua Barão do Triunfo", numberRange: [80, 520], neighborhood: "Varadouro", city: "João Pessoa - PB", lat: -7.1178, lng: -34.8852 },
-  { street: "Rua Bancário Sérgio Guerra", numberRange: [150, 980], neighborhood: "Bancários", city: "João Pessoa - PB", lat: -7.1488, lng: -34.8435 },
-  { street: "Av. Josefa Taveira", numberRange: [210, 1750], neighborhood: "Mangabeira", city: "João Pessoa - PB", lat: -7.1672, lng: -34.8384 },
-  { street: "Av. Santa Catarina", numberRange: [120, 990], neighborhood: "Estados", city: "João Pessoa - PB", lat: -7.1082, lng: -34.8576 },
   { street: "Av. Nossa Senhora dos Navegantes", numberRange: [100, 620], neighborhood: "Tambaú", city: "João Pessoa - PB", lat: -7.1152, lng: -34.8277 },
-  { street: "Av. Fernando Luis Henrique dos Santos", numberRange: [300, 1600], neighborhood: "Jardim Oceania", city: "João Pessoa - PB", lat: -7.0815, lng: -34.8341 },
-  { street: "Rua Empresário João Rodrigues Alves", numberRange: [100, 550], neighborhood: "Bancários", city: "João Pessoa - PB", lat: -7.1462, lng: -34.8471 },
+  { street: "Av. Cabo Branco", numberRange: [1200, 3400], neighborhood: "Cabo Branco", city: "João Pessoa - PB", lat: -7.1315, lng: -34.8198 },
+  { street: "Av. Presidente Epitácio Pessoa", numberRange: [750, 3900], neighborhood: "Miramar", city: "João Pessoa - PB", lat: -7.1204, lng: -34.8495 },
+  { street: "Rua Deputado Geraldo Mariz", numberRange: [100, 740], neighborhood: "Tambauzinho", city: "João Pessoa - PB", lat: -7.1228, lng: -34.8442 },
+  { street: "Rua Coronel Adolpho Massa", numberRange: [80, 620], neighborhood: "Expedicionários", city: "João Pessoa - PB", lat: -7.1195, lng: -34.8562 },
+  { street: "Av. Dom Pedro II", numberRange: [300, 1850], neighborhood: "Torre", city: "João Pessoa - PB", lat: -7.1282, lng: -34.8675 },
+  { street: "Av. Santa Catarina", numberRange: [120, 990], neighborhood: "Estados", city: "João Pessoa - PB", lat: -7.1082, lng: -34.8576 },
   { street: "Av. Princesa Isabel", numberRange: [150, 820], neighborhood: "Centro", city: "João Pessoa - PB", lat: -7.1208, lng: -34.8789 },
+  { street: "Rua Barão do Triunfo", numberRange: [80, 520], neighborhood: "Varadouro", city: "João Pessoa - PB", lat: -7.1178, lng: -34.8852 },
   { street: "Rua Maciel Pinheiro", numberRange: [50, 390], neighborhood: "Varadouro", city: "João Pessoa - PB", lat: -7.1159, lng: -34.8868 },
+  { street: "Rua Bancário Sérgio Guerra", numberRange: [150, 980], neighborhood: "Bancários", city: "João Pessoa - PB", lat: -7.1488, lng: -34.8435 },
+  { street: "Rua Empresário João Rodrigues Alves", numberRange: [100, 550], neighborhood: "Bancários", city: "João Pessoa - PB", lat: -7.1462, lng: -34.8471 },
+  { street: "Av. Josefa Taveira", numberRange: [210, 1750], neighborhood: "Mangabeira", city: "João Pessoa - PB", lat: -7.1672, lng: -34.8384 },
+  { street: "Rua Napoleão Laureano", numberRange: [120, 980], neighborhood: "Cristo Redentor", city: "João Pessoa - PB", lat: -7.1525, lng: -34.8712 },
+  { street: "Rua Juscelino Kubitschek", numberRange: [100, 890], neighborhood: "Geisel", city: "João Pessoa - PB", lat: -7.1625, lng: -34.8598 },
+  { street: "Rua Mariângela Lucena Peixoto", numberRange: [120, 1100], neighborhood: "Valentina", city: "João Pessoa - PB", lat: -7.1945, lng: -34.8392 },
+  { street: "Av. João Cirilo da Silva", numberRange: [150, 1250], neighborhood: "Altiplano", city: "João Pessoa - PB", lat: -7.1365, lng: -34.8285 },
+  { street: "Av. Cruz das Armas", numberRange: [300, 2400], neighborhood: "Cruz das Armas", city: "João Pessoa - PB", lat: -7.1385, lng: -34.8895 },
+  { street: "Av. Primeiro de Maio", numberRange: [150, 1150], neighborhood: "Jaguaribe", city: "João Pessoa - PB", lat: -7.1312, lng: -34.8745 },
+  { street: "Rua Diógenes Chianca", numberRange: [150, 1100], neighborhood: "Água Fria", city: "João Pessoa - PB", lat: -7.1562, lng: -34.8545 },
+  { street: "Av. Ministro José Américo de Almeida", numberRange: [400, 1850], neighborhood: "José Américo", city: "João Pessoa - PB", lat: -7.1635, lng: -34.8492 },
+  { street: "Av. Mar Vermelho", numberRange: [100, 950], neighborhood: "Intermares", city: "Cabedelo - PB", lat: -7.0412, lng: -34.8415 },
 ];
 
 const LOCAL_STORAGE_KEY = "leads_address_metadata_v2";
@@ -454,13 +468,26 @@ export function enrichAndRepairLead(
 
   const rawOldAddr = typeof mergedLead.address === "string" ? mergedLead.address : "";
   const normOld = normalizeText(rawOldAddr);
+  const requestedNeighborhood = typeof mergedLead.neighborhood === "string" ? mergedLead.neighborhood.trim() : "";
+  const requestedCity = typeof mergedLead.city === "string" ? mergedLead.city.trim() : "";
+
+  const matchedByNeighborhood = requestedNeighborhood
+    ? VERIFIED_STREETS_JP.filter(
+        (s) => normalizeText(s.neighborhood) === normalizeText(requestedNeighborhood)
+      )
+    : [];
+
   const matchedVerified = VERIFIED_STREETS_JP.find((s) => {
     const streetCore = normalizeText(s.street).replace(/^(av\.|avenida|rua|r\.)\s*/i, "");
     return streetCore.length >= 5 && normOld.includes(streetCore);
   });
 
   const seed = hashLeadSeed(mergedLead, index);
-  const streetInfo = matchedVerified || VERIFIED_STREETS_JP[seed % VERIFIED_STREETS_JP.length];
+  const candidatePool = matchedByNeighborhood.length > 0 ? matchedByNeighborhood : VERIFIED_STREETS_JP;
+  const streetInfo =
+    (matchedVerified && (!requestedNeighborhood || normalizeText(matchedVerified.neighborhood) === normalizeText(requestedNeighborhood))
+      ? matchedVerified
+      : null) || candidatePool[seed % candidatePool.length];
 
   const existingNumMatch = rawOldAddr.match(/,\s*(\d+)/);
   const [minN, maxN] = streetInfo.numberRange;
@@ -468,16 +495,23 @@ export function enrichAndRepairLead(
     ? existingNumMatch[1]
     : String(minN + (seed % Math.max(maxN - minN, 100)));
 
-  const repairedAddress = `${streetInfo.street}, ${streetNumber} - ${streetInfo.neighborhood}, ${streetInfo.city}`;
+  const finalNeighborhood = requestedNeighborhood || streetInfo.neighborhood;
+  const finalCity = requestedCity || streetInfo.city;
+  const finalStreet =
+    matchedByNeighborhood.length === 0 && requestedNeighborhood
+      ? `Av. Principal de ${requestedNeighborhood}`
+      : streetInfo.street;
+
+  const repairedAddress = `${finalStreet}, ${streetNumber} - ${finalNeighborhood}, ${finalCity}`;
 
   return {
     ...mergedLead,
     company,
     segment,
-    street: streetInfo.street,
+    street: finalStreet,
     number: streetNumber,
-    neighborhood: streetInfo.neighborhood,
-    city: streetInfo.city,
+    neighborhood: finalNeighborhood,
+    city: finalCity,
     address: repairedAddress,
     lat: streetInfo.lat + ((seed % 7) - 3) * 0.0005,
     lng: streetInfo.lng + ((seed % 7) - 3) * 0.0005,

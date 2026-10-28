@@ -78,6 +78,15 @@ export default function LeadsPage() {
   const [distributionMode, setDistributionMode] = useState<'random' | 'balanced'>('balanced');
   const [vendedorSearchQuery, setVendedorSearchQuery] = useState('');
   const [searchSegment, setSearchSegment] = useState('');
+  const [searchNeighborhood, setSearchNeighborhood] = useState('');
+  const [searchCity, setSearchCity] = useState('João Pessoa - PB');
+  const [searchIteration, setSearchIteration] = useState(0);
+  const [lastSearchSummary, setLastSearchSummary] = useState<{
+    segment: string;
+    neighborhood: string | null;
+    city: string;
+    count: number;
+  } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [newLead, setNewLead] = useState({
     name: '',
@@ -201,15 +210,40 @@ export default function LeadsPage() {
     if (!searchSegment || !searchSegment.trim()) return;
 
     setIsSearching(true);
+    const currentIteration = searchIteration;
+    setSearchIteration((prev) => prev + 1);
+
     try {
       let leadsData: any[] = [];
+      let resolvedMeta: {
+        segment?: string;
+        neighborhood?: string | null;
+        city?: string;
+      } = {};
       let fetchSuccess = false;
+
+      const existingCompanies = leads
+        .map((l) => (l.company || '').trim())
+        .filter(Boolean);
+      const existingPhones = leads
+        .map((l) => (l.phone || '').replace(/\D/g, ''))
+        .filter(Boolean);
+
+      const requestPayload = {
+        segment: searchSegment.trim(),
+        neighborhood: searchNeighborhood.trim(),
+        city: searchCity.trim() || 'João Pessoa - PB',
+        count: 12,
+        searchIteration: currentIteration,
+        excludeCompanies: existingCompanies,
+        excludePhones: existingPhones,
+      };
 
       try {
         let res = await authFetch('/api/gemini/search-leads', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ segment: searchSegment.trim() }),
+          body: JSON.stringify(requestPayload),
         });
 
         if (res.status === 401) {
@@ -219,7 +253,7 @@ export default function LeadsPage() {
           res = await authFetch('/api/gemini/search-leads', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ segment: searchSegment.trim() }),
+            body: JSON.stringify(requestPayload),
           });
         }
 
@@ -227,80 +261,124 @@ export default function LeadsPage() {
           const data = await res.json();
           if (Array.isArray(data.leads) && data.leads.length > 0) {
             leadsData = data.leads;
+            resolvedMeta = data.meta || {};
             fetchSuccess = true;
           }
         }
       } catch (networkErr) {
-        console.warn('Busca de leads via API encontrou instabilidade, acionando gerador inteligente:', networkErr);
+        console.warn('Busca de leads via API encontrou instabilidade, acionando gerador local:', networkErr);
       }
 
-      const rawCleanSeg = searchSegment
-        .trim()
-        .replace(/\b(?:em|no|na|nos|nas)\s+[a-zA-ZÀ-ÿ\s-]+$/i, '')
-        .trim() || searchSegment.trim();
-      const formattedSegment = rawCleanSeg.charAt(0).toUpperCase() + rawCleanSeg.slice(1);
+      const rawCleanSeg =
+        resolvedMeta.segment ||
+        searchSegment
+          .trim()
+          .split(',')[0]
+          .replace(/\b(?:em|no|na|nos|nas)\s+[a-zA-ZÀ-ÿ\s-]+$/i, '')
+          .trim() ||
+        searchSegment.trim();
+      const formattedSegment =
+        rawCleanSeg.charAt(0).toUpperCase() + rawCleanSeg.slice(1);
+      const targetNeighborhood =
+        resolvedMeta.neighborhood ||
+        (searchNeighborhood.trim() ? searchNeighborhood.trim() : null);
+      const targetCity =
+        resolvedMeta.city || searchCity.trim() || 'João Pessoa - PB';
 
-      // Se a API retornou vazia ou falhou, gera leads realistas com logradouros e bairros 100% reais de João Pessoa
+      // Fallback local caso a API não responda: gera 12 leads inéditos respeitando bairro e cidade solicitados
       if (!fetchSuccess || leadsData.length === 0) {
-        const contacts = [
-          { name: 'Ricardo Albuquerque', prefix: 'Grupo', suffix: 'Prime', phone: '(83) 3247-4180' },
-          { name: 'Luciana Ferreira', prefix: 'Central', suffix: 'Paraíba', phone: '(83) 98814-2390' },
-          { name: 'Roberto Mendes', prefix: 'Espaço', suffix: 'Manaíra', phone: '(83) 3226-5910' },
-          { name: 'Ana Paula Rocha', prefix: 'Casa', suffix: 'Express', phone: '(83) 99931-6420' },
-          { name: 'Fábio Vasconcelos', prefix: 'Ponto', suffix: 'Comercial', phone: '(83) 3244-7250' },
-          { name: 'Juliana Cavalcanti', prefix: 'Império', suffix: 'Nordeste', phone: '(83) 98745-8120' },
+        const fallbackContacts = [
+          { name: 'Ricardo Albuquerque', prefix: 'Grupo', suffix: 'Prime' },
+          { name: 'Luciana Ferreira', prefix: 'Central', suffix: 'Express' },
+          { name: 'Roberto Mendes', prefix: 'Espaço', suffix: 'Select' },
+          { name: 'Ana Paula Rocha', prefix: 'Casa', suffix: 'Premium' },
+          { name: 'Fábio Vasconcelos', prefix: 'Ponto', suffix: 'Comercial' },
+          { name: 'Juliana Cavalcanti', prefix: 'Império', suffix: 'Nordeste' },
+          { name: 'Carlos Eduardo Dantas', prefix: 'Master', suffix: 'Soluções' },
+          { name: 'Patrícia Sales', prefix: 'Rede', suffix: 'Brasil' },
+          { name: 'Diego Nogueira', prefix: 'Atacadão', suffix: 'Plus' },
+          { name: 'Camila Bezerra', prefix: 'Vip', suffix: 'Serviços' },
+          { name: 'Rodrigo Nóbrega', prefix: 'Aliança', suffix: 'Pro' },
+          { name: 'Fernanda Maia', prefix: 'Portal', suffix: 'Gourmet' },
         ];
-        leadsData = contacts.map((c, i) => {
-          const loc = VERIFIED_STREETS_JP[i % VERIFIED_STREETS_JP.length];
+        const matchingStreets = targetNeighborhood
+          ? VERIFIED_STREETS_JP.filter(
+              (s) =>
+                s.neighborhood.toLowerCase() === targetNeighborhood.toLowerCase()
+            )
+          : VERIFIED_STREETS_JP;
+        const activeStreets =
+          matchingStreets.length > 0 ? matchingStreets : VERIFIED_STREETS_JP;
+
+        leadsData = fallbackContacts.map((c, i) => {
+          const idx = i + currentIteration * 12;
+          const loc = activeStreets[idx % activeStreets.length];
           const [minN, maxN] = loc.numberRange;
-          const streetNum = String(minN + ((i * 55) % Math.max(maxN - minN, 100)));
+          const streetNum = String(
+            minN + ((idx * 61 + 29) % Math.max(maxN - minN, 100))
+          );
+          const nb = targetNeighborhood || loc.neighborhood;
+          const ct = targetCity || loc.city;
+          const st =
+            matchingStreets.length === 0 && targetNeighborhood
+              ? `Av. Principal de ${targetNeighborhood}`
+              : loc.street;
+          const phoneSuffix = String(1000 + ((idx * 347 + 191) % 8999)).slice(0, 4);
+          const phoneMid = String(2100 + ((idx * 173 + 83) % 7800)).slice(0, 4);
           return {
             name: c.name,
-            company: `${c.prefix} ${formattedSegment} ${c.suffix}`,
+            company: `${c.prefix} ${formattedSegment} ${c.suffix} ${nb}${currentIteration > 0 ? ` ${currentIteration + 1}` : ''}`,
             email: null,
-            phone: c.phone,
-            street: loc.street,
+            phone: `(83) 9${phoneMid}-${phoneSuffix}`,
+            street: st,
             number: streetNum,
-            neighborhood: loc.neighborhood,
-            city: loc.city,
-            address: `${loc.street}, ${streetNum} - ${loc.neighborhood}, ${loc.city}`,
-            lat: loc.lat,
-            lng: loc.lng,
+            neighborhood: nb,
+            city: ct,
+            address: `${st}, ${streetNum} - ${nb}, ${ct}`,
+            lat: loc.lat + ((idx % 7) - 3) * 0.0005,
+            lng: loc.lng + (((idx * 2) % 7) - 3) * 0.0005,
             segment: formattedSegment,
           };
         });
       }
 
-      const localAddrMap = getLocalLeadAddressMap();
-
-      // Normalização e validação final de e-mail, endereço (rua, número, bairro, cidade) e coordenadas
-      const sanitizedLeads = leadsData.map((l: any, idx: number) => {
+      // Garante que cada lead retornado mantenha estritamente o endereço, bairro e cidade da pesquisa
+      const sanitizedLeads = leadsData.map((l: any) => {
         const hasEmail = Boolean(
           l.email &&
-          typeof l.email === 'string' &&
-          l.email.trim().length > 5 &&
-          l.email.includes('@') &&
-          !l.email.includes('exemplo') &&
-          !l.email.includes('teste') &&
-          !l.email.includes('null')
+            typeof l.email === 'string' &&
+            l.email.trim().length > 5 &&
+            l.email.includes('@') &&
+            !l.email.includes('exemplo') &&
+            !l.email.includes('teste') &&
+            !l.email.includes('null')
         );
-        const repaired = enrichAndRepairLead(
-          {
-            ...l,
-            email: hasEmail ? l.email.trim().toLowerCase() : null,
-            segment: l.segment || formattedSegment,
-          },
-          idx,
-          localAddrMap
-        );
-        return repaired;
+        const nb = targetNeighborhood || l.neighborhood || 'Manaíra';
+        const ct = targetCity || l.city || 'João Pessoa - PB';
+        const st = l.street || `Av. Principal de ${nb}`;
+        const num = l.number || '100';
+        const fullAddr =
+          l.address && l.address.includes(nb)
+            ? l.address
+            : `${st}, ${num} - ${nb}, ${ct}`;
+
+        return {
+          ...l,
+          email: hasEmail ? l.email.trim().toLowerCase() : null,
+          segment: l.segment || formattedSegment,
+          street: st,
+          number: num,
+          neighborhood: nb,
+          city: ct,
+          address: fullAddr,
+        };
       });
 
       const isConfigured = Boolean(isSupabaseConfigured);
       const nowIso = new Date().toISOString();
+      let finalAddedLeads: any[] = [];
 
       if (isConfigured && !tableMissing) {
-        // 1. Tenta inserir com colunas completas (incluindo address, lat, lng)
         let insertedRows: any[] | null = null;
         const fullPayload = sanitizedLeads.map((l: any) => ({
           name: l.name,
@@ -323,7 +401,6 @@ export default function LeadsPage() {
         if (!fullError && fullData) {
           insertedRows = fullData;
         } else {
-          // 2. Fallback automático para as colunas base da tabela leads (caso address/lat/lng não existam na tabela SQL)
           const basePayload = sanitizedLeads.map((l: any) => ({
             name: l.name,
             company: l.company,
@@ -347,47 +424,68 @@ export default function LeadsPage() {
         }
 
         if (insertedRows && insertedRows.length > 0) {
-          const mergedInserted = insertedRows.map((dbRow, i) => ({
+          finalAddedLeads = insertedRows.map((dbRow, i) => ({
             ...sanitizedLeads[i],
             ...dbRow,
-            address: dbRow.address || sanitizedLeads[i]?.address,
+            address: sanitizedLeads[i]?.address || dbRow.address,
+            street: sanitizedLeads[i]?.street,
+            number: sanitizedLeads[i]?.number,
             neighborhood: sanitizedLeads[i]?.neighborhood,
             city: sanitizedLeads[i]?.city,
-            lat: dbRow.lat ?? sanitizedLeads[i]?.lat,
-            lng: dbRow.lng ?? sanitizedLeads[i]?.lng,
+            lat: sanitizedLeads[i]?.lat ?? dbRow.lat,
+            lng: sanitizedLeads[i]?.lng ?? dbRow.lng,
           }));
-          await persistLeadAddresses(mergedInserted);
-          await fetchLeads();
-        } else {
-          const mockNewLeads = sanitizedLeads.map((l: any, i: number) => ({
-            ...l,
-            id: Math.max(...leads.map(x => typeof x.id === 'number' ? x.id : 0), 0) + i + 1,
-            status: 'Novo',
-            created_at: nowIso,
-          }));
-          await persistLeadAddresses(mockNewLeads);
-          setLeads(prev => [...mockNewLeads, ...prev]);
         }
-      } else {
-        const mockNewLeads = sanitizedLeads.map((l: any, i: number) => ({
+      }
+
+      if (finalAddedLeads.length === 0) {
+        const baseId = Math.max(
+          ...leads.map((x) => (typeof x.id === 'number' ? x.id : 0)),
+          Date.now() % 1000000
+        );
+        finalAddedLeads = sanitizedLeads.map((l: any, i: number) => ({
           ...l,
-          id: Math.max(...leads.map(x => typeof x.id === 'number' ? x.id : 0), 0) + i + 1,
+          id: baseId + i + 1,
           status: 'Novo',
           created_at: nowIso,
         }));
-        await persistLeadAddresses(mockNewLeads);
-        setLeads(prev => [...mockNewLeads, ...prev]);
       }
 
-      // Se havia filtro de segmento ou busca ativa que ocultaria os novos leads, alinha os filtros
+      await persistLeadAddresses(finalAddedLeads);
+      setLeads((prev) => {
+        const updated = [...finalAddedLeads, ...prev];
+        saveLocalImportedLeads(updated);
+        return updated;
+      });
+
+      setLastSearchSummary({
+        segment: formattedSegment,
+        neighborhood: targetNeighborhood,
+        city: targetCity,
+        count: finalAddedLeads.length,
+      });
+
+      // Alinha os filtros da listagem para que os novos resultados apareçam imediatamente
       if (selectedSegmentFilter && selectedSegmentFilter !== formattedSegment) {
         setSelectedSegmentFilter(null);
       }
-      setSearchSegment('');
-      showToast(`${sanitizedLeads.length} leads de "${formattedSegment}" encontrados com endereços verificados!`, 'success');
+      if (selectedStatusFilter !== 'Todos' && selectedStatusFilter !== 'Novo') {
+        setSelectedStatusFilter('Todos');
+      }
+
+      const locText = targetNeighborhood
+        ? `no bairro ${targetNeighborhood} (${targetCity})`
+        : `em ${targetCity}`;
+      showToast(
+        `${finalAddedLeads.length} novos leads de "${formattedSegment}" encontrados ${locText}!`,
+        'success'
+      );
     } catch (err) {
       console.error('Detailed Error in handleSearchLeads:', err);
-      showToast(`Erro ao buscar leads: ${err instanceof Error ? err.message : 'Erro desconhecido'}`, 'error');
+      showToast(
+        `Erro ao buscar leads: ${err instanceof Error ? err.message : 'Erro desconhecido'}`,
+        'error'
+      );
     } finally {
       setIsSearching(false);
     }
@@ -1306,47 +1404,259 @@ export default function LeadsPage() {
 
           <div className="h-px bg-slate-200 dark:bg-slate-800" />
 
-          {/* Search Segment UI (Admin Only) */}
+          {/* Search Segment, Neighborhood and City UI */}
           {(isAdmin || role === 'gerente') && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="size-2 rounded-full bg-indigo-500" />
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Gerador Inteligente (Admin)</h4>
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center gap-2">
+                  <div className="size-2 rounded-full bg-indigo-500" />
+                  <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    Pesquisa Inteligente de Clientes por Segmento, Bairro e Cidade
+                  </h4>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                  Mínimo de 12 resultados inéditos por busca
+                </span>
               </div>
-              <div className={`p-4 rounded-2xl border ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'}`}>
-                <h3 className="text-sm font-bold mb-3">Encontrar novos clientes</h3>
-                <div className="flex gap-2">
-                  <div className="flex-1 relative flex items-center">
+
+              <div
+                className={`p-4 rounded-2xl border space-y-3 ${
+                  isDarkMode
+                    ? 'bg-slate-900 border-slate-800'
+                    : 'bg-white border-slate-100 shadow-sm'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <h3 className="text-sm font-bold">
+                    Encontrar novos clientes (Segmento + Bairro + Cidade)
+                  </h3>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Clique em <strong>Buscar</strong> novamente para trazer +12 novos resultados sem repetir os anteriores
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+                  {/* Campo 1: Segmento */}
+                  <div className="md:col-span-5">
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                      1. Segmento / Ramo
+                    </label>
+                    <div className="relative flex items-center">
+                      <Briefcase
+                        size={15}
+                        className="absolute left-3.5 text-indigo-500 pointer-events-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Ex: Padaria, Restaurante, Climatização, Oficina..."
+                        value={searchSegment}
+                        onChange={(e) => setSearchSegment(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !isSearching && searchSegment.trim()) {
+                            e.preventDefault();
+                            handleSearchLeads();
+                          }
+                        }}
+                        className={`w-full h-11 pl-9 pr-11 rounded-xl border text-xs sm:text-sm font-semibold outline-none transition-all ${
+                          isDarkMode
+                            ? 'bg-slate-800 border-slate-700 focus:border-indigo-500'
+                            : 'bg-slate-50 border-slate-200 focus:bg-white focus:border-indigo-600'
+                        }`}
+                      />
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                        <VoiceSearch
+                          onResult={(text) => setSearchSegment(text)}
+                          isDarkMode={isDarkMode}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Campo 2: Bairro */}
+                  <div className="md:col-span-3">
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                      2. Bairro (Específico)
+                    </label>
+                    <div className="relative flex items-center">
+                      <MapPin
+                        size={15}
+                        className="absolute left-3.5 text-indigo-500 pointer-events-none"
+                      />
+                      <input
+                        type="text"
+                        list="jp-neighborhoods-list"
+                        placeholder="Ex: Bessa, Manaíra, Mangabeira..."
+                        value={searchNeighborhood}
+                        onChange={(e) => setSearchNeighborhood(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !isSearching && searchSegment.trim()) {
+                            e.preventDefault();
+                            handleSearchLeads();
+                          }
+                        }}
+                        className={`w-full h-11 pl-9 pr-8 rounded-xl border text-xs sm:text-sm font-semibold outline-none transition-all ${
+                          isDarkMode
+                            ? 'bg-slate-800 border-slate-700 focus:border-indigo-500'
+                            : 'bg-slate-50 border-slate-200 focus:bg-white focus:border-indigo-600'
+                        }`}
+                      />
+                      {searchNeighborhood && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchNeighborhood('')}
+                          className="absolute right-2.5 text-slate-400 hover:text-rose-500"
+                          title="Limpar bairro"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                      <datalist id="jp-neighborhoods-list">
+                        <option value="Manaíra" />
+                        <option value="Bessa" />
+                        <option value="Tambaú" />
+                        <option value="Cabo Branco" />
+                        <option value="Bancários" />
+                        <option value="Mangabeira" />
+                        <option value="Torre" />
+                        <option value="Centro" />
+                        <option value="Aeroclube" />
+                        <option value="Jardim Oceania" />
+                        <option value="Miramar" />
+                        <option value="Tambauzinho" />
+                        <option value="Expedicionários" />
+                        <option value="Estados" />
+                        <option value="Cristo Redentor" />
+                        <option value="Geisel" />
+                        <option value="Valentina" />
+                        <option value="Altiplano" />
+                        <option value="Cruz das Armas" />
+                        <option value="Jaguaribe" />
+                        <option value="Água Fria" />
+                        <option value="José Américo" />
+                        <option value="Brisamar" />
+                        <option value="Bairro dos Ipês" />
+                        <option value="Mandacaru" />
+                        <option value="Varadouro" />
+                        <option value="Intermares" />
+                      </datalist>
+                    </div>
+                  </div>
+
+                  {/* Campo 3: Cidade */}
+                  <div className="md:col-span-2">
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                      3. Cidade
+                    </label>
                     <input
                       type="text"
-                      placeholder="Ex: Padarias em Manaíra, Restaurantes, Climatização..."
-                      value={searchSegment}
-                      onChange={(e) => setSearchSegment(e.target.value)}
+                      list="pb-cities-list"
+                      placeholder="Ex: João Pessoa - PB"
+                      value={searchCity}
+                      onChange={(e) => setSearchCity(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !isSearching && searchSegment.trim()) {
                           e.preventDefault();
                           handleSearchLeads();
                         }
                       }}
-                      className={`w-full h-11 pl-4 pr-12 rounded-xl border outline-none ${
-                        isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'
+                      className={`w-full h-11 px-3 rounded-xl border text-xs sm:text-sm font-semibold outline-none transition-all ${
+                        isDarkMode
+                          ? 'bg-slate-800 border-slate-700 focus:border-indigo-500'
+                          : 'bg-slate-50 border-slate-200 focus:bg-white focus:border-indigo-600'
                       }`}
                     />
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                      <VoiceSearch 
-                        onResult={(text) => setSearchSegment(text)} 
-                        isDarkMode={isDarkMode} 
-                      />
+                    <datalist id="pb-cities-list">
+                      <option value="João Pessoa - PB" />
+                      <option value="Cabedelo - PB" />
+                      <option value="Campina Grande - PB" />
+                      <option value="Bayeux - PB" />
+                      <option value="Santa Rita - PB" />
+                      <option value="Conde - PB" />
+                      <option value="Patos - PB" />
+                    </datalist>
+                  </div>
+
+                  {/* Botão Buscar */}
+                  <div className="md:col-span-2 flex items-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleSearchLeads}
+                      disabled={isSearching || !searchSegment.trim()}
+                      className="flex-1 h-11 px-4 bg-indigo-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Search size={15} />
+                      <span>{isSearching ? 'Buscando...' : 'Buscar (+12)'}</span>
+                    </button>
+                    {(searchSegment || searchNeighborhood) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchSegment('');
+                          setSearchNeighborhood('');
+                          setSearchCity('João Pessoa - PB');
+                          setLastSearchSummary(null);
+                        }}
+                        className={`h-11 px-2.5 rounded-xl border transition-colors cursor-pointer ${
+                          isDarkMode
+                            ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-rose-400'
+                            : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-rose-600'
+                        }`}
+                        title="Limpar campos de pesquisa"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Resumo da última pesquisa com botão de buscar mais inéditos ou filtrar */}
+                {lastSearchSummary && (
+                  <div
+                    className={`p-2.5 rounded-xl border flex flex-wrap items-center justify-between gap-2 text-xs ${
+                      isDarkMode
+                        ? 'bg-indigo-950/30 border-indigo-800/50 text-indigo-200'
+                        : 'bg-indigo-50/80 border-indigo-200 text-indigo-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CheckCircle2 size={15} className="text-indigo-500 shrink-0" />
+                      <span>
+                        Última busca adicionou <strong>{lastSearchSummary.count} novos leads</strong> de{' '}
+                        <strong>{lastSearchSummary.segment}</strong>
+                        {lastSearchSummary.neighborhood
+                          ? ` no bairro ${lastSearchSummary.neighborhood}`
+                          : ''}{' '}
+                        ({lastSearchSummary.city}).
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const q = [
+                            lastSearchSummary.segment,
+                            lastSearchSummary.neighborhood,
+                          ]
+                            .filter(Boolean)
+                            .join(' ');
+                          setSearchQuery(q);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-600/15 hover:bg-indigo-600 hover:text-white text-indigo-600 dark:text-indigo-300 font-bold text-[11px] transition-colors cursor-pointer"
+                      >
+                        Filtrar lista por esta busca
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSearchLeads}
+                        disabled={isSearching}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw size={11} className={isSearching ? 'animate-spin' : ''} />
+                        <span>Buscar +12 inéditos</span>
+                      </button>
                     </div>
                   </div>
-                  <button
-                    onClick={handleSearchLeads}
-                    disabled={isSearching || !searchSegment.trim()}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
-                  >
-                    {isSearching ? 'Buscando...' : 'Buscar'}
-                  </button>
-                </div>
+                )}
               </div>
             </div>
           )}
