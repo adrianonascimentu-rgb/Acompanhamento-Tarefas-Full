@@ -36,7 +36,9 @@ import {
   ArrowUpRight,
   X,
   FileSpreadsheet,
-  Phone
+  Phone,
+  Zap,
+  Calendar
 } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 import {
@@ -69,11 +71,13 @@ import {
 interface WhatsAppCampaignsProps {
   onOpenChatByPhone?: (phone: string, name: string) => void;
   onOpenAntiBanSettings?: () => void;
+  onOpenCreateTrigger?: () => void;
 }
 
 export default function WhatsAppCampaigns({
   onOpenChatByPhone,
-  onOpenAntiBanSettings
+  onOpenAntiBanSettings,
+  onOpenCreateTrigger
 }: WhatsAppCampaignsProps) {
   const { isDarkMode } = useTheme();
 
@@ -119,6 +123,10 @@ export default function WhatsAppCampaigns({
   const [campIncludeOptOut, setCampIncludeOptOut] = useState(true);
   const [selectedRecipientPhones, setSelectedRecipientPhones] = useState<string[]>([]);
   const [customAudienceMode, setCustomAudienceMode] = useState<'tags' | 'manual'>('tags');
+  const [campTriggerWhenMode, setCampTriggerWhenMode] = useState<'immediate' | 'scheduled' | 'event_trigger'>('immediate');
+  const [campScheduledDate, setCampScheduledDate] = useState('');
+  const [campScheduledTime, setCampScheduledTime] = useState('09:00');
+  const [campTriggerEventName, setCampTriggerEventName] = useState('Ao cadastrar novo cliente na base');
 
   // New Customer Form State
   const [newCustName, setNewCustName] = useState('');
@@ -380,6 +388,10 @@ export default function WhatsAppCampaigns({
       targetTags: customAudienceMode === 'tags' ? campTargetTags : ['Seleção Manual'],
       status: 'draft',
       includeOptOutFooter: campIncludeOptOut,
+      triggerWhenMode: startImmediately ? 'immediate' : campTriggerWhenMode,
+      scheduledDate: campTriggerWhenMode === 'scheduled' ? campScheduledDate : undefined,
+      scheduledTime: campTriggerWhenMode === 'scheduled' ? campScheduledTime : undefined,
+      triggerEventName: campTriggerWhenMode === 'event_trigger' ? campTriggerEventName : undefined,
       recipients,
       createdAt: nowIso,
       updatedAt: nowIso

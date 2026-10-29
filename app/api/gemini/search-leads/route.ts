@@ -3,8 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/serverAuth";
 import {
   REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT,
+  buildCompanyInstagramHandle,
   buildGoogleMapsUrl,
   buildGoogleSearchUrl,
+  buildInstagramUrl,
   resolveSegmentCategoryKey,
 } from "@/lib/leadsHelper";
 
@@ -833,10 +835,13 @@ export async function fetchLivePlacesFromPhoton(
       excludedCompanySet.add(normComp);
       excludedPhoneSet.add(phone.replace(/\D/g, ""));
 
+      const igHandle = buildCompanyInstagramHandle(rawName);
       liveResults.push({
         name: `${firstName} ${lastName}`,
         company: rawName,
         google_name: rawName,
+        instagram: igHandle,
+        instagram_url: buildInstagramUrl(igHandle, rawName),
         google_search_url: buildGoogleSearchUrl(rawName, resolvedNb, resolvedCity),
         google_maps_url: buildGoogleMapsUrl(rawName, fullAddress),
         email: null,
@@ -1004,10 +1009,13 @@ export function generateRealisticLeads(
     excludedCompanySet.add(normalizeStr(company));
     excludedPhoneSet.add(phone.replace(/\D/g, ""));
 
+    const igHandle = buildCompanyInstagramHandle(company);
     results.push({
       name: contactName,
       company,
       google_name: company,
+      instagram: igHandle,
+      instagram_url: buildInstagramUrl(igHandle, company),
       google_search_url: buildGoogleSearchUrl(company, neighborhoodLabel, cityLabel),
       google_maps_url: buildGoogleMapsUrl(company, fullAddress),
       email: hasEmail ? `contato@${slug}.com.br` : null,
@@ -1201,10 +1209,13 @@ Para cada estabelecimento, informe EXATAMENTE o nome real do estabelecimento com
                 excludedCompanySet.add(normComp);
                 if (rawPhoneDigits) excludedPhoneSet.add(rawPhoneDigits);
 
+                const igHandle = buildCompanyInstagramHandle(rawComp, l.instagram);
                 collectedLeads.push({
                   name: (l.name || "Atendimento Comercial").trim(),
                   company: rawComp,
                   google_name: rawComp,
+                  instagram: igHandle,
+                  instagram_url: buildInstagramUrl(igHandle, rawComp),
                   google_search_url: buildGoogleSearchUrl(
                     rawComp,
                     addrInfo.neighborhood,

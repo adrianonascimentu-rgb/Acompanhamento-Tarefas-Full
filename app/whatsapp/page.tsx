@@ -111,6 +111,7 @@ export default function WhatsAppPage() {
   const { showToast } = useUI();
   const [viewMode, setViewMode] = useState<'chat' | 'campaigns' | 'automations' | 'analytics'>('chat');
   const [automationsSubView, setAutomationsSubView] = useState<'rules' | 'antiban' | 'suggestions' | 'logs' | 'directory'>('rules');
+  const [openTriggerModalSignal, setOpenTriggerModalSignal] = useState(0);
   const [antiBanEnabled, setAntiBanEnabled] = useState(true);
   const [antiBanScore, setAntiBanScore] = useState(100);
   const [campaignRepliesCount, setCampaignRepliesCount] = useState(0);
@@ -231,11 +232,11 @@ export default function WhatsAppPage() {
   }, []);
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin && !canAccessWhatsapp) {
       if (viewMode === 'automations' || viewMode === 'analytics') setViewMode('chat');
       if (isConfiguring) setIsConfiguring(false);
     }
-  }, [isAdmin, viewMode, isConfiguring]);
+  }, [isAdmin, canAccessWhatsapp, viewMode, isConfiguring]);
 
   const handleOpenChatByPhone = (rawPhone: string, customerName: string) => {
     const cleanPhone = normalizeBrazilPhone(rawPhone);
@@ -913,7 +914,7 @@ export default function WhatsAppPage() {
               )}
             </button>
 
-            {isAdmin && (
+            {(isAdmin || canAccessWhatsapp) && (
               <>
                 <button
                   type="button"
@@ -968,6 +969,20 @@ export default function WhatsAppPage() {
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => {
+              setAutomationsSubView('rules');
+              setViewMode('automations');
+              setOpenTriggerModalSignal(prev => prev + 1);
+            }}
+            className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-xs flex items-center gap-2 transition-all whitespace-nowrap shrink-0"
+            title="Criar novo gatilho personalizado ou escolher quando disparar mensagens no WhatsApp"
+          >
+            <Zap size={14} className="shrink-0" />
+            <span>Criar Gatilho / Quando Disparar</span>
+          </button>
+
           {isAdmin && (
             <button
               type="button"
@@ -991,8 +1006,13 @@ export default function WhatsAppPage() {
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <WhatsAppCampaigns
             onOpenChatByPhone={handleOpenChatByPhone}
+            onOpenCreateTrigger={() => {
+              setAutomationsSubView('rules');
+              setViewMode('automations');
+              setOpenTriggerModalSignal(prev => prev + 1);
+            }}
             onOpenAntiBanSettings={
-              isAdmin
+              isAdmin || canAccessWhatsapp
                 ? () => {
                     setAutomationsSubView('antiban');
                     setViewMode('automations');
@@ -1001,11 +1021,14 @@ export default function WhatsAppPage() {
             }
           />
         </div>
-      ) : isAdmin && viewMode === 'automations' ? (
+      ) : (isAdmin || canAccessWhatsapp) && viewMode === 'automations' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          <WhatsAppAutomations initialSubView={automationsSubView} />
+          <WhatsAppAutomations
+            initialSubView={automationsSubView}
+            openTriggerModalSignal={openTriggerModalSignal}
+          />
         </div>
-      ) : isAdmin && viewMode === 'analytics' ? (
+      ) : (isAdmin || canAccessWhatsapp) && viewMode === 'analytics' ? (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           <WhatsAppAnalytics onBackToChat={() => setViewMode('chat')} />
         </div>

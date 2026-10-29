@@ -10,6 +10,8 @@ export interface LeadAddressMetadata {
   google_name?: string;
   google_maps_url?: string;
   google_search_url?: string;
+  instagram?: string;
+  instagram_url?: string;
 }
 
 export interface LeadEnrichmentMetadata {
@@ -28,6 +30,8 @@ export interface LeadEnrichmentMetadata {
   report_source?: string;
   updated_at?: string;
   google_name?: string;
+  instagram?: string;
+  instagram_url?: string;
 }
 
 export interface VerifiedStreetInfo {
@@ -231,6 +235,70 @@ export function buildGoogleMapsUrl(establishmentName: string, address?: string, 
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
 }
 
+export function buildCompanyInstagramHandle(
+  establishmentName: string,
+  rawInstagram?: string | null
+): string {
+  if (rawInstagram && typeof rawInstagram === "string") {
+    const cleaned = rawInstagram
+      .trim()
+      .replace(/^https?:\/\/(www\.)?instagram\.com\//i, "")
+      .replace(/\/.*$/, "")
+      .replace(/^@+/, "")
+      .replace(/[^a-zA-Z0-9._]/g, "")
+      .toLowerCase();
+    if (cleaned.length >= 3) {
+      return `@${cleaned}`;
+    }
+  }
+
+  const baseName = (establishmentName || "empresa")
+    .split(/\s+-\s+(?:Unidade|Filial)\b/i)[0]
+    .replace(/\([^)]*\)/g, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(ltda|me|eireli|s\/a|sa)\b/g, "")
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 26);
+
+  return `@${baseName || "estabelecimentojp"}`;
+}
+
+export function buildInstagramUrl(
+  instagramHandleOrCompany: string,
+  fallbackCompanyName?: string
+): string {
+  const handle = buildCompanyInstagramHandle(
+    fallbackCompanyName || instagramHandleOrCompany,
+    instagramHandleOrCompany?.startsWith("@") ||
+      instagramHandleOrCompany?.includes("instagram.com")
+      ? instagramHandleOrCompany
+      : undefined
+  ).replace(/^@+/, "");
+  return `https://www.instagram.com/${encodeURIComponent(handle)}/`;
+}
+
+export function buildWhatsAppLeadUrl(
+  phone?: string | null,
+  leadName?: string | null,
+  companyName?: string | null
+): string {
+  const rawDigits = (phone || "").replace(/\D/g, "");
+  let cleanPhone = rawDigits;
+  if (!cleanPhone) {
+    cleanPhone = "5583999999999";
+  } else if (cleanPhone.length <= 11 && !cleanPhone.startsWith("55")) {
+    cleanPhone = `55${cleanPhone}`;
+  }
+
+  const contactPart = leadName ? `Olá ${leadName.split(" ")[0]}` : "Olá";
+  const companyPart = companyName ? ` da *${companyName}*` : "";
+  const message = `${contactPart}${companyPart}, tudo bem? Estamos entrando em contato pelo setor comercial.`;
+
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+}
+
 export const VERIFIED_STREETS_JP: VerifiedStreetInfo[] = [
   { street: "Av. General Edson Ramalho", numberRange: [120, 980], neighborhood: "Manaíra", city: "João Pessoa - PB", lat: -7.1058, lng: -34.8322 },
   { street: "Av. João Maurício", numberRange: [150, 1400], neighborhood: "Manaíra", city: "João Pessoa - PB", lat: -7.1012, lng: -34.8245 },
@@ -357,6 +425,7 @@ export function persistLeadEnrichments(leadsList: any[]) {
       lead.last_purchase_value !== undefined ||
       lead.total_purchased !== undefined ||
       lead.loyalty_points !== undefined ||
+      lead.instagram ||
       lead.report_source;
 
     if (!hasEnrichment) continue;
@@ -376,6 +445,9 @@ export function persistLeadEnrichments(leadsList: any[]) {
       assigned_to: lead.assigned_to,
       report_source: lead.report_source,
       updated_at: lead.updated_at || new Date().toISOString(),
+      google_name: lead.google_name || lead.company,
+      instagram: lead.instagram,
+      instagram_url: lead.instagram_url,
     };
 
     const keys = getLeadLookupKeys(lead);
@@ -483,6 +555,8 @@ export async function persistLeadAddresses(leadsList: any[]) {
 
   for (const lead of leadsList) {
     if (!lead || !lead.address) continue;
+    const resolvedComp = lead.google_name || lead.company || "";
+    const resolvedIg = buildCompanyInstagramHandle(resolvedComp, lead.instagram);
     const meta: LeadAddressMetadata = {
       address: lead.address,
       street: lead.street,
@@ -492,9 +566,11 @@ export async function persistLeadAddresses(leadsList: any[]) {
       reference: lead.reference,
       lat: lead.lat,
       lng: lead.lng,
-      google_name: lead.google_name || lead.company,
+      google_name: resolvedComp,
       google_maps_url: lead.google_maps_url,
       google_search_url: lead.google_search_url,
+      instagram: resolvedIg,
+      instagram_url: buildInstagramUrl(resolvedIg, resolvedComp),
     };
     const keys = getLeadLookupKeys(lead);
     for (const k of keys) {
@@ -708,11 +784,17 @@ export function enrichAndRepairLead(
       mergedLead.neighborhood || parsedParts.neighborhood || matchedStreet?.neighborhood || "Manaíra";
     const resolvedCity =
       mergedLead.city || parsedParts.city || matchedStreet?.city || "João Pessoa - PB";
+    const resolvedIg = buildCompanyInstagramHandle(
+      google_name,
+      lead.instagram || mergedLead.instagram || savedMeta?.instagram || savedEnrichment?.instagram
+    );
 
     return {
       ...mergedLead,
       company,
       google_name,
+      instagram: resolvedIg,
+      instagram_url: buildInstagramUrl(resolvedIg, google_name),
       google_maps_url:
         mergedLead.google_maps_url ||
         buildGoogleMapsUrl(google_name, mergedLead.address, resolvedCity),
@@ -733,10 +815,16 @@ export function enrichAndRepairLead(
     const resolvedGoogleName = savedMeta.google_name && !isSyntheticGeneratedCompanyName(savedMeta.google_name)
       ? savedMeta.google_name
       : google_name;
+    const resolvedIg = buildCompanyInstagramHandle(
+      resolvedGoogleName,
+      lead.instagram || mergedLead.instagram || savedMeta.instagram || savedEnrichment?.instagram
+    );
     return {
       ...mergedLead,
       company: resolvedGoogleName || company,
       google_name: resolvedGoogleName,
+      instagram: resolvedIg,
+      instagram_url: buildInstagramUrl(resolvedIg, resolvedGoogleName),
       google_maps_url:
         savedMeta.google_maps_url ||
         buildGoogleMapsUrl(resolvedGoogleName, savedMeta.address, resolvedCity),
@@ -792,11 +880,17 @@ export function enrichAndRepairLead(
       : streetInfo.street;
 
   const repairedAddress = `${finalStreet}, ${streetNumber} - ${finalNeighborhood}, ${finalCity}`;
+  const resolvedIg = buildCompanyInstagramHandle(
+    google_name,
+    lead.instagram || mergedLead.instagram || savedEnrichment?.instagram
+  );
 
   return {
     ...mergedLead,
     company,
     google_name,
+    instagram: resolvedIg,
+    instagram_url: buildInstagramUrl(resolvedIg, google_name),
     google_maps_url:
       mergedLead.google_maps_url ||
       buildGoogleMapsUrl(google_name, repairedAddress, finalCity),
@@ -901,6 +995,7 @@ export function matchesLeadSearch(lead: any, searchQuery: string): boolean {
   const nameNorm = normalizeText(lead.name);
   const companyNorm = normalizeText(lead.company);
   const googleNameNorm = normalizeText(lead.google_name);
+  const instagramNorm = normalizeText(lead.instagram);
   const emailNorm = normalizeText(lead.email);
   const segmentNorm = normalizeText(lead.segment);
   const addressNorm = normalizeText(lead.address);
@@ -911,7 +1006,7 @@ export function matchesLeadSearch(lead: any, searchQuery: string): boolean {
   const codeNorm = normalizeText(String(lead.client_code || ""));
 
   const terms = queryNorm.split(/\s+/).filter(Boolean);
-  const combinedText = `${codeNorm} ${nameNorm} ${companyNorm} ${googleNameNorm} ${emailNorm} ${segmentNorm} ${addressNorm} ${neighborhoodNorm} ${cityNorm} ${referenceNorm} ${sellerNorm} ${(lead.phone || "").toLowerCase()}`;
+  const combinedText = `${codeNorm} ${nameNorm} ${companyNorm} ${googleNameNorm} ${instagramNorm} ${emailNorm} ${segmentNorm} ${addressNorm} ${neighborhoodNorm} ${cityNorm} ${referenceNorm} ${sellerNorm} ${(lead.phone || "").toLowerCase()}`;
 
   const matchesAllTerms = terms.every((term) => combinedText.includes(term));
   if (matchesAllTerms) return true;

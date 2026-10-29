@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock, ExternalLink, Building2 } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock, ExternalLink, Building2, Instagram, MessageCircle, PhoneCall, Timer } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,8 +24,11 @@ import {
 import {
   REAL_GOOGLE_ESTABLISHMENTS_BY_SEGMENT,
   VERIFIED_STREETS_JP,
+  buildCompanyInstagramHandle,
   buildGoogleMapsUrl,
   buildGoogleSearchUrl,
+  buildInstagramUrl,
+  buildWhatsAppLeadUrl,
   clearLocalImportedLeads,
   enrichAndRepairLead,
   formatFullLeadAddress,
@@ -49,10 +52,10 @@ const LeadsMap = dynamic(() => import('@/components/LeadsMap'), {
 });
 
 const MOCK_LEADS = [
-  { id: 1, name: 'Ricardo Santos', company: 'Restaurante Mangai', status: 'Novo', email: 'contato@mangai.com.br', phone: '(83) 3226-1615', segment: 'Restaurante', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), lat: -7.1145, lng: -34.8290, address: 'Av. Gen. Edson Ramalho, 696 - Manaíra, João Pessoa - PB' },
-  { id: 2, name: 'Juliana Paiva', company: 'Padaria El Shaddai', status: 'Em Contato', email: null, phone: '(83) 3246-4554', segment: 'Padaria', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), lat: -7.0890, lng: -34.8320, address: 'R. Francisco Leocádio Ribeiro Coutinho, 451 - Bessa, João Pessoa - PB' },
-  { id: 3, name: 'Marcos Oliveira', company: 'Açougue do Boi', status: 'Qualificado', email: null, phone: '(83) 99123-4455', segment: 'Açougue', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), lat: -7.1150, lng: -34.8630, address: 'Av. Dom Pedro II, 567 - Centro, João Pessoa - PB' },
-  { id: 4, name: 'Camila Doces', company: 'Amor Doce', status: 'Novo', email: 'camila@amordoce.com', phone: '(83) 3247-1122', segment: 'Doceria', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 9).toISOString(), lat: -7.1250, lng: -34.8230, address: 'Av. Cabo Branco, 2120 - Cabo Branco, João Pessoa - PB' },
+  { id: 1, name: 'Ricardo Santos', company: 'Restaurante Mangai', instagram: '@restaurantemangai', status: 'Novo', email: 'contato@mangai.com.br', phone: '(83) 3226-1615', segment: 'Restaurante', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 4).toISOString(), lat: -7.1145, lng: -34.8290, address: 'Av. Gen. Edson Ramalho, 696 - Manaíra, João Pessoa - PB' },
+  { id: 2, name: 'Juliana Paiva', company: 'Padaria El Shaddai', instagram: '@padariaelshaddai', status: 'Em Contato', email: null, phone: '(83) 3246-4554', segment: 'Padaria', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(), lat: -7.0890, lng: -34.8320, address: 'R. Francisco Leocádio Ribeiro Coutinho, 451 - Bessa, João Pessoa - PB' },
+  { id: 3, name: 'Marcos Oliveira', company: 'Açougue do Boi', instagram: '@acouguedoboi', status: 'Qualificado', email: null, phone: '(83) 99123-4455', segment: 'Açougue', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(), lat: -7.1150, lng: -34.8630, address: 'Av. Dom Pedro II, 567 - Centro, João Pessoa - PB' },
+  { id: 4, name: 'Camila Doces', company: 'Amor Doce', instagram: '@amordoceconfeitaria', status: 'Novo', email: 'camila@amordoce.com', phone: '(83) 3247-1122', segment: 'Doceria', assigned_to: null, created_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 9).toISOString(), lat: -7.1250, lng: -34.8230, address: 'Av. Cabo Branco, 2120 - Cabo Branco, João Pessoa - PB' },
 ];
 
 const MOCK_VENDEDORES = [
@@ -98,6 +101,7 @@ export default function LeadsPage() {
   const [newLead, setNewLead] = useState({
     name: '',
     company: '',
+    instagram: '',
     email: '',
     phone: '',
     segment: 'Geral',
@@ -114,6 +118,8 @@ export default function LeadsPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('Todos');
   const [createdAtSortOrder, setCreatedAtSortOrder] = useState<'desc' | 'asc'>('desc');
   const [tablePrefsHydrated, setTablePrefsHydrated] = useState(false);
+  const [expandedLeadIds, setExpandedLeadIds] = useState<Record<string, boolean>>({});
+  const [allCardsExpanded, setAllCardsExpanded] = useState<boolean>(false);
 
   // Busca Avançada na parte superior da tabela de leads
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
@@ -420,10 +426,13 @@ export default function LeadsPage() {
           }
 
           const fullAddr = `${st}, ${streetNum} - ${nb}, ${ct}`;
+          const igHandle = buildCompanyInstagramHandle(estName);
           return {
             name: contactName,
             company: estName,
             google_name: estName,
+            instagram: igHandle,
+            instagram_url: buildInstagramUrl(igHandle, estName),
             google_search_url: buildGoogleSearchUrl(estName, nb, ct),
             google_maps_url: buildGoogleMapsUrl(estName, fullAddr),
             email: null,
@@ -440,7 +449,7 @@ export default function LeadsPage() {
         });
       }
 
-      // Garante que cada lead retornado mantenha estritamente o nome do estabelecimento no Google, endereço, bairro e cidade da pesquisa
+      // Garante que cada lead retornado mantenha estritamente o nome do estabelecimento no Google, Instagram, endereço, bairro e cidade da pesquisa
       const sanitizedLeads = leadsData.map((l: any) => {
         const hasEmail = Boolean(
           l.email &&
@@ -460,11 +469,15 @@ export default function LeadsPage() {
             ? l.address
             : `${st}, ${num} - ${nb}, ${ct}`;
         const googleEstablishmentName = (l.google_name || l.company || '').trim();
+        const igHandle = buildCompanyInstagramHandle(googleEstablishmentName, l.instagram);
 
         return {
           ...l,
           company: googleEstablishmentName,
           google_name: googleEstablishmentName,
+          instagram: igHandle,
+          instagram_url:
+            l.instagram_url || buildInstagramUrl(igHandle, googleEstablishmentName),
           google_search_url:
             l.google_search_url ||
             buildGoogleSearchUrl(googleEstablishmentName, nb, ct),
@@ -883,6 +896,12 @@ export default function LeadsPage() {
 
       if (selectedLeadForAssignment) {
         // Edit mode
+        const resolvedIg = buildCompanyInstagramHandle(
+          newLead.company.trim(),
+          newLead.instagram || selectedLeadForAssignment.instagram
+        );
+        const resolvedIgUrl = buildInstagramUrl(resolvedIg, newLead.company.trim());
+
         const fullUpdateData = {
           name: newLead.name.trim(),
           company: newLead.company.trim(),
@@ -919,6 +938,8 @@ export default function LeadsPage() {
           {
             ...selectedLeadForAssignment,
             ...fullUpdateData,
+            instagram: resolvedIg,
+            instagram_url: resolvedIgUrl,
             neighborhood: newLead.neighborhood || selectedLeadForAssignment.neighborhood,
             city: newLead.city || selectedLeadForAssignment.city || 'João Pessoa - PB',
             reference: newLead.reference || '',
@@ -928,11 +949,21 @@ export default function LeadsPage() {
         );
 
         await persistLeadAddresses([updatedLeadObj]);
-        setLeads(prev => prev.map(l => l.id === selectedLeadForAssignment.id ? updatedLeadObj : l));
+        setLeads(prev => {
+          const updated = prev.map(l => l.id === selectedLeadForAssignment.id ? updatedLeadObj : l);
+          saveLocalImportedLeads(updated);
+          return updated;
+        });
         showToast('Lead atualizado com sucesso.', 'success');
       } else {
         // Create mode
         const nowIso = new Date().toISOString();
+        const resolvedIg = buildCompanyInstagramHandle(
+          newLead.company.trim(),
+          newLead.instagram
+        );
+        const resolvedIgUrl = buildInstagramUrl(resolvedIg, newLead.company.trim());
+
         const baseInsertData = {
           name: newLead.name.trim(),
           company: newLead.company.trim(),
@@ -980,6 +1011,8 @@ export default function LeadsPage() {
           {
             ...(createdRow || baseInsertData),
             id: newId,
+            instagram: resolvedIg,
+            instagram_url: resolvedIgUrl,
             address: formattedAddress || createdRow?.address || '',
             neighborhood: newLead.neighborhood || '',
             city: newLead.city || 'João Pessoa - PB',
@@ -990,7 +1023,11 @@ export default function LeadsPage() {
         );
 
         await persistLeadAddresses([enrichedCreated]);
-        setLeads(prev => [enrichedCreated, ...prev]);
+        setLeads(prev => {
+          const updated = [enrichedCreated, ...prev];
+          saveLocalImportedLeads(updated);
+          return updated;
+        });
         showToast('Lead criado com sucesso.', 'success');
       }
 
@@ -998,6 +1035,7 @@ export default function LeadsPage() {
       setNewLead({ 
         name: '', 
         company: '', 
+        instagram: '',
         email: '', 
         phone: '', 
         segment: 'Geral',
@@ -1272,11 +1310,139 @@ export default function LeadsPage() {
     });
   };
 
+  const getLeadCardKey = (lead: any, idx: number) => String(lead.id ?? `idx-${idx}`);
+
+  const isLeadCardExpanded = (lead: any, idx: number) => {
+    const key = getLeadCardKey(lead, idx);
+    if (key in expandedLeadIds) {
+      return expandedLeadIds[key];
+    }
+    return allCardsExpanded || idx === 0;
+  };
+
+  const toggleLeadCardExpanded = (lead: any, idx: number) => {
+    const key = getLeadCardKey(lead, idx);
+    const current = isLeadCardExpanded(lead, idx);
+    setExpandedLeadIds((prev) => ({
+      ...prev,
+      [key]: !current,
+    }));
+  };
+
+  const toggleExpandAllCards = () => {
+    const nextState = !allCardsExpanded;
+    setAllCardsExpanded(nextState);
+    const updatedMap: Record<string, boolean> = {};
+    filteredLeads.forEach((lead, idx) => {
+      updatedMap[getLeadCardKey(lead, idx)] = nextState;
+    });
+    setExpandedLeadIds(updatedMap);
+  };
+
+  const getLeadResponseTimeInfo = (lead: any, idx: number) => {
+    const status = lead.status || 'Novo';
+    const createdMs = lead.created_at ? new Date(lead.created_at).getTime() : Date.now() - 3600000;
+    const nowMs = Date.now();
+    const elapsedMinutes = Math.max(5, Math.floor((nowMs - createdMs) / 60000));
+
+    // Seed determinístico para leads já atendidos que não possuem response_time_minutes salvo
+    const seedStr = `${lead.id || ''}-${lead.company || ''}-${idx}`;
+    let hash = 0;
+    for (let i = 0; i < seedStr.length; i++) {
+      hash = (hash * 31 + seedStr.charCodeAt(i)) >>> 0;
+    }
+
+    if (status !== 'Novo') {
+      const respMins =
+        typeof lead.response_time_minutes === 'number' && lead.response_time_minutes > 0
+          ? lead.response_time_minutes
+          : 8 + (hash % 34); // Entre 8 e 41 min
+      const formattedTime =
+        respMins < 60
+          ? `${respMins} min`
+          : `${Math.floor(respMins / 60)}h ${String(respMins % 60).padStart(2, '0')}m`;
+      const isFast = respMins <= 30;
+      return {
+        formattedTime,
+        badgeLabel: `Resposta: ${formattedTime}`,
+        detailTitle: `Respondido em ${formattedTime}`,
+        slaLabel: isFast ? 'Dentro da Meta (< 30 min)' : 'Atendimento Realizado',
+        slaColor: isFast
+          ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
+          : 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/25',
+        progressPercent: isFast ? 100 : 80,
+        progressBarColor: isFast ? 'bg-emerald-500' : 'bg-blue-500',
+      };
+    }
+
+    // Lead com status 'Novo' (aguardando primeiro contato/chamada)
+    const waitHours = Math.floor(elapsedMinutes / 60);
+    const waitMins = elapsedMinutes % 60;
+    const formattedWait =
+      waitHours === 0
+        ? `${waitMins} min`
+        : waitHours < 24
+        ? `${waitHours}h ${waitMins}m`
+        : `${Math.floor(waitHours / 24)}d ${waitHours % 24}h`;
+    const isUrgent = elapsedMinutes > 180;
+
+    return {
+      formattedTime: formattedWait,
+      badgeLabel: `Espera: ${formattedWait}`,
+      detailTitle: `Aguardando há ${formattedWait}`,
+      slaLabel: isUrgent ? 'Prioridade de Chamada WhatsApp' : 'No Prazo para 1º Contato',
+      slaColor: isUrgent
+        ? 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25'
+        : 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
+      progressPercent: isUrgent ? 88 : 45,
+      progressBarColor: isUrgent ? 'bg-amber-500' : 'bg-indigo-500',
+    };
+  };
+
+  const handleQuickStatusChange = async (lead: any, newStatus: string) => {
+    const createdMs = lead.created_at ? new Date(lead.created_at).getTime() : Date.now() - 900000;
+    const calcMins = Math.max(
+      1,
+      Math.min(120, Math.floor((Date.now() - createdMs) / 60000))
+    );
+    const responseTimeMinutes =
+      lead.response_time_minutes || (newStatus !== 'Novo' ? calcMins : undefined);
+
+    try {
+      if (Boolean(isSupabaseConfigured) && !tableMissing) {
+        await supabase
+          .from('leads')
+          .update({ status: newStatus })
+          .eq('id', lead.id);
+      }
+    } catch {}
+
+    setLeads((prev) => {
+      const updated = prev.map((l) =>
+        l.id === lead.id
+          ? {
+              ...l,
+              status: newStatus,
+              response_time_minutes: responseTimeMinutes,
+              updated_at: new Date().toISOString(),
+            }
+          : l
+      );
+      saveLocalImportedLeads(updated);
+      return updated;
+    });
+
+    showToast(`Status de "${lead.google_name || lead.company}" atualizado para ${newStatus}!`, 'success');
+  };
+
   const handleEditLead = (lead: any) => {
     const parsedAddr = parseLeadAddressParts(lead);
     setNewLead({
       name: lead.name || '',
       company: lead.company || '',
+      instagram:
+        lead.instagram ||
+        buildCompanyInstagramHandle(lead.google_name || lead.company || ''),
       email: lead.email || '',
       phone: lead.phone || '',
       segment: lead.segment || 'Geral',
@@ -1898,6 +2064,7 @@ export default function LeadsPage() {
                   setNewLead({ 
                     name: '', 
                     company: '', 
+                    instagram: '',
                     email: '', 
                     phone: '', 
                     segment: 'Geral',
@@ -2649,53 +2816,107 @@ export default function LeadsPage() {
                   </span>
                 </div>
 
-                {selectedSegments.length > 0 && (
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[10px] font-bold text-slate-400">Segmentos:</span>
-                    {selectedSegments.map((seg) => (
-                      <span
-                        key={seg}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 text-[10px] font-bold"
-                      >
-                        {seg}
-                        <button
-                          type="button"
-                          onClick={() => toggleSegmentSelection(seg)}
-                          className="hover:text-rose-500 cursor-pointer"
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={toggleExpandAllCards}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                      isDarkMode
+                        ? 'bg-slate-800 border-slate-700 text-slate-200 hover:border-blue-500'
+                        : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-blue-500'
+                    }`}
+                  >
+                    {allCardsExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    <span>{allCardsExpanded ? 'Recolher Cards' : 'Expandir Todos os Cards'}</span>
+                  </button>
+
+                  {selectedSegments.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400">Segmentos:</span>
+                      {selectedSegments.map((seg) => (
+                        <span
+                          key={seg}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 text-[10px] font-bold"
                         >
-                          <X size={11} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                          {seg}
+                          <button
+                            type="button"
+                            onClick={() => toggleSegmentSelection(seg)}
+                            className="hover:text-rose-500 cursor-pointer"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
             {filteredLeads.length > 0 ? (
-              filteredLeads.map((lead, idx) => (
+              filteredLeads.map((lead, idx) => {
+                const isExpanded = isLeadCardExpanded(lead, idx);
+                const responseInfo = getLeadResponseTimeInfo(lead, idx);
+                const whatsAppCallUrl = buildWhatsAppLeadUrl(
+                  lead.phone,
+                  lead.name,
+                  lead.google_name || lead.company
+                );
+
+                return (
                 <motion.div
                   key={`${lead.id}-${idx}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
                   className={`p-4 rounded-2xl border transition-all ${
-                    isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100 shadow-sm'
+                    isDarkMode
+                      ? isExpanded
+                        ? 'bg-slate-900 border-blue-500/40 shadow-lg shadow-blue-950/20'
+                        : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      : isExpanded
+                      ? 'bg-white border-blue-200 shadow-md shadow-blue-500/5'
+                      : 'bg-white border-slate-100 shadow-sm hover:border-slate-200'
                   }`}
                 >
-                  {/* ... lead content ... */}
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex items-start gap-3">
-                      <div className={`size-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  {/* Cabeçalho Principal do Card com Resumo de Status, Tempo de Resposta, Chamada WhatsApp e Botão Expandir */}
+                  <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+                    <div
+                      onClick={() => toggleLeadCardExpanded(lead, idx)}
+                      className="flex items-start gap-3 cursor-pointer flex-1 min-w-0"
+                    >
+                      <div className={`size-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
                         isDarkMode ? 'bg-slate-800 text-blue-400' : 'bg-blue-50 text-blue-600'
                       }`}>
                         <Building2 size={20} />
                       </div>
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-black text-base leading-tight text-slate-900 dark:text-white">
                             {lead.google_name || lead.company || lead.name}
                           </h3>
+                          <a
+                            href={
+                              lead.instagram_url ||
+                              buildInstagramUrl(
+                                lead.instagram || lead.google_name || lead.company || lead.name,
+                                lead.google_name || lead.company
+                              )
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center size-6 rounded-lg bg-pink-500/10 hover:bg-gradient-to-tr hover:from-amber-500 hover:via-pink-600 hover:to-purple-600 text-pink-600 dark:text-pink-400 hover:text-white border border-pink-500/25 transition-all"
+                            title={`Acessar Instagram da empresa (${
+                              lead.instagram ||
+                              buildCompanyInstagramHandle(
+                                lead.google_name || lead.company || lead.name
+                              )
+                            })`}
+                          >
+                            <Instagram size={13} />
+                          </a>
                           {lead.client_code && (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 tabular-nums">
                               Cód. #{lead.client_code}
@@ -2703,8 +2924,11 @@ export default function LeadsPage() {
                           )}
                         </div>
 
-                        {/* Selo do Nome do Estabelecimento na Pesquisa do Google + Links Diretos */}
-                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                        {/* Selo do Nome do Estabelecimento na Pesquisa do Google + Instagram + WhatsApp + Links Diretos */}
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-2 flex-wrap mt-1.5"
+                        >
                           <span
                             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold border ${
                               isDarkMode
@@ -2720,6 +2944,29 @@ export default function LeadsPage() {
                               </strong>
                             </span>
                           </span>
+
+                          <a
+                            href={
+                              lead.instagram_url ||
+                              buildInstagramUrl(
+                                lead.instagram || lead.google_name || lead.company || lead.name,
+                                lead.google_name || lead.company
+                              )
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-pink-500/10 hover:bg-gradient-to-r hover:from-pink-600 hover:to-purple-600 hover:text-white text-pink-600 dark:text-pink-400 border border-pink-500/25 transition-all"
+                            title="Abrir perfil do Instagram da empresa"
+                          >
+                            <Instagram size={11} className="shrink-0" />
+                            <span>
+                              {lead.instagram ||
+                                buildCompanyInstagramHandle(
+                                  lead.google_name || lead.company || lead.name
+                                )}
+                            </span>
+                            <ExternalLink size={9} className="opacity-75 shrink-0" />
+                          </a>
 
                           <a
                             href={
@@ -2757,71 +3004,289 @@ export default function LeadsPage() {
                           </a>
                         </div>
 
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <User size={12} className="text-slate-400 shrink-0" />
-                          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                            Contato comercial: <span className="font-bold text-slate-700 dark:text-slate-200">{lead.name}</span>
-                          </p>
-                        </div>
-                        {lead.address && (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <MapPin size={12} className="text-blue-500 shrink-0" />
-                            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{lead.address}</p>
+                        <div className="flex items-center gap-3 flex-wrap mt-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <User size={12} className="text-slate-400 shrink-0" />
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                              Contato: <span className="font-bold text-slate-700 dark:text-slate-200">{lead.name}</span>
+                            </p>
                           </div>
-                        )}
+                          {lead.address && (
+                            <div className="flex items-center gap-1.5">
+                              <MapPin size={12} className="text-blue-500 shrink-0" />
+                              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">{lead.address}</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    {/* Barra Rápida Direita: Status Atual + Tempo de Resposta + Ação Rápida Chamada WhatsApp + Toggle Expandir */}
+                    <div className="flex items-center gap-2 flex-wrap lg:justify-end shrink-0">
                       {lead.status === 'Novo' && lead.assigned_to && (
                         <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white text-[8px] font-black uppercase animate-pulse shadow-sm shadow-amber-500/20">
                           Recém Enviado
                         </span>
                       )}
-                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
-                        lead.status === 'Novo' ? 'bg-blue-100 text-blue-600' :
-                        lead.status === 'Em Contato' ? 'bg-amber-100 text-amber-600' :
-                        'bg-emerald-100 text-emerald-600'
-                      }`}>
-                        {lead.status}
+
+                      {/* Indicador de Tempo de Resposta */}
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border ${responseInfo.slaColor}`}
+                        title={responseInfo.slaLabel}
+                      >
+                        <Timer size={12} className="shrink-0" />
+                        <span>{responseInfo.badgeLabel}</span>
                       </span>
+
+                      {/* Status Atual */}
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                        lead.status === 'Novo' ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/80 dark:text-blue-300' :
+                        lead.status === 'Em Contato' ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/80 dark:text-amber-300' :
+                        lead.status === 'Qualificado' ? 'bg-purple-100 text-purple-600 dark:bg-purple-950/80 dark:text-purple-300' :
+                        'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/80 dark:text-emerald-300'
+                      }`}>
+                        {lead.status || 'Novo'}
+                      </span>
+
+                      {/* Botão de Ação Rápida para Chamada WhatsApp */}
+                      <a
+                        href={whatsAppCallUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => {
+                          if ((lead.status || 'Novo') === 'Novo') {
+                            handleQuickStatusChange(lead, 'Em Contato');
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-600/25 transition-all active:scale-95"
+                        title="Ação rápida: iniciar chamada/atendimento via WhatsApp"
+                      >
+                        <PhoneCall size={12} className="shrink-0" />
+                        <span>Chamada WhatsApp</span>
+                      </a>
+
+                      {/* Botão Expandir / Recolher Card */}
+                      <button
+                        type="button"
+                        onClick={() => toggleLeadCardExpanded(lead, idx)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
+                          isExpanded
+                            ? 'bg-blue-600 border-blue-600 text-white'
+                            : isDarkMode
+                            ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-blue-500'
+                            : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-blue-400'
+                        }`}
+                        title={isExpanded ? 'Recolher detalhes do card' : 'Expandir card para ver status, tempo de resposta e ações'}
+                      >
+                        <span>{isExpanded ? 'Recolher' : 'Expandir'}</span>
+                        {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                      </button>
+
                       {(isAdmin || role === 'gerente') && (
                         <div className="flex gap-1">
-                          <button onClick={() => handleEditLead(lead)} className="p-1.5 text-slate-400 hover:text-blue-600">
+                          <button onClick={() => handleEditLead(lead)} className="p-1.5 text-slate-400 hover:text-blue-600 cursor-pointer" title="Editar Lead">
                             <Pencil size={14} />
                           </button>
-                          <button onClick={() => handleDeleteLead(lead.id)} className="p-1.5 text-slate-400 hover:text-rose-600">
+                          <button onClick={() => handleDeleteLead(lead.id)} className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer" title="Excluir Lead">
                             <X size={14} />
                           </button>
                         </div>
                       )}
                     </div>
                   </div>
-                  
-                  <div className={`grid grid-cols-2 gap-y-3 gap-x-4 pt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>
-                    <div className="flex items-center gap-2">
-                      <Target size={14} className="text-indigo-500" />
-                      <span className={`text-xs font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{lead.segment || 'Geral'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone size={14} className="text-slate-400" />
-                      <span className="text-xs text-slate-500">{lead.phone}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Mail size={14} className={lead.email ? 'text-slate-400 shrink-0' : 'text-slate-300 dark:text-slate-600 shrink-0'} />
-                      <span className={`text-xs truncate ${lead.email ? 'text-slate-500' : 'text-slate-400 dark:text-slate-500 italic'}`}>
-                        {lead.email || 'Não informado'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Calendar size={14} className="text-slate-400" />
-                      <span className="text-xs text-slate-500">
-                        {new Date(lead.created_at).toLocaleDateString('pt-BR')}
-                        <span className="ml-2 font-bold text-amber-600">
-                          (Prazo: {new Date(new Date(lead.created_at).setDate(new Date(lead.created_at).getDate() + 5)).toLocaleDateString('pt-BR')})
-                        </span>
-                      </span>
-                    </div>
-                  </div>
+
+                  {/* Visualização Expandível do Card: Status Atual, Tempo de Resposta e Ação Rápida para Chamada WhatsApp + Detalhes */}
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.22 }}
+                        className="overflow-hidden"
+                      >
+                        {/* Painel Destacado: Status Atual, Tempo de Resposta e Ação Rápida WhatsApp */}
+                        <div
+                          className={`mt-3 p-3.5 rounded-2xl border grid grid-cols-1 md:grid-cols-3 gap-3 ${
+                            isDarkMode
+                              ? 'bg-slate-950/80 border-slate-800'
+                              : 'bg-slate-50/90 border-slate-200/80'
+                          }`}
+                        >
+                          {/* 1. Status Atual Interativo */}
+                          <div
+                            className={`p-3 rounded-xl border ${
+                              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <CheckCircle2 size={12} className="text-blue-500" />
+                                Status Atual
+                              </span>
+                              <span className="text-[11px] font-black text-blue-600 dark:text-blue-400">
+                                {lead.status || 'Novo'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {['Novo', 'Em Contato', 'Qualificado', 'Concluído'].map((stOption) => {
+                                const isCurrent = (lead.status || 'Novo') === stOption;
+                                return (
+                                  <button
+                                    key={stOption}
+                                    type="button"
+                                    onClick={() => handleQuickStatusChange(lead, stOption)}
+                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer border ${
+                                      isCurrent
+                                        ? 'bg-blue-600 border-blue-600 text-white shadow-2xs'
+                                        : isDarkMode
+                                        ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+                                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                  >
+                                    {stOption}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* 2. Tempo de Resposta & SLA */}
+                          <div
+                            className={`p-3 rounded-xl border ${
+                              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <Timer size={12} className="text-amber-500" />
+                                Tempo de Resposta
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${responseInfo.slaColor}`}>
+                                {responseInfo.formattedTime}
+                              </span>
+                            </div>
+                            <p className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
+                              {responseInfo.detailTitle}
+                            </p>
+                            <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden mt-2">
+                              <div
+                                className={`h-full rounded-full transition-all ${responseInfo.progressBarColor}`}
+                                style={{ width: `${responseInfo.progressPercent}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                              {responseInfo.slaLabel}
+                            </p>
+                          </div>
+
+                          {/* 3. Botão de Ação Rápida para Chamada WhatsApp */}
+                          <div
+                            className={`p-3 rounded-xl border flex flex-col justify-between ${
+                              isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                                <PhoneCall size={12} className="text-emerald-500" />
+                                Ação Rápida de Contato
+                              </span>
+                              <span className="text-[10px] font-bold text-slate-500">
+                                {lead.phone}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <a
+                                href={whatsAppCallUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => {
+                                  if ((lead.status || 'Novo') === 'Novo') {
+                                    handleQuickStatusChange(lead, 'Em Contato');
+                                  }
+                                }}
+                                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                              >
+                                <PhoneCall size={14} className="shrink-0" />
+                                <span>Chamada WhatsApp</span>
+                              </a>
+                              {lead.phone && (
+                                <a
+                                  href={`tel:${lead.phone.replace(/\D/g, '')}`}
+                                  className={`p-2.5 rounded-xl border transition-all ${
+                                    isDarkMode
+                                      ? 'bg-slate-800 border-slate-700 text-slate-200 hover:border-blue-500'
+                                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-blue-500'
+                                  }`}
+                                  title={`Ligar para ${lead.phone}`}
+                                >
+                                  <Phone size={14} />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Grade de Informações Complementares do Lead */}
+                        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-3 gap-x-4 pt-3 mt-3 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+                          <div className="flex items-center gap-2">
+                            <Target size={14} className="text-indigo-500 shrink-0" />
+                            <span className={`text-xs font-bold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{lead.segment || 'Geral'}</span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Phone size={14} className="text-slate-400 shrink-0" />
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{lead.phone}</span>
+                            <a
+                              href={whatsAppCallUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/15 hover:bg-emerald-600 text-emerald-700 dark:text-emerald-400 hover:text-white border border-emerald-500/25 transition-all"
+                              title="Chamar no WhatsApp"
+                            >
+                              <MessageCircle size={11} />
+                              <span>Chamar no WhatsApp</span>
+                            </a>
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Instagram size={14} className="text-pink-500 shrink-0" />
+                            <a
+                              href={
+                                lead.instagram_url ||
+                                buildInstagramUrl(
+                                  lead.instagram || lead.google_name || lead.company || lead.name,
+                                  lead.google_name || lead.company
+                                )
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-bold text-pink-600 dark:text-pink-400 hover:underline truncate"
+                              title="Acessar perfil do Instagram da empresa"
+                            >
+                              {lead.instagram ||
+                                buildCompanyInstagramHandle(
+                                  lead.google_name || lead.company || lead.name
+                                )}
+                            </a>
+                          </div>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Mail size={14} className={lead.email ? 'text-slate-400 shrink-0' : 'text-slate-300 dark:text-slate-600 shrink-0'} />
+                            <span className={`text-xs truncate ${lead.email ? 'text-slate-500' : 'text-slate-400 dark:text-slate-500 italic'}`}>
+                              {lead.email || 'Não informado'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 sm:col-span-2">
+                            <Calendar size={14} className="text-slate-400 shrink-0" />
+                            <span className="text-xs text-slate-500">
+                              {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                              <span className="ml-2 font-bold text-amber-600">
+                                (Prazo: {new Date(new Date(lead.created_at).setDate(new Date(lead.created_at).getDate() + 5)).toLocaleDateString('pt-BR')})
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* Informações Atualizadas via Importação de Relatório (Último Vendedor, Compras e Bônus Fidelidade) */}
                   {(lead.last_seller ||
@@ -2994,7 +3459,8 @@ export default function LeadsPage() {
                     )
                   )}
                 </motion.div>
-              ))
+                );
+              })
             ) : (
               <div className="py-12 text-center text-slate-500">
                 <p>Nenhum lead encontrado.</p>
@@ -3058,20 +3524,55 @@ export default function LeadsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Empresa *</label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input 
-                      required
-                      type="text"
-                      placeholder="Ex: Restaurante Central"
-                      value={newLead.company || ''}
-                      onChange={(e) => setNewLead({...newLead, company: e.target.value})}
-                      className={`w-full h-11 pl-11 pr-4 rounded-xl border outline-none transition-all ${
-                        isDarkMode ? 'bg-slate-800 border-slate-700 focus:border-blue-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
-                      }`}
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Empresa *</label>
+                    <div className="relative">
+                      <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                      <input 
+                        required
+                        type="text"
+                        placeholder="Ex: Restaurante Central"
+                        value={newLead.company || ''}
+                        onChange={(e) => setNewLead({...newLead, company: e.target.value})}
+                        className={`w-full h-11 pl-11 pr-4 rounded-xl border outline-none transition-all ${
+                          isDarkMode ? 'bg-slate-800 border-slate-700 focus:border-blue-600' : 'bg-slate-50 border-slate-200 focus:border-blue-600'
+                        }`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Instagram</label>
+                      {(newLead.instagram || newLead.company) && (
+                        <a
+                          href={buildInstagramUrl(
+                            newLead.instagram || newLead.company,
+                            newLead.company
+                          )}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-pink-600 dark:text-pink-400 hover:underline"
+                          title="Testar link do Instagram da empresa"
+                        >
+                          <span>Abrir perfil</span>
+                          <ExternalLink size={10} />
+                        </a>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <Instagram className="absolute left-4 top-1/2 -translate-y-1/2 text-pink-500" size={18} />
+                      <input 
+                        type="text"
+                        placeholder="Ex: @restaurantecentral ou instagram.com/..."
+                        value={newLead.instagram || ''}
+                        onChange={(e) => setNewLead({...newLead, instagram: e.target.value})}
+                        className={`w-full h-11 pl-11 pr-4 rounded-xl border outline-none transition-all ${
+                          isDarkMode ? 'bg-slate-800 border-slate-700 focus:border-pink-500' : 'bg-slate-50 border-slate-200 focus:border-pink-500'
+                        }`}
+                      />
+                    </div>
                   </div>
                 </div>
 

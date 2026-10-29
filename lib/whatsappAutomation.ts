@@ -1,4 +1,4 @@
-export type AutomationTriggerType =
+export type BuiltInAutomationTriggerType =
   | 'task_created'
   | 'task_status_changed'
   | 'task_overdue_reminder'
@@ -10,12 +10,473 @@ export type AutomationTriggerType =
   | 'special_delivery_alert'
   | 'daily_executive_summary';
 
+export type AutomationTriggerType = BuiltInAutomationTriggerType | (string & {});
+
+export type TriggerFiringMode =
+  | 'system_event'
+  | 'scheduled_time'
+  | 'status_change'
+  | 'delay_after_event';
+
+export interface WhatsAppCustomTrigger {
+  id: string;
+  label: string;
+  systemActionKey?: string;
+  actionDescription?: string;
+  category: AutomationCategory;
+  defaultRecipient: RecipientTarget;
+  availableVariables: string[];
+  hasSchedule?: boolean;
+  defaultScheduleTime?: string;
+  firingMode?: TriggerFiringMode;
+  conditionStatusValue?: string;
+  delayMinutes?: number;
+  isCustom?: boolean;
+  createdAt?: string;
+}
+
+export interface SystemActionOption {
+  actionKey: string;
+  actionLabel: string;
+  category: AutomationCategory;
+  defaultRecipient: RecipientTarget;
+  defaultFiringMode: TriggerFiringMode;
+  defaultVariables: string[];
+}
+
+export interface SidebarModuleOption {
+  key: AutomationCategory;
+  label: string;
+  section: 'Principal' | 'Comunicação & CRM' | 'Operações' | 'Resultados' | 'Administração';
+  href: string;
+}
+
+export const SIDEBAR_MODULE_OPTIONS: SidebarModuleOption[] = [
+  // Principal
+  { key: 'home', label: 'Início', section: 'Principal', href: '/' },
+  { key: 'products', label: 'Catálogo de Peças', section: 'Principal', href: '/products' },
+  { key: 'split_table', label: 'Tabela de Split', section: 'Principal', href: '/tabela-split' },
+  { key: 'loyalty', label: 'Clientes Fidelidade', section: 'Principal', href: '/clientes-fidelidade' },
+  { key: 'tasks', label: 'Tarefas', section: 'Principal', href: '/tasks' },
+  { key: 'demands', label: 'Demandas', section: 'Principal', href: '/demands' },
+  { key: 'routes', label: 'Rotas & GPS', section: 'Principal', href: '/routes' },
+
+  // Comunicação & CRM
+  { key: 'whatsapp', label: 'WhatsApp', section: 'Comunicação & CRM', href: '/whatsapp' },
+  { key: 'leads', label: 'Leads', section: 'Comunicação & CRM', href: '/leads' },
+  { key: 'social_media', label: 'Site', section: 'Comunicação & CRM', href: '/social-media' },
+
+  // Operações
+  { key: 'deliveries', label: 'Entregas', section: 'Operações', href: '/deliveries' },
+  { key: 'shipping_calculator', label: 'Cálculo de Frete', section: 'Operações', href: '/shipping-calculator' },
+  { key: 'truck_history', label: 'Caminhão Reposição', section: 'Operações', href: '/reports/truck-history' },
+  { key: 'transfers', label: 'Transferências', section: 'Operações', href: '/transfers' },
+  { key: 'warranties', label: 'Garantias', section: 'Operações', href: '/warranties' },
+  { key: 'assistances', label: 'Assistência Técnica', section: 'Operações', href: '/warranties/assistances' },
+  { key: 'price_research', label: 'Pesquisa Concorrentes', section: 'Operações', href: '/price-research' },
+  { key: 'mercado_livre', label: 'Pesquisa Mercado Livre', section: 'Operações', href: '/mercado-livre' },
+
+  // Resultados
+  { key: 'sales', label: 'Vendas', section: 'Resultados', href: '/sales-results' },
+  { key: 'reports', label: 'Relatórios', section: 'Resultados', href: '/reports' },
+
+  // Administração
+  { key: 'live_panel', label: 'Painel Ao Vivo (GPS)', section: 'Administração', href: '/painel-ao-vivo' },
+  { key: 'collaborators', label: 'Equipe', section: 'Administração', href: '/collaborators' },
+  { key: 'commissions', label: 'Comissionados', section: 'Administração', href: '/admin/commissions' },
+  { key: 'settings', label: 'Configurações', section: 'Administração', href: '/admin/settings' },
+  { key: 'adriano_commissions', label: 'Comissões Adriano', section: 'Administração', href: '/admin/comissoes-adriano' }
+];
+
+export const SYSTEM_ACTION_CATALOG: SystemActionOption[] = [
+  // Comunicação & CRM -> Leads
+  {
+    actionKey: 'lead_created',
+    actionLabel: 'Leads: Captar / pesquisar ou cadastrar novo Lead na prospecção',
+    category: 'leads',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{bairro}', '{cidade}', '{vendedor}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'lead_distributed',
+    actionLabel: 'Leads: Distribuir / atribuir Lead para vendedor',
+    category: 'leads',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{vendedor}', '{cliente}', '{bairro}', '{cidade}', '{endereco}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'lead_status_changed',
+    actionLabel: 'Leads: Alterar status do Lead no funil (Novo, Em Contato, Qualificado, Convertido)',
+    category: 'leads',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{cliente}', '{status}', '{vendedor}', '{bairro}', '{cidade}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'lead_converted_loyalty',
+    actionLabel: 'Leads: Converter Lead em Cliente Fidelidade',
+    category: 'leads',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{vendedor}', '{cidade}', '{valor}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'lead_imported_sheet',
+    actionLabel: 'Leads: Importar planilha / lista de novos Leads',
+    category: 'leads',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{cidade}', '{horario}', '{data}']
+  },
+
+  // Comunicação & CRM -> WhatsApp & Site
+  {
+    actionKey: 'whatsapp_message_received',
+    actionLabel: 'WhatsApp: Receber nova mensagem ou resposta de cliente',
+    category: 'whatsapp',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{descricao}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'whatsapp_campaign_dispatched',
+    actionLabel: 'WhatsApp: Iniciar ou concluir disparo de Campanha / Promoção',
+    category: 'whatsapp',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{produto}', '{status}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'site_order_or_post_created',
+    actionLabel: 'Site: Publicar oferta, banner ou receber contato pelo Site',
+    category: 'social_media',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{produto}', '{valor}', '{cliente}', '{horario}', '{data}']
+  },
+
+  // Principal -> Início, Catálogo de Peças, Tabela de Split, Clientes Fidelidade, Tarefas, Demandas, Rotas & GPS
+  {
+    actionKey: 'home_alert_generated',
+    actionLabel: 'Início: Novo aviso ou indicador crítico no Painel Inicial',
+    category: 'home',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{status}', '{descricao}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'product_created_or_updated',
+    actionLabel: 'Catálogo de Peças: Cadastrar novo item ou atualizar preço/estoque',
+    category: 'products',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{produto}', '{categoria}', '{valor}', '{status}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'stock_critical_alert',
+    actionLabel: 'Catálogo de Peças: Produto atingir estoque mínimo / ruptura',
+    category: 'products',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{produto}', '{categoria}', '{status}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'split_calculated',
+    actionLabel: 'Tabela de Split: Cadastrar, alterar ou consultar item na Tabela de Split',
+    category: 'split_table',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{produto}', '{categoria}', '{valor}', '{data}', '{horario}']
+  },
+  {
+    actionKey: 'client_registered',
+    actionLabel: 'Clientes Fidelidade: Cadastrar novo cliente ou registrar compra no Clube',
+    category: 'loyalty',
+    defaultRecipient: 'delivery_client',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{cidade}', '{vendedor}', '{valor}', '{data}']
+  },
+  {
+    actionKey: 'loyalty_reward_reached',
+    actionLabel: 'Clientes Fidelidade: Cliente atingir meta ou resgatar prêmio',
+    category: 'loyalty',
+    defaultRecipient: 'delivery_client',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{produto}', '{valor}', '{status}', '{data}']
+  },
+  {
+    actionKey: 'task_created',
+    actionLabel: 'Tarefas: Criar nova tarefa para colaborador',
+    category: 'tasks',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{criador}', '{tarefa}', '{prioridade}', '{prazo}', '{descricao}', '{horario}']
+  },
+  {
+    actionKey: 'task_status_changed',
+    actionLabel: 'Tarefas: Alterar status ou progresso de tarefa',
+    category: 'tasks',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{colaborador}', '{tarefa}', '{status}', '{progresso}', '{prioridade}', '{horario}']
+  },
+  {
+    actionKey: 'task_completed',
+    actionLabel: 'Tarefas: Concluir / finalizar tarefa',
+    category: 'tasks',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{colaborador}', '{tarefa}', '{status}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'task_overdue_reminder',
+    actionLabel: 'Tarefas: Tarefa atrasada ou vencendo no dia',
+    category: 'tasks',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'scheduled_time',
+    defaultVariables: ['{colaborador}', '{tarefa}', '{prioridade}', '{prazo}', '{status}']
+  },
+  {
+    actionKey: 'demand_created',
+    actionLabel: 'Demandas: Abrir nova demanda ou pedido de material / compra',
+    category: 'demands',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{categoria}', '{descricao}', '{horario}']
+  },
+  {
+    actionKey: 'demand_status_changed',
+    actionLabel: 'Demandas: Atualizar status ou aprovar demanda de material',
+    category: 'demands',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{colaborador}', '{categoria}', '{status}', '{descricao}', '{horario}']
+  },
+  {
+    actionKey: 'route_gps_updated',
+    actionLabel: 'Rotas & GPS: Iniciar rota, desvio ou atualizar rastreamento GPS',
+    category: 'routes',
+    defaultRecipient: 'assigned_driver',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{motorista}', '{veiculo}', '{endereco}', '{bairro}', '{cidade}', '{horario}']
+  },
+
+  // Operações -> Entregas, Cálculo de Frete, Caminhão Reposição, Transferências, Garantias, Assistência Técnica, Pesquisa Concorrentes, Pesquisa Mercado Livre
+  {
+    actionKey: 'delivery_scheduled',
+    actionLabel: 'Entregas: Agendar nova entrega no romaneio',
+    category: 'deliveries',
+    defaultRecipient: 'assigned_driver',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{motorista}', '{veiculo}', '{produto}', '{endereco}', '{bairro}', '{cidade}', '{turno}', '{data}']
+  },
+  {
+    actionKey: 'delivery_out_for_client',
+    actionLabel: 'Entregas: Motorista iniciar rota de entrega (Avisar Cliente)',
+    category: 'deliveries',
+    defaultRecipient: 'delivery_client',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{cliente}', '{produto}', '{motorista}', '{veiculo}', '{endereco}', '{bairro}', '{cidade}', '{turno}']
+  },
+  {
+    actionKey: 'delivery_finalized',
+    actionLabel: 'Entregas: Finalizar ou dar baixa em entrega',
+    category: 'deliveries',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{motorista}', '{veiculo}', '{status}', '{produto}', '{endereco}', '{bairro}', '{cidade}', '{vendedor}', '{horario}']
+  },
+  {
+    actionKey: 'special_delivery_alert',
+    actionLabel: 'Entregas: Reservar Entrega ou Retirada Especial',
+    category: 'deliveries',
+    defaultRecipient: 'custom_number',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{data}', '{turno}', '{motorista}', '{veiculo}', '{produto}', '{endereco}']
+  },
+  {
+    actionKey: 'driver_daily_schedule',
+    actionLabel: 'Entregas: Disparo de roteiro diário de entregas do motorista',
+    category: 'deliveries',
+    defaultRecipient: 'assigned_driver',
+    defaultFiringMode: 'scheduled_time',
+    defaultVariables: ['{motorista}', '{veiculo}', '{data}', '{total_entregas}', '{lista_entregas}']
+  },
+  {
+    actionKey: 'driver_unfinalized_reminder',
+    actionLabel: 'Entregas: Entrega pendente sem baixa no fim do expediente',
+    category: 'deliveries',
+    defaultRecipient: 'assigned_driver',
+    defaultFiringMode: 'scheduled_time',
+    defaultVariables: ['{motorista}', '{quantidade_pendente}', '{lista_entregas}', '{horario}']
+  },
+  {
+    actionKey: 'shipping_quote_calculated',
+    actionLabel: 'Cálculo de Frete: Gerar cotação ou simulação de frete para entrega',
+    category: 'shipping_calculator',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{endereco}', '{bairro}', '{cidade}', '{valor}', '{veiculo}', '{horario}']
+  },
+  {
+    actionKey: 'truck_replenishment_logged',
+    actionLabel: 'Caminhão Reposição: Registrar saída, chegada ou conferência do caminhão',
+    category: 'truck_history',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{motorista}', '{veiculo}', '{produto}', '{status}', '{data}', '{horario}']
+  },
+  {
+    actionKey: 'transfer_created_or_received',
+    actionLabel: 'Transferências: Solicitar, enviar ou confirmar transferência entre lojas/estoque',
+    category: 'transfers',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{produto}', '{status}', '{descricao}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'warranty_opened_or_updated',
+    actionLabel: 'Garantias: Registrar nova solicitação de garantia ou atualizar laudo',
+    category: 'warranties',
+    defaultRecipient: 'delivery_client',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{produto}', '{status}', '{descricao}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'assistance_ticket_updated',
+    actionLabel: 'Assistência Técnica: Abrir ordem de serviço ou atualizar reparo técnico',
+    category: 'assistances',
+    defaultRecipient: 'delivery_client',
+    defaultFiringMode: 'status_change',
+    defaultVariables: ['{cliente}', '{produto}', '{status}', '{valor}', '{descricao}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'competitor_price_recorded',
+    actionLabel: 'Pesquisa Concorrentes: Registrar preço de concorrente ou divergência de mercado',
+    category: 'price_research',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{produto}', '{valor}', '{cidade}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'mercado_livre_research_alert',
+    actionLabel: 'Pesquisa Mercado Livre: Monitorar preço ou oportunidade no Mercado Livre',
+    category: 'mercado_livre',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{produto}', '{valor}', '{status}', '{horario}', '{data}']
+  },
+
+  // Resultados -> Vendas & Relatórios
+  {
+    actionKey: 'sale_created',
+    actionLabel: 'Vendas: Registrar nova venda, pedido comercial ou meta batida',
+    category: 'sales',
+    defaultRecipient: 'delivery_client',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{cliente}', '{vendedor}', '{produto}', '{valor}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'report_generated',
+    actionLabel: 'Relatórios: Emitir relatório gerencial ou fechamento de ciclo',
+    category: 'reports',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{criador}', '{data}', '{horario}', '{descricao}']
+  },
+  {
+    actionKey: 'daily_executive_summary',
+    actionLabel: 'Relatórios: Boletim / Resumo executivo diário para Diretoria',
+    category: 'reports',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'scheduled_time',
+    defaultVariables: ['{data}', '{entregas_concluidas}', '{quantidade_pendente}', '{tarefas_concluidas}', '{tarefas_pendentes}']
+  },
+
+  // Administração -> Painel Ao Vivo (GPS), Equipe, Comissionados, Configurações, Comissões Adriano
+  {
+    actionKey: 'live_gps_alert',
+    actionLabel: 'Painel Ao Vivo (GPS): Alerta de frota, parada prolongada ou chegada em tempo real',
+    category: 'live_panel',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{motorista}', '{veiculo}', '{endereco}', '{status}', '{horario}']
+  },
+  {
+    actionKey: 'collaborator_updated',
+    actionLabel: 'Equipe: Cadastrar novo colaborador, motorista ou atualizar escala',
+    category: 'collaborators',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{status}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'commission_closed',
+    actionLabel: 'Comissionados: Fechar ou liberar comissão de parceiro / vendedor',
+    category: 'commissions',
+    defaultRecipient: 'assigned_collaborator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{vendedor}', '{valor}', '{status}', '{data}']
+  },
+  {
+    actionKey: 'system_settings_changed',
+    actionLabel: 'Configurações: Alterar parâmetros gerais ou integrações do sistema',
+    category: 'settings',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{criador}', '{descricao}', '{horario}', '{data}']
+  },
+  {
+    actionKey: 'adriano_commission_recorded',
+    actionLabel: 'Comissões Adriano: Lançar ou consolidar apuração em Comissões Adriano',
+    category: 'adriano_commissions',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{vendedor}', '{produto}', '{valor}', '{status}', '{data}', '{horario}']
+  },
+
+  // Ação Personalizada Livre
+  {
+    actionKey: 'custom_action',
+    actionLabel: 'Outra ação personalizada do sistema (digitar livremente)',
+    category: 'leads',
+    defaultRecipient: 'admin_or_creator',
+    defaultFiringMode: 'system_event',
+    defaultVariables: ['{colaborador}', '{cliente}', '{motorista}', '{produto}', '{valor}', '{status}', '{horario}', '{data}']
+  }
+];
+
 export type AutomationCategory =
+  | 'home'
+  | 'products'
+  | 'split_table'
+  | 'loyalty'
   | 'tasks'
-  | 'deliveries'
-  | 'clients'
   | 'demands'
-  | 'management';
+  | 'routes'
+  | 'whatsapp'
+  | 'leads'
+  | 'social_media'
+  | 'deliveries'
+  | 'shipping_calculator'
+  | 'truck_history'
+  | 'transfers'
+  | 'warranties'
+  | 'assistances'
+  | 'price_research'
+  | 'mercado_livre'
+  | 'sales'
+  | 'reports'
+  | 'live_panel'
+  | 'collaborators'
+  | 'commissions'
+  | 'settings'
+  | 'adriano_commissions'
+  | 'clients'
+  | 'management'
+  | (string & {});
 
 export type RecipientTarget =
   | 'assigned_collaborator'
@@ -143,6 +604,7 @@ export interface WhatsAppAntiBanStats {
 }
 
 export const RULES_STORAGE_KEY = 'whatsapp_automation_rules_v2_real';
+export const CUSTOM_TRIGGERS_STORAGE_KEY = 'whatsapp_custom_triggers_v1';
 export const LOGS_STORAGE_KEY = 'whatsapp_automation_logs_v2_real';
 export const DIRECTORY_STORAGE_KEY = 'whatsapp_automation_directory_v1';
 export const CHATS_INBOX_SYNC_KEY = 'whatsapp_automated_inbox_messages_v2_real';
@@ -361,80 +823,190 @@ export const DEFAULT_AUTOMATION_RULES: WhatsAppAutomationRule[] = [
 ];
 
 export const TRIGGER_METADATA: Record<
-  AutomationTriggerType,
+  string,
   {
     label: string;
     category: AutomationCategory;
     defaultRecipient: RecipientTarget;
     availableVariables: string[];
     hasSchedule?: boolean;
+    defaultScheduleTime?: string;
+    firingMode?: TriggerFiringMode;
+    conditionStatusValue?: string;
+    delayMinutes?: number;
+    isCustom?: boolean;
   }
 > = {
   task_created: {
     label: 'Quando uma nova tarefa é criada',
     category: 'tasks',
     defaultRecipient: 'assigned_collaborator',
-    availableVariables: ['{colaborador}', '{criador}', '{tarefa}', '{prioridade}', '{prazo}', '{descricao}', '{horario}']
+    availableVariables: ['{colaborador}', '{criador}', '{tarefa}', '{prioridade}', '{prazo}', '{descricao}', '{horario}'],
+    firingMode: 'system_event'
   },
   task_status_changed: {
     label: 'Quando o status da tarefa é alterado',
     category: 'tasks',
     defaultRecipient: 'admin_or_creator',
-    availableVariables: ['{colaborador}', '{tarefa}', '{status}', '{progresso}', '{prioridade}', '{horario}']
+    availableVariables: ['{colaborador}', '{tarefa}', '{status}', '{progresso}', '{prioridade}', '{horario}'],
+    firingMode: 'status_change'
   },
   task_overdue_reminder: {
     label: 'Quando tarefa estiver atrasada ou vencendo no dia',
     category: 'tasks',
     defaultRecipient: 'assigned_collaborator',
     availableVariables: ['{colaborador}', '{tarefa}', '{prioridade}', '{prazo}', '{status}'],
-    hasSchedule: true
+    hasSchedule: true,
+    defaultScheduleTime: '08:30',
+    firingMode: 'scheduled_time'
   },
   driver_daily_schedule: {
     label: 'Horário pré-definido: Roteiro diário de entregas do motorista',
     category: 'deliveries',
     defaultRecipient: 'assigned_driver',
     availableVariables: ['{motorista}', '{veiculo}', '{data}', '{total_entregas}', '{lista_entregas}'],
-    hasSchedule: true
+    hasSchedule: true,
+    defaultScheduleTime: '07:30',
+    firingMode: 'scheduled_time'
   },
   delivery_finalized: {
     label: 'Quando o motorista finalizar ou atualizar entrega',
     category: 'deliveries',
     defaultRecipient: 'admin_or_creator',
-    availableVariables: ['{motorista}', '{veiculo}', '{status}', '{produto}', '{endereco}', '{bairro}', '{cidade}', '{vendedor}', '{horario}']
+    availableVariables: ['{motorista}', '{veiculo}', '{status}', '{produto}', '{endereco}', '{bairro}', '{cidade}', '{vendedor}', '{horario}'],
+    firingMode: 'status_change'
   },
   driver_unfinalized_reminder: {
     label: 'Lembrete automático: Motorista esqueceu de finalizar entrega',
     category: 'deliveries',
     defaultRecipient: 'assigned_driver',
     availableVariables: ['{motorista}', '{quantidade_pendente}', '{lista_entregas}', '{horario}'],
-    hasSchedule: true
+    hasSchedule: true,
+    defaultScheduleTime: '17:30',
+    firingMode: 'scheduled_time'
   },
   delivery_out_for_client: {
     label: 'Quando entrega iniciar rota (Avisar Cliente)',
     category: 'clients',
     defaultRecipient: 'delivery_client',
-    availableVariables: ['{produto}', '{motorista}', '{veiculo}', '{endereco}', '{bairro}', '{cidade}', '{turno}']
+    availableVariables: ['{produto}', '{motorista}', '{veiculo}', '{endereco}', '{bairro}', '{cidade}', '{turno}'],
+    firingMode: 'status_change'
   },
   demand_created: {
     label: 'Quando colaborador abre Demanda / Pedido de Material',
     category: 'demands',
     defaultRecipient: 'admin_or_creator',
-    availableVariables: ['{colaborador}', '{categoria}', '{descricao}', '{horario}']
+    availableVariables: ['{colaborador}', '{categoria}', '{descricao}', '{horario}'],
+    firingMode: 'system_event'
   },
   special_delivery_alert: {
     label: 'Quando uma Entrega Especial for agendada',
     category: 'deliveries',
     defaultRecipient: 'custom_number',
-    availableVariables: ['{data}', '{turno}', '{motorista}', '{veiculo}', '{produto}', '{endereco}']
+    availableVariables: ['{data}', '{turno}', '{motorista}', '{veiculo}', '{produto}', '{endereco}'],
+    firingMode: 'system_event'
   },
   daily_executive_summary: {
     label: 'Horário pré-definido: Resumo Diário para Diretoria',
     category: 'management',
     defaultRecipient: 'admin_or_creator',
     availableVariables: ['{data}', '{entregas_concluidas}', '{quantidade_pendente}', '{tarefas_concluidas}', '{tarefas_pendentes}'],
-    hasSchedule: true
+    hasSchedule: true,
+    defaultScheduleTime: '18:15',
+    firingMode: 'scheduled_time'
   }
 };
+
+export function getCustomTriggers(): WhatsAppCustomTrigger[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(CUSTOM_TRIGGERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(t => t && typeof t.id === 'string' && typeof t.label === 'string');
+    }
+  } catch (e) {
+    console.warn('Error loading custom WhatsApp triggers:', e);
+  }
+  return [];
+}
+
+export function saveCustomTriggers(triggers: WhatsAppCustomTrigger[], syncCloud = true): WhatsAppCustomTrigger[] {
+  if (typeof window === 'undefined') return triggers;
+  try {
+    localStorage.setItem(CUSTOM_TRIGGERS_STORAGE_KEY, JSON.stringify(triggers));
+    // Also mirror in runtime TRIGGER_METADATA so any consumer immediately resolves it
+    for (const t of triggers) {
+      TRIGGER_METADATA[t.id] = {
+        label: t.label,
+        category: t.category,
+        defaultRecipient: t.defaultRecipient,
+        availableVariables: t.availableVariables,
+        hasSchedule: Boolean(t.hasSchedule),
+        defaultScheduleTime: t.defaultScheduleTime,
+        firingMode: t.firingMode,
+        conditionStatusValue: t.conditionStatusValue,
+        delayMinutes: t.delayMinutes,
+        isCustom: true
+      };
+    }
+    window.dispatchEvent(new Event('whatsapp-automation-updated'));
+    if (syncCloud) {
+      void pushWhatsAppCloudUpdate({
+        customTriggers: triggers,
+        forceTriggersUpdate: true
+      });
+    }
+  } catch (e) {
+    console.warn('Error saving custom WhatsApp triggers:', e);
+  }
+  return triggers;
+}
+
+export function deleteCustomTrigger(triggerId: string, syncCloud = true): WhatsAppCustomTrigger[] {
+  const current = getCustomTriggers();
+  const next = current.filter(t => t.id !== triggerId);
+  delete TRIGGER_METADATA[triggerId];
+  return saveCustomTriggers(next, syncCloud);
+}
+
+export function getAllTriggerMetadata(): Record<
+  string,
+  {
+    label: string;
+    category: AutomationCategory;
+    defaultRecipient: RecipientTarget;
+    availableVariables: string[];
+    hasSchedule?: boolean;
+    defaultScheduleTime?: string;
+    firingMode?: TriggerFiringMode;
+    conditionStatusValue?: string;
+    delayMinutes?: number;
+    isCustom?: boolean;
+  }
+> {
+  const customList = getCustomTriggers();
+  const merged = { ...TRIGGER_METADATA };
+  for (const t of customList) {
+    merged[t.id] = {
+      label: t.label,
+      category: t.category,
+      defaultRecipient: t.defaultRecipient,
+      availableVariables: t.availableVariables?.length
+        ? t.availableVariables
+        : ['{colaborador}', '{cliente}', '{produto}', '{status}', '{horario}', '{data}'],
+      hasSchedule: Boolean(t.hasSchedule),
+      defaultScheduleTime: t.defaultScheduleTime,
+      firingMode: t.firingMode,
+      conditionStatusValue: t.conditionStatusValue,
+      delayMinutes: t.delayMinutes,
+      isCustom: true
+    };
+    TRIGGER_METADATA[t.id] = merged[t.id];
+  }
+  return merged;
+}
 
 export function getProviderConfig(): WhatsAppProviderConfig {
   if (typeof window === 'undefined') {
@@ -1081,6 +1653,10 @@ export function applyCloudStateToLocalStorage(cloudState: any, profilePhones?: C
 
     if (Array.isArray(cloudState.rules) && cloudState.rules.length > 0) {
       localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(cloudState.rules));
+    }
+
+    if (Array.isArray(cloudState.customTriggers) && cloudState.customTriggers.length > 0) {
+      localStorage.setItem(CUSTOM_TRIGGERS_STORAGE_KEY, JSON.stringify(cloudState.customTriggers));
     }
 
     if (Array.isArray(cloudState.deletedChatIds)) {
@@ -1750,9 +2326,22 @@ export async function triggerWhatsAppAutomation(
   }
 
   const rules = getAutomationRules();
+  const customTriggers = getCustomTriggers();
   const matchingRules = rules.filter(r => {
     if (options?.forceRuleId) return r.id === options.forceRuleId;
-    if (!r.enabled || r.trigger !== trigger) return false;
+    if (!r.enabled) return false;
+    if (r.trigger !== trigger) {
+      const customTrig = customTriggers.find(ct => ct.id === r.trigger);
+      if (!customTrig || customTrig.systemActionKey !== trigger) return false;
+      if (
+        customTrig.firingMode === 'status_change' &&
+        customTrig.conditionStatusValue &&
+        variables.status &&
+        customTrig.conditionStatusValue.toLowerCase() !== String(variables.status).toLowerCase()
+      ) {
+        return false;
+      }
+    }
     if (r.conditionStatus && r.conditionStatus.length > 0 && variables.status) {
       return r.conditionStatus.some(s => s.toLowerCase() === String(variables.status).toLowerCase());
     }
@@ -1956,6 +2545,10 @@ export interface WhatsAppCampaign {
   targetTags: string[];
   status: 'draft' | 'running' | 'paused' | 'completed';
   includeOptOutFooter: boolean;
+  triggerWhenMode?: 'immediate' | 'scheduled' | 'event';
+  scheduledDate?: string;
+  scheduledTime?: string;
+  triggerEventName?: string;
   recipients: WhatsAppCampaignRecipient[];
   createdAt: string;
   startedAt?: string;

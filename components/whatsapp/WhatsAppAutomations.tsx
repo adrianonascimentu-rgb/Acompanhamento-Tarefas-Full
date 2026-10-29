@@ -31,7 +31,21 @@ import {
   ShieldCheck,
   UserCheck,
   Bell,
-  ArrowRight
+  ArrowRight,
+  Home,
+  Wind,
+  Award,
+  ListTodo,
+  Target,
+  ShoppingBag,
+  Calculator,
+  ArrowRightLeft,
+  Wrench,
+  Tag,
+  Store,
+  TrendingUp,
+  Radio,
+  DollarSign
 } from 'lucide-react';
 import {
   WhatsAppAutomationRule,
@@ -68,7 +82,15 @@ import {
   getAntiBanConfig,
   saveAntiBanConfig,
   getAntiBanLiveStats,
-  humanizeWhatsAppMessage
+  humanizeWhatsAppMessage,
+  WhatsAppCustomTrigger,
+  TriggerFiringMode,
+  SYSTEM_ACTION_CATALOG,
+  SIDEBAR_MODULE_OPTIONS,
+  getCustomTriggers,
+  saveCustomTriggers,
+  deleteCustomTrigger,
+  getAllTriggerMetadata
 } from '@/lib/whatsappAutomation';
 
 const EXTRA_SUGGESTION_TEMPLATES: Omit<WhatsAppAutomationRule, 'id' | 'totalSentCount'>[] = [
@@ -110,13 +132,41 @@ const EXTRA_SUGGESTION_TEMPLATES: Omit<WhatsAppAutomationRule, 'id' | 'totalSent
   }
 ];
 
-const CATEGORY_LABELS: Record<AutomationCategory | 'all', { label: string; shortLabel: string; icon: any }> = {
+const CATEGORY_LABELS: Record<string, { label: string; shortLabel: string; icon: any; section?: string }> = {
   all: { label: 'Todas as Regras', shortLabel: 'Todas', icon: Zap },
-  tasks: { label: 'Tarefas & Equipe', shortLabel: 'Tarefas', icon: ClipboardList },
-  deliveries: { label: 'Entregas & Motoristas', shortLabel: 'Entregas', icon: Truck },
-  clients: { label: 'Avisos a Clientes', shortLabel: 'Clientes', icon: Users },
-  demands: { label: 'Estoque & Demandas', shortLabel: 'Demandas', icon: Package },
-  management: { label: 'Diretoria & Resumos', shortLabel: 'Diretoria', icon: BarChart3 }
+  // Principal
+  home: { label: 'Início', shortLabel: 'Início', icon: Home, section: 'Principal' },
+  products: { label: 'Catálogo de Peças', shortLabel: 'Peças', icon: Package, section: 'Principal' },
+  split_table: { label: 'Tabela de Split', shortLabel: 'Split', icon: Wind, section: 'Principal' },
+  loyalty: { label: 'Clientes Fidelidade', shortLabel: 'Fidelidade', icon: Award, section: 'Principal' },
+  tasks: { label: 'Tarefas', shortLabel: 'Tarefas', icon: ClipboardList, section: 'Principal' },
+  demands: { label: 'Demandas', shortLabel: 'Demandas', icon: ListTodo, section: 'Principal' },
+  routes: { label: 'Rotas & GPS', shortLabel: 'Rotas', icon: Truck, section: 'Principal' },
+  // Comunicação & CRM
+  whatsapp: { label: 'WhatsApp', shortLabel: 'WhatsApp', icon: MessageCircle, section: 'Comunicação & CRM' },
+  leads: { label: 'Leads', shortLabel: 'Leads', icon: Target, section: 'Comunicação & CRM' },
+  social_media: { label: 'Site', shortLabel: 'Site', icon: ShoppingBag, section: 'Comunicação & CRM' },
+  // Operações
+  deliveries: { label: 'Entregas', shortLabel: 'Entregas', icon: Truck, section: 'Operações' },
+  shipping_calculator: { label: 'Cálculo de Frete', shortLabel: 'Frete', icon: Calculator, section: 'Operações' },
+  truck_history: { label: 'Caminhão Reposição', shortLabel: 'Reposição', icon: Truck, section: 'Operações' },
+  transfers: { label: 'Transferências', shortLabel: 'Transferências', icon: ArrowRightLeft, section: 'Operações' },
+  warranties: { label: 'Garantias', shortLabel: 'Garantias', icon: ShieldCheck, section: 'Operações' },
+  assistances: { label: 'Assistência Técnica', shortLabel: 'Assistência', icon: Wrench, section: 'Operações' },
+  price_research: { label: 'Pesquisa Concorrentes', shortLabel: 'Concorrentes', icon: Tag, section: 'Operações' },
+  mercado_livre: { label: 'Pesquisa Mercado Livre', shortLabel: 'Mercado Livre', icon: Store, section: 'Operações' },
+  // Resultados
+  sales: { label: 'Vendas', shortLabel: 'Vendas', icon: TrendingUp, section: 'Resultados' },
+  reports: { label: 'Relatórios', shortLabel: 'Relatórios', icon: BarChart3, section: 'Resultados' },
+  // Administração
+  live_panel: { label: 'Painel Ao Vivo (GPS)', shortLabel: 'GPS Ao Vivo', icon: Radio, section: 'Administração' },
+  collaborators: { label: 'Equipe', shortLabel: 'Equipe', icon: Users, section: 'Administração' },
+  commissions: { label: 'Comissionados', shortLabel: 'Comissionados', icon: DollarSign, section: 'Administração' },
+  settings: { label: 'Configurações', shortLabel: 'Configurações', icon: Settings, section: 'Administração' },
+  adriano_commissions: { label: 'Comissões Adriano', shortLabel: 'Comissões Adriano', icon: TrendingUp, section: 'Administração' },
+  // Compatibilidade com regras anteriores
+  clients: { label: 'Avisos a Clientes', shortLabel: 'Clientes', icon: Users, section: 'Comunicação & CRM' },
+  management: { label: 'Diretoria & Resumos', shortLabel: 'Diretoria', icon: BarChart3, section: 'Administração' }
 };
 
 const RECIPIENT_LABELS: Record<RecipientTarget, string> = {
@@ -128,15 +178,18 @@ const RECIPIENT_LABELS: Record<RecipientTarget, string> = {
 };
 
 export default function WhatsAppAutomations({
-  initialSubView
+  initialSubView,
+  openTriggerModalSignal
 }: {
   initialSubView?: 'rules' | 'antiban' | 'suggestions' | 'logs' | 'directory';
+  openTriggerModalSignal?: number;
 } = {}) {
   const { isDarkMode } = useTheme();
   const { showToast } = useUI();
-  const { isAdmin } = useRole();
+  const { isAdmin, canAccessWhatsapp } = useRole();
 
   const [rules, setRules] = useState<WhatsAppAutomationRule[]>([]);
+  const [customTriggers, setCustomTriggers] = useState<WhatsAppCustomTrigger[]>([]);
   const [logs, setLogs] = useState<WhatsAppAutomationLog[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<AutomationCategory | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -144,11 +197,48 @@ export default function WhatsAppAutomations({
     'rules' | 'antiban' | 'suggestions' | 'logs' | 'directory'
   >(initialSubView || 'rules');
 
+  // Custom Trigger ("Quando Disparar") Creation Modal State
+  const [isTriggerModalOpen, setIsTriggerModalOpen] = useState(false);
+  const [editingTriggerId, setEditingTriggerId] = useState<string | null>(null);
+  const [newVarInput, setNewVarInput] = useState('');
+  const [triggerForm, setTriggerForm] = useState<{
+    selectedActionKey: string;
+    customActionDescription: string;
+    label: string;
+    firingMode: TriggerFiringMode;
+    category: AutomationCategory;
+    defaultRecipient: RecipientTarget;
+    hasSchedule: boolean;
+    defaultScheduleTime: string;
+    conditionStatusValue: string;
+    delayMinutes: number;
+    availableVariables: string[];
+  }>({
+    selectedActionKey: 'lead_created',
+    customActionDescription: '',
+    label: 'Quando captar / pesquisar ou cadastrar novo Lead na prospecção',
+    firingMode: 'system_event',
+    category: 'leads',
+    defaultRecipient: 'assigned_collaborator',
+    hasSchedule: false,
+    defaultScheduleTime: '08:00',
+    conditionStatusValue: 'Qualificado',
+    delayMinutes: 30,
+    availableVariables: ['{cliente}', '{bairro}', '{cidade}', '{vendedor}', '{horario}', '{data}']
+  });
+
   useEffect(() => {
     if (initialSubView) {
       setActiveSubView(initialSubView);
     }
   }, [initialSubView]);
+
+  useEffect(() => {
+    if (openTriggerModalSignal && openTriggerModalSignal > 0) {
+      setActiveSubView('rules');
+      handleOpenCreateTriggerModal();
+    }
+  }, [openTriggerModalSignal]);
 
   // Anti-Ban State
   const [antiBanConfig, setAntiBanConfig] = useState<WhatsAppAntiBanConfig>(DEFAULT_ANTIBAN_CONFIG);
@@ -206,7 +296,13 @@ export default function WhatsAppAutomations({
   const [profilePhones, setProfilePhones] = useState<CollaboratorProfilePhone[]>([]);
   const [isSyncingProfiles, setIsSyncingProfiles] = useState(false);
 
+  const allTriggersMap = useMemo(() => {
+    return getAllTriggerMetadata();
+  }, [customTriggers, rules]);
+
   const loadData = () => {
+    setCustomTriggers(getCustomTriggers());
+    getAllTriggerMetadata();
     setRules(getAutomationRules());
     setLogs(getAutomationLogs());
     setDirectory(getDirectoryConfig());
@@ -316,18 +412,153 @@ export default function WhatsAppAutomations({
     showToast(`Horário programado atualizado para ${newTime}.`, 'success');
   };
 
-  const handleOpenCreateModal = () => {
+  const handleOpenCreateTriggerModal = () => {
+    setEditingTriggerId(null);
+    setNewVarInput('');
+    const defaultAction = SYSTEM_ACTION_CATALOG.find(a => a.actionKey === 'lead_created') || SYSTEM_ACTION_CATALOG[0];
+    const cleanActionText = defaultAction.actionLabel.includes(': ')
+      ? defaultAction.actionLabel.split(': ').slice(1).join(': ')
+      : defaultAction.actionLabel;
+    setTriggerForm({
+      selectedActionKey: defaultAction.actionKey,
+      customActionDescription: '',
+      label: `Quando ${cleanActionText.charAt(0).toLowerCase()}${cleanActionText.slice(1)}`,
+      firingMode: defaultAction.defaultFiringMode,
+      category: defaultAction.category,
+      defaultRecipient: defaultAction.defaultRecipient,
+      hasSchedule: defaultAction.defaultFiringMode === 'scheduled_time',
+      defaultScheduleTime: '08:00',
+      conditionStatusValue: 'Qualificado',
+      delayMinutes: 30,
+      availableVariables: [...defaultAction.defaultVariables]
+    });
+    setIsTriggerModalOpen(true);
+  };
+
+  const handleOpenEditTriggerModal = (triggerItem: WhatsAppCustomTrigger) => {
+    setEditingTriggerId(triggerItem.id);
+    setNewVarInput('');
+    setTriggerForm({
+      selectedActionKey: triggerItem.systemActionKey || 'custom_action',
+      customActionDescription: triggerItem.actionDescription || triggerItem.label,
+      label: triggerItem.label,
+      firingMode: triggerItem.firingMode || (triggerItem.hasSchedule ? 'scheduled_time' : 'system_event'),
+      category: triggerItem.category,
+      defaultRecipient: triggerItem.defaultRecipient,
+      hasSchedule: Boolean(triggerItem.hasSchedule),
+      defaultScheduleTime: triggerItem.defaultScheduleTime || '08:00',
+      conditionStatusValue: triggerItem.conditionStatusValue || 'Concluída',
+      delayMinutes: triggerItem.delayMinutes || 30,
+      availableVariables:
+        triggerItem.availableVariables && triggerItem.availableVariables.length > 0
+          ? triggerItem.availableVariables
+          : ['{colaborador}', '{cliente}', '{produto}', '{status}', '{horario}', '{data}']
+    });
+    setIsTriggerModalOpen(true);
+  };
+
+  const handleSaveCustomTrigger = () => {
+    const baseText =
+      triggerForm.label.trim() ||
+      triggerForm.customActionDescription.trim();
+    if (!baseText) {
+      showToast('Selecione uma ação ou digite o nome do gatilho.', 'warning');
+      return;
+    }
+
+    const isScheduled = triggerForm.firingMode === 'scheduled_time' || triggerForm.hasSchedule;
+    let formattedLabel = baseText;
+    if (
+      triggerForm.firingMode === 'scheduled_time' &&
+      !baseText.toLowerCase().includes(triggerForm.defaultScheduleTime)
+    ) {
+      formattedLabel = `Horário programado (${triggerForm.defaultScheduleTime}): ${baseText}`;
+    } else if (
+      triggerForm.firingMode === 'status_change' &&
+      triggerForm.conditionStatusValue &&
+      !baseText.toLowerCase().includes(triggerForm.conditionStatusValue.toLowerCase())
+    ) {
+      formattedLabel = `${baseText} (Status: ${triggerForm.conditionStatusValue})`;
+    } else if (
+      triggerForm.firingMode === 'delay_after_event' &&
+      triggerForm.delayMinutes > 0 &&
+      !baseText.toLowerCase().includes('min')
+    ) {
+      formattedLabel = `${baseText} (${triggerForm.delayMinutes} min após a ação)`;
+    }
+
+    const triggerId = editingTriggerId || `custom_trigger_${Date.now()}`;
+    const newTriggerObj: WhatsAppCustomTrigger = {
+      id: triggerId,
+      label: formattedLabel,
+      systemActionKey: triggerForm.selectedActionKey,
+      actionDescription: triggerForm.customActionDescription.trim() || formattedLabel,
+      category: triggerForm.category,
+      defaultRecipient: triggerForm.defaultRecipient,
+      availableVariables:
+        triggerForm.availableVariables.length > 0
+          ? triggerForm.availableVariables
+          : ['{colaborador}', '{cliente}', '{produto}', '{status}', '{horario}', '{data}'],
+      hasSchedule: isScheduled,
+      defaultScheduleTime: isScheduled ? triggerForm.defaultScheduleTime : undefined,
+      firingMode: triggerForm.firingMode,
+      conditionStatusValue:
+        triggerForm.firingMode === 'status_change' ? triggerForm.conditionStatusValue : undefined,
+      delayMinutes:
+        triggerForm.firingMode === 'delay_after_event' ? triggerForm.delayMinutes : undefined,
+      isCustom: true,
+      createdAt: new Date().toISOString()
+    };
+
+    const existingList = getCustomTriggers();
+    const updatedList = editingTriggerId
+      ? existingList.map(t => (t.id === editingTriggerId ? newTriggerObj : t))
+      : [newTriggerObj, ...existingList];
+
+    saveCustomTriggers(updatedList, true);
+    setCustomTriggers(updatedList);
+
+    if (isModalOpen) {
+      setFormState(prev => ({
+        ...prev,
+        trigger: triggerId,
+        category: newTriggerObj.category,
+        recipientTarget: newTriggerObj.defaultRecipient,
+        scheduleTime: isScheduled ? newTriggerObj.defaultScheduleTime || '08:00' : prev.scheduleTime
+      }));
+      showToast(`Gatilho "${formattedLabel}" criado e já selecionado na regra!`, 'success');
+    } else {
+      showToast(
+        `Novo gatilho "${formattedLabel}" criado! Ele já está disponível na lista de gatilhos para qualquer regra.`,
+        'success'
+      );
+    }
+
+    setIsTriggerModalOpen(false);
+  };
+
+  const handleDeleteCustomTrigger = (triggerId: string) => {
+    const target = customTriggers.find(t => t.id === triggerId);
+    const updated = deleteCustomTrigger(triggerId, true);
+    setCustomTriggers(updated);
+    showToast(`Gatilho "${target?.label || ''}" removido.`, 'info');
+  };
+
+  const handleOpenCreateModal = (preselectedTrigger?: string) => {
     setEditingRuleId(null);
+    const allMeta = getAllTriggerMetadata();
+    const chosenTrigger = preselectedTrigger && allMeta[preselectedTrigger] ? preselectedTrigger : 'task_created';
+    const meta = allMeta[chosenTrigger] || TRIGGER_METADATA.task_created;
     setFormState({
-      name: '',
-      description: '',
-      category: 'tasks',
-      trigger: 'task_created',
-      recipientTarget: 'assigned_collaborator',
+      name: preselectedTrigger ? meta.label.replace(/^Quando\s+/i, 'Aviso: ') : '',
+      description: preselectedTrigger ? meta.label : '',
+      category: meta.category || 'tasks',
+      trigger: chosenTrigger,
+      recipientTarget: meta.defaultRecipient || 'assigned_collaborator',
       customPhone: '',
-      scheduleTime: '07:30',
+      scheduleTime: meta.defaultScheduleTime || '07:30',
       template:
-        '📌 *Nova Tarefa Atribuída*\n\nOlá *{colaborador}*, *{criador}* criou a tarefa *{tarefa}* (Prioridade: {prioridade}) com prazo para *{prazo}*.',
+        '📌 *Nova Atualização Automática*\n\nOlá *{colaborador}*, temos uma atualização sobre *{tarefa}* (Status: {status}) às *{horario}*.',
       enabled: true
     });
     setIsModalOpen(true);
@@ -364,7 +595,8 @@ export default function WhatsAppAutomations({
       return;
     }
 
-    const triggerMeta = TRIGGER_METADATA[formState.trigger];
+    const allMeta = getAllTriggerMetadata();
+    const triggerMeta = allMeta[formState.trigger] || TRIGGER_METADATA[formState.trigger];
     const hasSchedule = Boolean(triggerMeta?.hasSchedule);
 
     if (editingRuleId) {
@@ -373,7 +605,7 @@ export default function WhatsAppAutomations({
           ? {
               ...r,
               name: formState.name.trim(),
-              description: formState.description.trim() || triggerMeta.label,
+              description: formState.description.trim() || triggerMeta?.label || formState.trigger,
               category: formState.category,
               trigger: formState.trigger,
               recipientTarget: formState.recipientTarget,
@@ -391,7 +623,7 @@ export default function WhatsAppAutomations({
       const newRule: WhatsAppAutomationRule = {
         id: 'rule-' + Date.now(),
         name: formState.name.trim(),
-        description: formState.description.trim() || triggerMeta.label,
+        description: formState.description.trim() || triggerMeta?.label || formState.trigger,
         category: formState.category,
         trigger: formState.trigger,
         recipientTarget: formState.recipientTarget,
@@ -739,13 +971,13 @@ export default function WhatsAppAutomations({
       : 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-emerald-600'
   }`;
 
-  if (!isAdmin) {
+  if (!canAccessWhatsapp && !isAdmin) {
     return (
       <div className={`flex-1 flex flex-col items-center justify-center p-8 text-center ${isDarkMode ? 'bg-slate-950 text-slate-400' : 'bg-slate-50 text-slate-500'}`}>
         <ShieldCheck size={48} className="mb-3 opacity-30 text-emerald-500" />
-        <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">Acesso Restrito ao Administrador</h3>
+        <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">Acesso Restrito</h3>
         <p className="text-xs max-w-sm">
-          As configurações de Automação & Regras do WhatsApp só podem ser visualizadas e alteradas pelo Administrador.
+          Você não possui permissão para visualizar ou alterar as automações do WhatsApp.
         </p>
       </div>
     );
@@ -772,10 +1004,10 @@ export default function WhatsAppAutomations({
             </div>
             <div>
               <h2 className="text-lg sm:text-xl font-bold tracking-tight">
-                Regras de Envio Automático via WhatsApp
+                Regras e Gatilhos de Envio Automático via WhatsApp
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
-                Configure gatilhos automáticos para tarefas delegadas, mudanças de status, roteiros diários de motoristas e lembretes de baixa de entrega.
+                Crie gatilhos personalizados (&quot;Quando Disparar&quot;) por evento, status ou horário fixo e vincule regras automáticas de WhatsApp.
               </p>
             </div>
           </div>
@@ -815,8 +1047,18 @@ export default function WhatsAppAutomations({
 
             <button
               type="button"
-              onClick={handleOpenCreateModal}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-2 shadow-sm transition-colors whitespace-nowrap"
+              onClick={() => handleOpenCreateTriggerModal()}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-sm transition-colors whitespace-nowrap cursor-pointer"
+              title="Criar novo gatilho / definir quando disparar mensagens no WhatsApp"
+            >
+              <Clock size={15} />
+              <span>Criar Gatilho / Quando Disparar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleOpenCreateModal()}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-2 shadow-sm transition-colors whitespace-nowrap cursor-pointer"
             >
               <Plus size={16} />
               <span>Criar Nova Regra</span>
@@ -1116,43 +1358,59 @@ export default function WhatsAppAutomations({
             >
               {/* Category Filter Buttons (Wraps cleanly without horizontal scroll clipping) */}
               <div className="flex flex-wrap items-center gap-2">
-                {(Object.keys(CATEGORY_LABELS) as Array<AutomationCategory | 'all'>).map(catKey => {
-                  const { label, icon: CatIcon } = CATEGORY_LABELS[catKey];
-                  const isSelected = selectedCategory === catKey;
-                  const count =
-                    catKey === 'all'
-                      ? rules.length
-                      : rules.filter(r => r.category === catKey).length;
+                {(Object.keys(CATEGORY_LABELS) as Array<AutomationCategory | 'all'>)
+                  .filter(catKey => {
+                    if (
+                      catKey === 'all' ||
+                      catKey === 'tasks' ||
+                      catKey === 'deliveries' ||
+                      catKey === 'leads' ||
+                      catKey === 'clients' ||
+                      catKey === 'demands' ||
+                      catKey === 'management'
+                    ) {
+                      return true;
+                    }
+                    return rules.some(r => r.category === catKey);
+                  })
+                  .map(catKey => {
+                    const catMeta = CATEGORY_LABELS[catKey] || { label: String(catKey), icon: Zap };
+                    const { label, icon: CatIcon } = catMeta;
+                    const isSelected = selectedCategory === catKey;
+                    const count =
+                      catKey === 'all'
+                        ? rules.length
+                        : rules.filter(r => r.category === catKey).length;
 
-                  return (
-                    <button
-                      key={catKey}
-                      type="button"
-                      onClick={() => setSelectedCategory(catKey)}
-                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all whitespace-nowrap ${
-                        isSelected
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
-                          : isDarkMode
-                          ? 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
-                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                      }`}
-                    >
-                      <CatIcon size={14} className="shrink-0" />
-                      <span>{label}</span>
-                      <span
-                        className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded ${
+                    return (
+                      <button
+                        key={catKey}
+                        type="button"
+                        onClick={() => setSelectedCategory(catKey)}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all whitespace-nowrap ${
                           isSelected
-                            ? 'bg-white/20 text-white'
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
                             : isDarkMode
-                            ? 'bg-slate-800 text-slate-400'
-                            : 'bg-slate-200/80 text-slate-600'
+                            ? 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                         }`}
                       >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <CatIcon size={14} className="shrink-0" />
+                        <span>{label}</span>
+                        <span
+                          className={`text-[10px] font-mono tabular-nums px-1.5 py-0.2 rounded ${
+                            isSelected
+                              ? 'bg-white/20 text-white'
+                              : isDarkMode
+                              ? 'bg-slate-800 text-slate-400'
+                              : 'bg-slate-200/80 text-slate-600'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
               </div>
 
               {/* Search Input */}
@@ -1185,10 +1443,86 @@ export default function WhatsAppAutomations({
               </div>
             </div>
 
+            {/* Painel de Gatilhos / Quando Disparar */}
+            <div
+              className={`p-4 rounded-2xl border space-y-3 ${
+                isDarkMode
+                  ? 'bg-slate-900/90 border-slate-800'
+                  : 'bg-white border-slate-200/90 shadow-2xs'
+              }`}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-indigo-500/15 text-indigo-500 shrink-0">
+                    <Clock size={16} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xs sm:text-sm font-bold">
+                        Gatilhos do Sistema (Quando Disparar)
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 text-indigo-500 border border-indigo-500/30">
+                        {Object.keys(allTriggersMap).length} gatilhos disponíveis nas regras
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Crie novos gatilhos para qualquer ação do aplicativo. Eles aparecerão automaticamente no seletor &quot;Quando disparar? (Gatilho)&quot; ao criar ou editar uma regra.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenCreateTriggerModal()}
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
+                >
+                  <Plus size={14} />
+                  <span>+ Criar Novo Gatilho</span>
+                </button>
+              </div>
+
+              {customTriggers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">
+                    Gatilhos Criados por Você:
+                  </span>
+                  {customTriggers.map(ct => (
+                    <div
+                      key={ct.id}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border ${
+                        isDarkMode
+                          ? 'bg-indigo-950/40 border-indigo-500/40 text-indigo-200'
+                          : 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                      }`}
+                    >
+                      <Zap size={12} className="text-indigo-500 shrink-0" />
+                      <span>{ct.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditTriggerModal(ct)}
+                        className="p-0.5 text-slate-400 hover:text-indigo-400 cursor-pointer ml-1"
+                        title="Editar gatilho"
+                      >
+                        <Edit2 size={11} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCustomTrigger(ct.id)}
+                        className="p-0.5 text-slate-400 hover:text-rose-500 cursor-pointer"
+                        title="Excluir gatilho"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Rules Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               {filteredRules.map(rule => {
-                const triggerInfo = TRIGGER_METADATA[rule.trigger];
+                const triggerInfo = allTriggersMap[rule.trigger] || TRIGGER_METADATA[rule.trigger];
                 const isTesting = testingRuleId === rule.id;
                 const CatIcon = CATEGORY_LABELS[rule.category]?.icon || Zap;
 
@@ -1293,7 +1627,7 @@ export default function WhatsAppAutomations({
                           }`}
                         >
                           <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-                            Gatilho de Disparo
+                            Gatilho / Quando Disparar
                           </span>
                           <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 line-clamp-1">
                             {triggerInfo?.label || rule.trigger}
@@ -2759,26 +3093,38 @@ export default function WhatsAppAutomations({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold mb-1.5">
-                      Quando disparar? (Gatilho) *
-                    </label>
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <label className="block text-xs font-bold">
+                        Quando disparar? (Gatilho) *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCreateTriggerModal()}
+                        className="px-2.5 py-0.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Criar um novo gatilho personalizado / definir quando disparar"
+                      >
+                        <Plus size={12} />
+                        <span>Criar Gatilho / Quando Disparar</span>
+                      </button>
+                    </div>
                     <select
                       value={formState.trigger}
                       onChange={e => {
                         const nextTrigger = e.target.value as AutomationTriggerType;
-                        const meta = TRIGGER_METADATA[nextTrigger];
+                        const meta = allTriggersMap[nextTrigger] || TRIGGER_METADATA[nextTrigger];
                         setFormState({
                           ...formState,
                           trigger: nextTrigger,
-                          category: meta.category,
-                          recipientTarget: meta.defaultRecipient
+                          category: meta?.category || formState.category,
+                          recipientTarget: meta?.defaultRecipient || formState.recipientTarget,
+                          scheduleTime: meta?.defaultScheduleTime || formState.scheduleTime
                         });
                       }}
                       className={inputBaseClass}
                     >
-                      {Object.entries(TRIGGER_METADATA).map(([key, meta]) => (
+                      {Object.entries(allTriggersMap).map(([key, meta]) => (
                         <option key={key} value={key}>
-                          {meta.label}
+                          {meta.isCustom ? `⚡ [Personalizado] ${meta.label}` : meta.label}
                         </option>
                       ))}
                     </select>
@@ -2824,13 +3170,13 @@ export default function WhatsAppAutomations({
                 </div>
 
                 {/* Conditional Row: Horário Pré-definido e/ou Número Customizado */}
-                {(TRIGGER_METADATA[formState.trigger]?.hasSchedule ||
+                {(allTriggersMap[formState.trigger]?.hasSchedule ||
                   formState.recipientTarget === 'custom_number') && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {TRIGGER_METADATA[formState.trigger]?.hasSchedule && (
+                    {allTriggersMap[formState.trigger]?.hasSchedule && (
                       <div>
                         <label className="block text-xs font-bold mb-1.5">
-                          Horário Pré-definido pelo Administrador
+                          Horário Pré-definido para Disparo
                         </label>
                         <input
                           type="time"
@@ -2874,7 +3220,7 @@ export default function WhatsAppAutomations({
                     Variáveis Dinâmicas (clique para inserir na mensagem)
                   </label>
                   <div className="flex flex-wrap gap-2">
-                    {(TRIGGER_METADATA[formState.trigger]?.availableVariables || []).map(v => (
+                    {(allTriggersMap[formState.trigger]?.availableVariables || []).map(v => (
                       <button
                         key={v}
                         type="button"
@@ -2963,6 +3309,493 @@ export default function WhatsAppAutomations({
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE / EDIT TRIGGER ("CRIAR NOVO GATILHO PARA QUALQUER AÇÃO") MODAL */}
+      {isTriggerModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-xs">
+          <div
+            className={`w-full max-w-2xl rounded-2xl border shadow-2xl flex flex-col max-h-[90vh] overflow-hidden ${
+              isDarkMode
+                ? 'bg-slate-900 border-slate-800 text-slate-100'
+                : 'bg-white border-slate-200 text-slate-900'
+            }`}
+          >
+            {/* Trigger Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/15 text-indigo-500">
+                  <Zap size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">
+                    {editingTriggerId
+                      ? 'Editar Gatilho do Sistema'
+                      : 'Criar Novo Gatilho (Para Qualquer Ação do Sistema)'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Crie um gatilho vinculado a qualquer ação do aplicativo. Depois, basta selecioná-lo ao criar sua regra.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTriggerModalOpen(false)}
+                className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                  isDarkMode
+                    ? 'border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                    : 'border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Trigger Modal Body */}
+            <div className="p-6 space-y-5 overflow-y-auto flex-1">
+              {/* 1. Escolha a Ação do Aplicativo */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold">
+                  1. Qual ação do aplicativo vai acionar este gatilho? *
+                </label>
+
+                <select
+                  value={triggerForm.selectedActionKey}
+                  onChange={e => {
+                    const key = e.target.value;
+                    const found = SYSTEM_ACTION_CATALOG.find(a => a.actionKey === key);
+                    if (found) {
+                      const cleanActionText = found.actionLabel.includes(': ')
+                        ? found.actionLabel.split(': ').slice(1).join(': ')
+                        : found.actionLabel;
+                      const autoLabel =
+                        key === 'custom_action'
+                          ? triggerForm.customActionDescription || ''
+                          : `Quando ${cleanActionText.charAt(0).toLowerCase()}${cleanActionText.slice(1)}`;
+                      setTriggerForm(prev => ({
+                        ...prev,
+                        selectedActionKey: key,
+                        label: autoLabel,
+                        category: found.category,
+                        defaultRecipient: found.defaultRecipient,
+                        firingMode: found.defaultFiringMode,
+                        hasSchedule: found.defaultFiringMode === 'scheduled_time',
+                        availableVariables: [...found.defaultVariables]
+                      }));
+                    }
+                  }}
+                  className={inputBaseClass}
+                >
+                  {(['Comunicação & CRM', 'Principal', 'Operações', 'Resultados', 'Administração'] as const).map(
+                    sectionName => {
+                      const sectionModuleKeys = SIDEBAR_MODULE_OPTIONS.filter(
+                        m => m.section === sectionName
+                      ).map(m => m.key);
+                      const actionsInSection = SYSTEM_ACTION_CATALOG.filter(
+                        a => a.actionKey !== 'custom_action' && sectionModuleKeys.includes(a.category)
+                      );
+                      return (
+                        <optgroup key={sectionName} label={`Menu Lateral — ${sectionName}`}>
+                          {actionsInSection.map(a => (
+                            <option key={a.actionKey} value={a.actionKey}>
+                              {a.actionLabel}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    }
+                  )}
+                  <optgroup label="Personalizado">
+                    <option value="custom_action">
+                      ⚡ Outra ação personalizada do sistema (digitar livremente)
+                    </option>
+                  </optgroup>
+                </select>
+
+                {triggerForm.selectedActionKey === 'custom_action' && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-indigo-400 mb-1">
+                      Descreva a ação do aplicativo que deve disparar o gatilho *
+                    </label>
+                    <input
+                      type="text"
+                      value={triggerForm.customActionDescription}
+                      onChange={e =>
+                        setTriggerForm(prev => ({
+                          ...prev,
+                          customActionDescription: e.target.value,
+                          label: e.target.value
+                        }))
+                      }
+                      placeholder="Ex: Quando um orçamento for aprovado / Quando alterar limite de crédito..."
+                      className={inputBaseClass}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Quando Disparar ao Ocorrer a Ação */}
+              <div>
+                <label className="block text-xs font-bold mb-2">
+                  2. Quando disparar ao ocorrer essa ação? *
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    {
+                      id: 'system_event',
+                      title: 'Imediatamente na Ação (Tempo Real)',
+                      desc: 'Dispara no exato momento em que a ação é realizada',
+                      icon: Zap
+                    },
+                    {
+                      id: 'status_change',
+                      title: 'Quando Atingir um Status Específico',
+                      desc: 'Dispara quando o status mudar para o valor definido',
+                      icon: RefreshCw
+                    },
+                    {
+                      id: 'scheduled_time',
+                      title: 'Em Horário Fixo / Programado',
+                      desc: 'Dispara diariamente no horário configurado',
+                      icon: Clock
+                    },
+                    {
+                      id: 'delay_after_event',
+                      title: 'Tempo Após a Ação (Follow-up)',
+                      desc: 'Aguarda X minutos após a ação para disparar',
+                      icon: History
+                    }
+                  ].map(modeOption => {
+                    const ModeIcon = modeOption.icon;
+                    const isSelected = triggerForm.firingMode === modeOption.id;
+                    return (
+                      <button
+                        key={modeOption.id}
+                        type="button"
+                        onClick={() =>
+                          setTriggerForm(prev => ({
+                            ...prev,
+                            firingMode: modeOption.id as TriggerFiringMode,
+                            hasSchedule: modeOption.id === 'scheduled_time'
+                          }))
+                        }
+                        className={`p-3 rounded-xl border text-left transition-all flex items-start gap-2.5 cursor-pointer ${
+                          isSelected
+                            ? isDarkMode
+                              ? 'bg-indigo-500/15 border-indigo-500 text-indigo-200 shadow-xs'
+                              : 'bg-indigo-50 border-indigo-500 text-indigo-900 shadow-xs'
+                            : isDarkMode
+                            ? 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div
+                          className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white'
+                              : isDarkMode
+                              ? 'bg-slate-800 text-slate-400'
+                              : 'bg-white text-slate-500'
+                          }`}
+                        >
+                          <ModeIcon size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold leading-snug">{modeOption.title}</div>
+                          <div className="text-[11px] opacity-75 mt-0.5 leading-snug">
+                            {modeOption.desc}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. Nome do Gatilho & Parâmetro de Disparo */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                <div className={triggerForm.firingMode === 'system_event' ? 'sm:col-span-12' : 'sm:col-span-8'}>
+                  <label className="block text-xs font-bold mb-1.5">
+                    3. Nome do Gatilho (como aparecerá na lista de &quot;Quando disparar?&quot; da regra) *
+                  </label>
+                  <input
+                    type="text"
+                    value={triggerForm.label}
+                    onChange={e => setTriggerForm({ ...triggerForm, label: e.target.value })}
+                    placeholder="Ex: Quando uma nova venda é registrada / Quando entrega sair para rota..."
+                    className={inputBaseClass}
+                  />
+                </div>
+
+                {triggerForm.firingMode === 'scheduled_time' && (
+                  <div className="sm:col-span-4">
+                    <label className="block text-xs font-bold mb-1.5">
+                      Horário Padrão *
+                    </label>
+                    <input
+                      type="time"
+                      value={triggerForm.defaultScheduleTime}
+                      onChange={e =>
+                        setTriggerForm({
+                          ...triggerForm,
+                          defaultScheduleTime: e.target.value,
+                          hasSchedule: true
+                        })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                )}
+
+                {triggerForm.firingMode === 'status_change' && (
+                  <div className="sm:col-span-4">
+                    <label className="block text-xs font-bold mb-1.5">
+                      Qual Status Dispara? *
+                    </label>
+                    <input
+                      type="text"
+                      value={triggerForm.conditionStatusValue}
+                      onChange={e =>
+                        setTriggerForm({ ...triggerForm, conditionStatusValue: e.target.value })
+                      }
+                      placeholder="Ex: Finalizada, Em Rota..."
+                      className={inputBaseClass}
+                    />
+                  </div>
+                )}
+
+                {triggerForm.firingMode === 'delay_after_event' && (
+                  <div className="sm:col-span-4">
+                    <label className="block text-xs font-bold mb-1.5">
+                      Aguardar (Minutos)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={triggerForm.delayMinutes}
+                      onChange={e =>
+                        setTriggerForm({
+                          ...triggerForm,
+                          delayMinutes: Math.max(1, Number(e.target.value) || 15)
+                        })
+                      }
+                      className={`${inputBaseClass} font-mono`}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Módulo do Sistema (todas as opções do Menu Lateral) & 5. Destinatário Sugerido */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">
+                    4. Módulo do Sistema (Menu Lateral)
+                  </label>
+                  <select
+                    value={triggerForm.category}
+                    onChange={e => {
+                      const nextCat = e.target.value as AutomationCategory;
+                      const matchingAction = SYSTEM_ACTION_CATALOG.find(
+                        a => a.category === nextCat && a.actionKey !== 'custom_action'
+                      );
+                      if (matchingAction && triggerForm.selectedActionKey !== 'custom_action') {
+                        const cleanActionText = matchingAction.actionLabel.includes(': ')
+                          ? matchingAction.actionLabel.split(': ').slice(1).join(': ')
+                          : matchingAction.actionLabel;
+                        setTriggerForm(prev => ({
+                          ...prev,
+                          category: nextCat,
+                          selectedActionKey: matchingAction.actionKey,
+                          label: `Quando ${cleanActionText.charAt(0).toLowerCase()}${cleanActionText.slice(1)}`,
+                          defaultRecipient: matchingAction.defaultRecipient,
+                          firingMode: matchingAction.defaultFiringMode,
+                          hasSchedule: matchingAction.defaultFiringMode === 'scheduled_time',
+                          availableVariables: [...matchingAction.defaultVariables]
+                        }));
+                      } else {
+                        setTriggerForm(prev => ({
+                          ...prev,
+                          category: nextCat
+                        }));
+                      }
+                    }}
+                    className={inputBaseClass}
+                  >
+                    {(
+                      [
+                        'Principal',
+                        'Comunicação & CRM',
+                        'Operações',
+                        'Resultados',
+                        'Administração'
+                      ] as const
+                    ).map(secTitle => (
+                      <optgroup key={secTitle} label={secTitle}>
+                        {SIDEBAR_MODULE_OPTIONS.filter(m => m.section === secTitle).map(mod => (
+                          <option key={mod.key} value={mod.key}>
+                            {mod.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <optgroup label="Outras Categorias">
+                      <option value="clients">Avisos Gerais a Clientes</option>
+                      <option value="management">Diretoria & Resumos Gerais</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1.5">
+                    5. Destinatário Padrão Sugerido
+                  </label>
+                  <select
+                    value={triggerForm.defaultRecipient}
+                    onChange={e =>
+                      setTriggerForm({
+                        ...triggerForm,
+                        defaultRecipient: e.target.value as RecipientTarget
+                      })
+                    }
+                    className={inputBaseClass}
+                  >
+                    {Object.entries(RECIPIENT_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 6. Variáveis Dinâmicas do Gatilho */}
+              <div
+                className={`p-3.5 rounded-xl border space-y-2.5 ${
+                  isDarkMode
+                    ? 'bg-slate-950/70 border-slate-800'
+                    : 'bg-slate-50 border-slate-200/90'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="block text-xs font-bold">
+                    6. Variáveis que este Gatilho fornece para a mensagem
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={newVarInput}
+                      onChange={e => setNewVarInput(e.target.value)}
+                      placeholder="Nova variável (ex: valor)"
+                      className={`px-2.5 py-1 rounded-lg text-xs border font-mono ${
+                        isDarkMode
+                          ? 'bg-slate-900 border-slate-700 text-white'
+                          : 'bg-white border-slate-300 text-slate-900'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const clean = newVarInput.trim().replace(/[{}]/g, '');
+                        if (!clean) return;
+                        const token = `{${clean}}`;
+                        if (!triggerForm.availableVariables.includes(token)) {
+                          setTriggerForm(prev => ({
+                            ...prev,
+                            availableVariables: [...prev.availableVariables, token]
+                          }));
+                        }
+                        setNewVarInput('');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer"
+                    >
+                      + Adicionar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    '{colaborador}',
+                    '{criador}',
+                    '{cliente}',
+                    '{motorista}',
+                    '{veiculo}',
+                    '{produto}',
+                    '{valor}',
+                    '{tarefa}',
+                    '{status}',
+                    '{prioridade}',
+                    '{prazo}',
+                    '{endereco}',
+                    '{bairro}',
+                    '{cidade}',
+                    '{vendedor}',
+                    '{turno}',
+                    '{horario}',
+                    '{data}'
+                  ].map(varToken => {
+                    const isSelected = triggerForm.availableVariables.includes(varToken);
+                    return (
+                      <button
+                        key={varToken}
+                        type="button"
+                        onClick={() =>
+                          setTriggerForm(prev => ({
+                            ...prev,
+                            availableVariables: isSelected
+                              ? prev.availableVariables.filter(x => x !== varToken)
+                              : [...prev.availableVariables, varToken]
+                          }))
+                        }
+                        className={`px-2 py-1 rounded-lg font-mono text-[11px] font-semibold border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-emerald-600 border-emerald-500 text-white'
+                            : isDarkMode
+                            ? 'bg-slate-900 border-slate-800 text-slate-400'
+                            : 'bg-white border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}
+                        {varToken}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Trigger Modal Footer - Strictly saves the trigger */}
+            <div
+              className={`px-6 py-4 border-t flex items-center justify-end gap-3 shrink-0 ${
+                isDarkMode
+                  ? 'bg-slate-900 border-slate-800'
+                  : 'bg-slate-50 border-slate-200'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => setIsTriggerModalOpen(false)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                  isDarkMode
+                    ? 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveCustomTrigger}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check size={15} />
+                <span>{editingTriggerId ? 'Salvar Alterações do Gatilho' : 'Salvar Novo Gatilho'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
