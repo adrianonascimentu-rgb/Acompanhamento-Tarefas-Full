@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock, ExternalLink, Building2, Instagram, MessageCircle, PhoneCall, Timer } from 'lucide-react';
+import { ArrowLeft, Search, Plus, Target, User, Phone, Mail, Calendar, Filter, Briefcase, Shuffle, CheckCircle2, AlertCircle, X, Check, Users, Pencil, BarChart3, MapPin, Trash2, Upload, FileText, FileSpreadsheet, Award, Receipt, Sparkles, RefreshCw, UserCheck, ArrowUpDown, ArrowDownWideNarrow, ArrowUpNarrowWide, SlidersHorizontal, ChevronDown, ChevronUp, Layers, Clock, ExternalLink, Building2, Instagram, MessageCircle, PhoneCall, Timer, Send, Zap } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -1433,6 +1433,102 @@ export default function LeadsPage() {
     });
 
     showToast(`Status de "${lead.google_name || lead.company}" atualizado para ${newStatus}!`, 'success');
+  };
+
+  const buildQuickWelcomeMessage = (
+    lead: any,
+    templateType: 'padrao' | 'catalogo' | 'condicao' = 'padrao'
+  ): string => {
+    const companyLabel = (lead.google_name || lead.company || '').trim();
+    const rawContact = (lead.name || '').trim();
+    const firstName =
+      rawContact && rawContact.toLowerCase() !== companyLabel.toLowerCase()
+        ? rawContact.split(' ')[0]
+        : '';
+    const greeting = firstName ? `Olá, ${firstName}!` : 'Olá!';
+    const companyRef = companyLabel ? ` da *${companyLabel}*` : '';
+    const segmentRef =
+      lead.segment && lead.segment !== 'Geral'
+        ? ` para o segmento de *${lead.segment}*`
+        : '';
+    const sellerName =
+      lead.assigned_profile?.name ||
+      lead.assigned_name ||
+      user?.name ||
+      'Consultor Comercial';
+
+    if (templateType === 'catalogo') {
+      return `${greeting} Seja muito bem-vindo(a)! Aqui é *${sellerName}*, da equipe comercial. Acabamos de cadastrar o contato${companyRef} e preparei nosso catálogo atualizado com soluções sob medida${segmentRef}. Posso te enviar as opções por aqui agora?`;
+    }
+    if (templateType === 'condicao') {
+      return `${greeting} Tudo bem? Seja bem-vindo(a)! Sou *${sellerName}* e estou entrando em contato com a equipe${companyRef} porque liberamos uma condição comercial exclusiva essa semana${segmentRef}. Tem 2 minutinhos para eu te apresentar?`;
+    }
+    return `${greeting} Seja muito bem-vindo(a)! Tudo bem? Sou *${sellerName}* e estou iniciando seu atendimento personalizado junto à equipe${companyRef}. Como posso ajudar vocês hoje${segmentRef}?`;
+  };
+
+  const buildQuickWelcomeWhatsAppUrl = (
+    lead: any,
+    templateType: 'padrao' | 'catalogo' | 'condicao' = 'padrao'
+  ): string => {
+    let digits = (lead.phone || '').replace(/\D/g, '');
+    if (digits.startsWith('0')) {
+      digits = digits.slice(1);
+    }
+    if (!digits) {
+      digits = '5583999999999';
+    } else if (digits.length <= 11 && !digits.startsWith('55')) {
+      digits = `55${digits}`;
+    }
+    const message = buildQuickWelcomeMessage(lead, templateType);
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  };
+
+  const handleTriggerQuickWelcomeWhatsApp = async (
+    lead: any,
+    templateLabel: string = 'Boas-Vindas Padrão'
+  ) => {
+    const nowIso = new Date().toISOString();
+    const currentStatus = lead.status || 'Novo';
+    const nextStatus = currentStatus === 'Novo' ? 'Em Contato' : currentStatus;
+    const createdMs = lead.created_at
+      ? new Date(lead.created_at).getTime()
+      : Date.now() - 900000;
+    const calcMins = Math.max(
+      1,
+      Math.min(120, Math.floor((Date.now() - createdMs) / 60000))
+    );
+    const responseTimeMinutes = lead.response_time_minutes || calcMins;
+
+    try {
+      if (Boolean(isSupabaseConfigured) && !tableMissing && currentStatus === 'Novo') {
+        await supabase
+          .from('leads')
+          .update({ status: nextStatus })
+          .eq('id', lead.id);
+      }
+    } catch {}
+
+    setLeads((prev) => {
+      const updated = prev.map((l) =>
+        l.id === lead.id
+          ? {
+              ...l,
+              status: nextStatus,
+              response_time_minutes: responseTimeMinutes,
+              welcome_sent_at: nowIso,
+              welcome_template: templateLabel,
+              updated_at: nowIso,
+            }
+          : l
+      );
+      saveLocalImportedLeads(updated);
+      return updated;
+    });
+
+    showToast(
+      `Ação Rápida: ${templateLabel} disparada no WhatsApp para "${lead.google_name || lead.company}"!`,
+      'success'
+    );
   };
 
   const handleEditLead = (lead: any) => {
@@ -3180,7 +3276,7 @@ export default function LeadsPage() {
                             </p>
                           </div>
 
-                          {/* 3. Botão de Ação Rápida para Chamada WhatsApp */}
+                          {/* 3. Botão de Ação Rápida para Chamada & Boas-Vindas WhatsApp */}
                           <div
                             className={`p-3 rounded-xl border flex flex-col justify-between ${
                               isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200/70'
@@ -3188,41 +3284,162 @@ export default function LeadsPage() {
                           >
                             <div className="flex items-center justify-between mb-1.5">
                               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                                <PhoneCall size={12} className="text-emerald-500" />
-                                Ação Rápida de Contato
+                                <Zap size={12} className="text-emerald-500" />
+                                Ação Rápida WhatsApp
                               </span>
                               <span className="text-[10px] font-bold text-slate-500">
                                 {lead.phone}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex flex-col gap-1.5 mt-1">
+                              {/* Disparar Boas-Vindas Automáticas (1-Clique) */}
                               <a
-                                href={whatsAppCallUrl}
+                                href={buildQuickWelcomeWhatsAppUrl(lead, 'padrao')}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={() => {
-                                  if ((lead.status || 'Novo') === 'Novo') {
-                                    handleQuickStatusChange(lead, 'Em Contato');
-                                  }
-                                }}
-                                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                                onClick={() =>
+                                  handleTriggerQuickWelcomeWhatsApp(lead, 'Boas-Vindas Padrão')
+                                }
+                                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-md shadow-emerald-600/20 transition-all active:scale-95"
+                                title="Disparar mensagem automática de boas-vindas pelo WhatsApp com um único clique"
                               >
-                                <PhoneCall size={14} className="shrink-0" />
-                                <span>Chamada WhatsApp</span>
+                                <Send size={13} className="shrink-0" />
+                                <span>Boas-Vindas Automáticas (1-Clique)</span>
                               </a>
-                              {lead.phone && (
+
+                              <div className="flex items-center gap-1.5">
                                 <a
-                                  href={`tel:${lead.phone.replace(/\D/g, '')}`}
-                                  className={`p-2.5 rounded-xl border transition-all ${
+                                  href={whatsAppCallUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => {
+                                    if ((lead.status || 'Novo') === 'Novo') {
+                                      handleQuickStatusChange(lead, 'Em Contato');
+                                    }
+                                  }}
+                                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-[11px] font-bold border transition-all active:scale-95 ${
                                     isDarkMode
-                                      ? 'bg-slate-800 border-slate-700 text-slate-200 hover:border-blue-500'
-                                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-blue-500'
+                                      ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-300 hover:bg-emerald-900/60'
+                                      : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
                                   }`}
-                                  title={`Ligar para ${lead.phone}`}
                                 >
-                                  <Phone size={14} />
+                                  <PhoneCall size={12} className="shrink-0" />
+                                  <span>Chamada WhatsApp</span>
                                 </a>
-                              )}
+                                {lead.phone && (
+                                  <a
+                                    href={`tel:${lead.phone.replace(/\D/g, '')}`}
+                                    className={`p-1.5 rounded-lg border transition-all ${
+                                      isDarkMode
+                                        ? 'bg-slate-800 border-slate-700 text-slate-200 hover:border-blue-500'
+                                        : 'bg-slate-100 border-slate-200 text-slate-700 hover:border-blue-500'
+                                    }`}
+                                    title={`Ligar para ${lead.phone}`}
+                                  >
+                                    <Phone size={13} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Central de Ação Rápida: Disparo de Mensagens Automáticas de Boas-Vindas (1-Clique) */}
+                        <div
+                          className={`mt-2.5 p-3.5 rounded-2xl border transition-all ${
+                            isDarkMode
+                              ? 'bg-emerald-950/25 border-emerald-500/30'
+                              : 'bg-gradient-to-r from-emerald-50/90 via-teal-50/60 to-white border-emerald-200/80'
+                          }`}
+                        >
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-600 text-white shadow-2xs">
+                                  <Zap size={11} className="shrink-0" />
+                                  Ação Rápida • 1-Clique
+                                </span>
+                                <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                                  Boas-Vindas Automáticas pelo WhatsApp
+                                </h4>
+                                {lead.welcome_sent_at ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                                    <CheckCircle2 size={11} />
+                                    Enviada ({lead.welcome_template || 'Boas-Vindas'}) às{' '}
+                                    {new Date(lead.welcome_sent_at).toLocaleTimeString('pt-BR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                    Mensagem personalizada pronta para envio imediato
+                                  </span>
+                                )}
+                              </div>
+
+                              <p
+                                className={`mt-1.5 text-[11px] leading-relaxed italic line-clamp-2 px-2.5 py-1.5 rounded-lg border ${
+                                  isDarkMode
+                                    ? 'bg-slate-900/80 border-slate-800 text-slate-300'
+                                    : 'bg-white/90 border-emerald-200/60 text-slate-600'
+                                }`}
+                              >
+                                &ldquo;{buildQuickWelcomeMessage(lead, 'padrao')}&rdquo;
+                              </p>
+                            </div>
+
+                            {/* Botões de Disparo Automático com 1 Único Clique */}
+                            <div className="flex flex-wrap items-center gap-2 shrink-0">
+                              <a
+                                href={buildQuickWelcomeWhatsAppUrl(lead, 'padrao')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() =>
+                                  handleTriggerQuickWelcomeWhatsApp(lead, 'Boas-Vindas Padrão')
+                                }
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md shadow-emerald-600/25 transition-all active:scale-95"
+                                title="Disparar mensagem automática de boas-vindas padrão com 1 clique"
+                              >
+                                <Send size={13} className="shrink-0" />
+                                <span>Disparar Boas-Vindas (1-Clique)</span>
+                              </a>
+
+                              <a
+                                href={buildQuickWelcomeWhatsAppUrl(lead, 'catalogo')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() =>
+                                  handleTriggerQuickWelcomeWhatsApp(lead, 'Boas-Vindas + Catálogo')
+                                }
+                                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold border transition-all active:scale-95 ${
+                                  isDarkMode
+                                    ? 'bg-slate-900 border-emerald-500/30 text-emerald-300 hover:bg-emerald-950/60'
+                                    : 'bg-white border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                }`}
+                                title="Disparar boas-vindas + apresentação de catálogo comercial com 1 clique"
+                              >
+                                <Sparkles size={12} className="shrink-0 text-emerald-500" />
+                                <span>+ Catálogo (1-Clique)</span>
+                              </a>
+
+                              <a
+                                href={buildQuickWelcomeWhatsAppUrl(lead, 'condicao')}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() =>
+                                  handleTriggerQuickWelcomeWhatsApp(lead, 'Boas-Vindas + Condição Especial')
+                                }
+                                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold border transition-all active:scale-95 ${
+                                  isDarkMode
+                                    ? 'bg-slate-900 border-amber-500/30 text-amber-300 hover:bg-amber-950/60'
+                                    : 'bg-white border-amber-200 text-amber-700 hover:bg-amber-50'
+                                }`}
+                                title="Disparar boas-vindas + condição especial para o segmento do lead com 1 clique"
+                              >
+                                <MessageCircle size={12} className="shrink-0 text-amber-500" />
+                                <span>+ Condição Especial (1-Clique)</span>
+                              </a>
                             </div>
                           </div>
                         </div>
